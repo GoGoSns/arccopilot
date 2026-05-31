@@ -1,0 +1,12 @@
+﻿node_modules
+dist
+.vite
+coverage
+.env
+.env.local
+.env.*.local
+.DS_Store
+*.log
+*.zip
+*.crx
+*.pem
