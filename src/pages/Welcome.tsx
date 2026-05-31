@@ -1,62 +1,95 @@
-'use client'
 import { useState } from 'react'
 import { Settings, Loader2 } from 'lucide-react'
-import { useConnect } from 'wagmi'
-import { injected } from 'wagmi/connectors'
 import { Button } from '@/components/ui/Button'
 import { useStore } from '@/lib/store'
 
-// 5042002 decimal → 0x4CEF52 hex
-const ARC_CHAIN_PARAMS = {
-  chainId: '0x4CEF52',
-  chainName: 'Arc Testnet',
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-  rpcUrls: ['https://rpc.testnet.arc.network'],
-  blockExplorerUrls: ['https://testnet.arcscan.app'],
-}
+type ConnectResult =
+  | { accounts: string[]; chainId: string }
+  | { error: string }
 
 export function Welcome() {
-  const { connect, isPending } = useConnect()
   const setIsOnboarded   = useStore((s) => s.setIsOnboarded)
   const setCurrentView   = useStore((s) => s.setCurrentView)
   const setWalletAddress = useStore((s) => s.setWalletAddress)
 
-  const [errorMsg, setErrorMsg] = useState('')
+  const [connecting, setConnecting] = useState(false)
+  const [errorMsg,   setErrorMsg]   = useState('')
 
-  const handleMetaMask = () => {
+  const handleMetaMask = async () => {
+    setConnecting(true)
     setErrorMsg('')
-    connect(
-      { connector: injected() },
-      {
-        onSuccess: async (data) => {
-          const address = data.accounts[0]
 
-          // Add / switch to Arc Testnet
-          const eth = (window as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum
-          if (eth) {
-            try {
-              await eth.request({ method: 'wallet_addEthereumChain', params: [ARC_CHAIN_PARAMS] })
-            } catch (err) {
-              // User rejected chain add — non-fatal, continue
-              console.warn('Chain add skipped:', err)
-            }
-          }
+    try {
+      // Need an active regular tab — chrome:// pages block executeScript
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
 
-          setWalletAddress(address)
-          setIsOnboarded(true)
-          setCurrentView('wallet')
-        },
-        onError: (err) => {
-          console.error('MetaMask connect error:', err)
-          setErrorMsg(err.message.length > 80 ? 'MetaMask connection failed. Make sure the extension is installed.' : err.message)
-        },
+      if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        throw new Error(
+          'Please open a web page first (e.g. arcpaymain.vercel.app), ' +
+          'then click Connect MetaMask again. MetaMask is unavailable on browser system pages.'
+        )
       }
-    )
+
+      // Inject into page's MAIN world so window.ethereum is accessible
+      const results = await chrome.scripting.executeScript<[], ConnectResult>({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: async (): Promise<ConnectResult> => {
+          const eth = (window as any).ethereum
+          if (!eth) return { error: 'MetaMask is not installed or not active on this page.' }
+          try {
+            const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' })
+            const chainId: string    = await eth.request({ method: 'eth_chainId' })
+            return { accounts, chainId }
+          } catch (e: any) {
+            return { error: e?.message ?? 'User rejected connection' }
+          }
+        },
+      })
+
+      const payload = results[0]?.result
+      if (!payload) throw new Error('No response from the page.')
+      if ('error' in payload) throw new Error(payload.error)
+      if (!payload.accounts.length) throw new Error('MetaMask returned no accounts.')
+
+      const address = payload.accounts[0]
+
+      // Add / switch to Arc Testnet — non-fatal if user rejects
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: async () => {
+            await (window as any).ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [{
+                chainId: '0x4cef52', // 5042002 decimal
+                chainName: 'Arc Testnet',
+                nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+                rpcUrls: ['https://rpc.testnet.arc.network'],
+                blockExplorerUrls: ['https://testnet.arcscan.app'],
+              }],
+            })
+          },
+        })
+      } catch {
+        // User skipped chain add — continue anyway
+      }
+
+      setWalletAddress(address)
+      setIsOnboarded(true)
+      setCurrentView('wallet')
+    } catch (err: any) {
+      console.error('MetaMask connect error:', err)
+      setErrorMsg(err.message ?? 'Connection failed.')
+    } finally {
+      setConnecting(false)
+    }
   }
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
-      {/* Header bar */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
         <span className="text-xs font-mono text-arc-text-dim">ArcCopilot v0.1.0</span>
         <button className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
@@ -66,7 +99,7 @@ export function Welcome() {
 
       {/* Content */}
       <div className="flex flex-col items-center justify-center flex-1 px-6 gap-6">
-        {/* Hexagon logo */}
+        {/* Gold hexagon logo */}
         <div
           className="w-24 h-24 flex items-center justify-center text-4xl font-black text-black select-none"
           style={{
@@ -111,9 +144,9 @@ export function Welcome() {
             fullWidth
             size="lg"
             onClick={handleMetaMask}
-            disabled={isPending}
+            disabled={connecting}
           >
-            {isPending
+            {connecting
               ? <><Loader2 size={16} className="animate-spin" /> Connecting…</>
               : 'Connect MetaMask'
             }
@@ -122,7 +155,9 @@ export function Welcome() {
 
         {/* Error */}
         {errorMsg && (
-          <p className="text-xs text-arc-danger text-center leading-relaxed">{errorMsg}</p>
+          <p className="text-xs text-arc-danger text-center leading-relaxed max-w-xs">
+            {errorMsg}
+          </p>
         )}
 
         <div className="flex items-center gap-2">
