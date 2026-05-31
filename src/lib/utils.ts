@@ -3,13 +3,19 @@ export function formatAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
 }
 
-export function formatUSDC(raw: string | number, decimals = 18): string {
-  const n = typeof raw === 'string' ? BigInt(raw) : BigInt(Math.floor(Number(raw)))
+export function formatBalance(wei: bigint, decimals: number): string {
+  if (wei === 0n) return '0.00'
   const divisor = BigInt(10 ** decimals)
-  const whole = n / divisor
-  const frac  = n % divisor
+  const whole = wei / divisor
+  const frac  = wei % divisor
   const fracStr = frac.toString().padStart(decimals, '0').slice(0, 2)
   return `${whole.toString()}.${fracStr}`
+}
+
+// Legacy alias kept for existing callers
+export function formatUSDC(raw: string | number, decimals = 18): string {
+  const n = typeof raw === 'string' ? BigInt(raw) : BigInt(Math.floor(Number(raw)))
+  return formatBalance(n, decimals)
 }
 
 export function formatUSD(amount: number): string {
@@ -27,4 +33,8 @@ export function timeAgo(timestamp: number): string {
   const hrs = Math.floor(mins / 60)
   if (hrs  < 24)  return `${hrs}h ago`
   return `${Math.floor(hrs / 24)}d ago`
+}
+
+export async function copyToClipboard(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text)
 }

@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { useStore } from '@/lib/store'
+import { useStore, type View } from '@/lib/store'
 import { Welcome }  from '@/pages/Welcome'
 import { Wallet }   from '@/pages/Wallet'
 import { Send }     from '@/pages/Send'
@@ -8,20 +7,22 @@ import { Discover } from '@/pages/Discover'
 import { Profile }  from '@/pages/Profile'
 import { Settings } from '@/pages/Settings'
 
-type Page = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings'
-
 export default function App() {
-  const onboarded = useStore((s) => s.onboarded)
-  const [page, setPage] = useState<Page>(onboarded ? 'wallet' : 'welcome')
+  const isOnboarded   = useStore((s) => s.isOnboarded)
+  const currentView   = useStore((s) => s.currentView)
+  const setCurrentView = useStore((s) => s.setCurrentView)
 
-  const go = (p: Page) => setPage(p)
+  const go = (v: View) => setCurrentView(v)
 
-  if (page === 'welcome')  return <Welcome  onComplete={() => go('wallet')} />
-  if (page === 'send')     return <Send     onBack={() => go('wallet')} />
-  if (page === 'receive')  return <Receive  onBack={() => go('wallet')} />
-  if (page === 'discover') return <Discover onBack={() => go('wallet')} />
-  if (page === 'profile')  return <Profile  onBack={() => go('wallet')} />
-  if (page === 'settings') return <Settings onBack={() => go('wallet')} />
+  // Force welcome if not onboarded
+  const view: View = !isOnboarded ? 'welcome' : currentView === 'welcome' ? 'wallet' : currentView
+
+  if (view === 'welcome')  return <Welcome />
+  if (view === 'send')     return <Send     onBack={() => go('wallet')} />
+  if (view === 'receive')  return <Receive  onBack={() => go('wallet')} />
+  if (view === 'discover') return <Discover onBack={() => go('wallet')} />
+  if (view === 'profile')  return <Profile  onBack={() => go('wallet')} />
+  if (view === 'settings') return <Settings onBack={() => go('wallet')} />
 
   return (
     <Wallet
@@ -29,7 +30,6 @@ export default function App() {
       onReceive={() => go('receive')}
       onDiscover={() => go('discover')}
       onMenu={() => go('profile')}
-      onSettings={() => go('settings')}
     />
   )
 }

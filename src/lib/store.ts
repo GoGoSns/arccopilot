@@ -1,54 +1,33 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-interface WalletState {
-  address: string | null
-  balance: string
-  isConnected: boolean
-}
-
-interface UserState {
-  handle: string | null
-  level: number
-  streak: number
-  xConnected: boolean
-}
-
-interface SettingsState {
-  theme: 'dark' | 'light'
-  notifications: boolean
-  currency: 'USD' | 'EUR'
-}
+export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings'
 
 interface AppState {
-  wallet: WalletState
-  user: UserState
-  settings: SettingsState
-  onboarded: boolean
-  currentPage: string
+  isOnboarded: boolean
+  currentView: View
+  walletAddress: string | null
+  usdcBalance: string
 
-  setWallet: (wallet: Partial<WalletState>) => void
-  setUser:   (user: Partial<UserState>) => void
-  setSettings: (settings: Partial<SettingsState>) => void
-  setOnboarded: (v: boolean) => void
-  setCurrentPage: (page: string) => void
+  setIsOnboarded: (v: boolean) => void
+  setCurrentView: (view: View) => void
+  setWalletAddress: (address: string | null) => void
+  setBalance: (balance: string) => void
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
-      wallet: { address: null, balance: '0', isConnected: false },
-      user:   { handle: null, level: 1, streak: 0, xConnected: false },
-      settings: { theme: 'dark', notifications: true, currency: 'USD' },
-      onboarded: false,
-      currentPage: 'welcome',
+      isOnboarded: false,
+      currentView: 'welcome',
+      walletAddress: null,
+      usdcBalance: '0.00',
 
-      setWallet:      (w) => set((s) => ({ wallet:   { ...s.wallet,   ...w } })),
-      setUser:        (u) => set((s) => ({ user:     { ...s.user,     ...u } })),
-      setSettings:    (p) => set((s) => ({ settings: { ...s.settings, ...p } })),
-      setOnboarded:   (v) => set({ onboarded: v }),
-      setCurrentPage: (page) => set({ currentPage: page }),
+      setIsOnboarded:   (v) => set({ isOnboarded: v }),
+      setCurrentView:   (view) => set({ currentView: view }),
+      setWalletAddress: (address) => set({ walletAddress: address }),
+      setBalance:       (balance) => set({ usdcBalance: balance }),
     }),
-    { name: 'arccopilot' }
+    { name: 'arccopilot:state' }
   )
 )
