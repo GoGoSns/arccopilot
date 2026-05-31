@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Copy } from 'lucide-react'
 import { WalletHeader }  from '@/components/WalletHeader'
 import { BalanceCard }   from '@/components/BalanceCard'
@@ -8,11 +8,8 @@ import { TokenList }     from '@/components/TokenList'
 import { ActivityList }  from '@/components/ActivityList'
 import { BottomStatus }  from '@/components/BottomStatus'
 import { useStore }      from '@/lib/store'
-import { formatAddress, formatBalance, copyToClipboard } from '@/lib/utils'
-
-const RPC_URL      = 'https://rpc.testnet.arc.network'
-const USDC_ADDRESS = '0x3600000000000000000000000000000000000000'
-const BALANCE_OF   = '0x70a08231' // balanceOf(address) selector
+import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
+import { formatAddress, copyToClipboard } from '@/lib/utils'
 
 type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
 
@@ -23,51 +20,12 @@ interface WalletProps {
   onMenu: () => void
 }
 
-async function fetchUsdcBalance(address: string): Promise<string> {
-  const data = BALANCE_OF + address.replace(/^0x/, '').padStart(64, '0')
-  const res = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0', id: 1,
-      method: 'eth_call',
-      params: [{ to: USDC_ADDRESS, data }, 'latest'],
-    }),
-  })
-  const json = await res.json()
-  if (json.error) throw new Error(json.error.message)
-  const wei = BigInt(json.result === '0x' ? '0x0' : json.result)
-  return formatBalance(wei, 18)
-}
-
 export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
   const [activeTab, setActiveTab] = useState<Tab>('tokens')
   const [copied,    setCopied]    = useState(false)
-  const [balance,   setBalance]   = useState('0.00')
-  const [balLoading, setBalLoading] = useState(true)
 
-  const address    = useStore((s) => s.walletAddress)
-  const setBalance_ = useStore((s) => s.setBalance)
-
-  const loadBalance = useCallback(async () => {
-    if (!address) return
-    try {
-      const b = await fetchUsdcBalance(address)
-      setBalance(b)
-      setBalance_(b)
-    } catch (err) {
-      console.error('Balance fetch error:', err)
-    } finally {
-      setBalLoading(false)
-    }
-  }, [address, setBalance_])
-
-  // Initial fetch + 15s refresh
-  useEffect(() => {
-    loadBalance()
-    const id = window.setInterval(loadBalance, 15_000)
-    return () => window.clearInterval(id)
-  }, [loadBalance])
+  const address            = useStore((s) => s.walletAddress)
+  const { balance, isLoading } = useUSDCBalance()
 
   const handleTabChange = (tab: Tab) => {
     if (tab === 'discover') { onDiscover(); return }
@@ -113,7 +71,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
       <BalanceCard
         address={address ?? ''}
         balance={balance}
-        isLoading={balLoading}
+        isLoading={isLoading}
         changePercent={2.4}
       />
 
