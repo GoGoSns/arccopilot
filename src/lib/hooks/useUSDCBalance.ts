@@ -4,10 +4,13 @@ import { formatBalance } from '@/lib/utils'
 
 const RPC_URL      = 'https://rpc.testnet.arc.network'
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000'
-const BALANCE_OF   = '0x70a08231' // balanceOf(address) selector
+const BALANCE_OF    = '0x70a08231' // balanceOf(address) selector
+// USDC on Arc Testnet uses 6 decimals (ERC-20 standard), NOT 18.
+// Arc's native currency has 18 decimals but the USDC token contract does not.
+const USDC_DECIMALS = 6
 
 export async function fetchUsdcBalance(address: string): Promise<string> {
-  const padded = address.replace(/^0x/i, '').padStart(64, '0')
+  const padded = address.slice(2).toLowerCase().padStart(64, '0')
   const data   = BALANCE_OF + padded
 
   console.log('[useUSDCBalance] fetching RPC for', address.slice(0, 10) + '...')
@@ -31,8 +34,11 @@ export async function fetchUsdcBalance(address: string): Promise<string> {
   const raw = json.result as string
   if (!raw || raw === '0x' || raw === '0x0') return '0.00'
 
-  const result = formatBalance(BigInt(raw), 18)
-  console.log('[useUSDCBalance] parsed balance:', result)
+  const wei = BigInt(raw)
+  console.log('[useUSDCBalance] as 6 dec:', Number(wei) / 1e6, '| as 18 dec:', Number(wei) / 1e18)
+
+  const result = formatBalance(wei, USDC_DECIMALS)
+  console.log('[useUSDCBalance] formatted:', result)
   return result
 }
 
