@@ -47,7 +47,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
-      <WalletHeader onMenu={() => setCurrentView('settings')} onNotifications={() => {}} />
+      <WalletHeader onMenu={onMenu} onNotifications={() => {}} />
 
       <div className="relative flex items-center gap-3 border-b border-arc-border px-4 py-2">
         <div className="flex h-8 w-8 select-none items-center justify-center rounded-full bg-arc-gold/20 text-sm font-bold text-arc-gold">

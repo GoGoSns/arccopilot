@@ -32,15 +32,16 @@ export function BottomStatus({ level, streak, onOpenDashboard, onOpenAddressBook
         {onOpenAddressBook && (
           <button
             onClick={onOpenAddressBook}
-            className="flex items-center gap-1 text-xs text-arc-text-dim hover:text-arc-gold transition-colors"
+            className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
           >
             <Book size={12} />
             Address Book
+            <ChevronRight size={12} />
           </button>
         )}
         <button
           onClick={onOpenDashboard}
-          className="flex items-center gap-1 text-xs text-arc-text-dim hover:text-arc-gold transition-colors"
+          className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
         >
           Open dashboard
           <ChevronRight size={12} />

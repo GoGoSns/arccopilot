@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware'
 
 export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail'
 
+export const ADDRESS_BOOK_STORAGE_KEY = 'arccopilot:address_book'
+
 export interface AddressMemory {
   address: string         // lowercase
   label?: string          // "Osman Abi"
@@ -48,7 +50,40 @@ interface AppState {
   addAddressMemory: (address: string, data: Partial<AddressMemory>) => void
   updateAddressMemory: (address: string, data: Partial<AddressMemory>) => void
   removeAddressMemory: (address: string) => void
+  mergeAddressMemories: (memories: Record<string, AddressMemory>) => void
   getAddressMemory: (address: string) => AddressMemory | null
+}
+
+function canUseChromeStorage(): boolean {
+  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
+}
+
+function normalizeAddressBook(memories: Record<string, AddressMemory>): Record<string, AddressMemory> {
+  const normalized: Record<string, AddressMemory> = {}
+
+  for (const memory of Object.values(memories)) {
+    if (!memory?.address) continue
+
+    const address = memory.address.toLowerCase()
+    normalized[address] = {
+      ...memory,
+      address,
+    }
+  }
+
+  return normalized
+}
+
+async function syncAddressBookToChrome(memories: Record<string, AddressMemory>): Promise<void> {
+  if (!canUseChromeStorage()) return
+
+  try {
+    await chrome.storage.local.set({
+      [ADDRESS_BOOK_STORAGE_KEY]: normalizeAddressBook(memories),
+    })
+  } catch (error) {
+    console.warn('[ArcCopilot] address book sync failed:', error)
+  }
 }
 
 export const useStore = create<AppState>()(
@@ -72,18 +107,27 @@ export const useStore = create<AppState>()(
       setCurrentView:   (view) => {
         const current = get().currentView
         if (current === view) return
-        
+
         console.log('[Nav] previous:', current, 'next:', view)
-        set({ previousView: current, currentView: view })
+        set({
+          previousView: current,
+          currentView: view,
+        })
       },
 
       goBack: () => {
         const { previousView, currentView } = get()
-        const target = previousView || 'wallet'
+        const target = previousView && previousView !== currentView && previousView !== 'welcome'
+          ? previousView
+          : 'wallet'
+
+        if (target === currentView) return
         
         console.log('[Nav] goBack from:', currentView, 'to:', target)
-        
-        set({ currentView: target, previousView: target === 'wallet' ? null : 'wallet' })
+        set({
+          currentView: target,
+          previousView: target === 'wallet' ? null : 'wallet',
+        })
       },
 
       setWalletAddress: (address) => {
@@ -133,6 +177,10 @@ export const useStore = create<AppState>()(
             [addr]: newMemory
           }
         }))
+        void syncAddressBookToChrome({
+          ...get().addressMemories,
+          [addr]: newMemory,
+        })
       },
 
       updateAddressMemory: (address, data) => {
@@ -147,6 +195,7 @@ export const useStore = create<AppState>()(
             }
           }
         })
+        void syncAddressBookToChrome(get().addressMemories)
       },
 
       removeAddressMemory: (address) => {
@@ -155,6 +204,16 @@ export const useStore = create<AppState>()(
           const { [addr]: _, ...rest } = s.addressMemories
           return { addressMemories: rest }
         })
+        void syncAddressBookToChrome(get().addressMemories)
+      },
+
+      mergeAddressMemories: (memories) => {
+        set((s) => ({
+          addressMemories: {
+            ...normalizeAddressBook(s.addressMemories),
+            ...normalizeAddressBook(memories),
+          },
+        }))
       },
 
       getAddressMemory: (address) => {

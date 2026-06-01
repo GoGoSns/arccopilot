@@ -39,9 +39,21 @@ export function Send({ onBack }: SendProps) {
   const [txHash, setTxHash] = useState('')
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
   const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string } | null>(null)
+  const [fromUniversalTip, setFromUniversalTip] = useState(false)
+  const [recipientContractStatus, setRecipientContractStatus] = useState<'idle' | 'checking' | 'contract' | 'unknown'>('idle')
   
   const amountRef = useRef<HTMLInputElement>(null)
+  const contractLookupTokenRef = useRef(0)
   const [showSuggestions, setShowSuggestions] = useState(false)
+
+  const trimmedRecipient = recipient.trim()
+  const isExactRecipient = /^0x[a-fA-F0-9]{40}$/.test(trimmedRecipient)
+  const recipientValidationError = trimmedRecipient && !isExactRecipient ? 'Invalid recipient address.' : ''
+  const recipientMemory = isExactRecipient ? addressMemories[trimmedRecipient.toLowerCase()] ?? null : null
+  const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
+  const isAmountValid = amount.trim().length > 0 && !Number.isNaN(Number(amount)) && Number(amount) > 0
+  const showRecipientSafetyWarning = fromUniversalTip && isExactRecipient
+  const isSendDisabled = isLoading || !walletAddress || !isExactRecipient || !isAmountValid || !!txHash
 
   const suggestions = useMemo(() => {
     const q = recipient.toLowerCase()
@@ -51,20 +63,77 @@ export function Send({ onBack }: SendProps) {
       .slice(0, 3)
   }, [addressMemories, recipient])
 
-  const isValidAddress = /^0x[a-fA-F0-9]{40}$/.test(recipient.trim())
-
   // Pre-fill recipient when opened via the Universal Tip Button
   useEffect(() => {
     chrome.storage.local.get('arccopilot:pending_send', (result) => {
       const pending = result['arccopilot:pending_send']
       if (pending?.recipient && Date.now() - pending.ts < 5_000) {
         setRecipient(pending.recipient)
+        setFromUniversalTip(true)
         chrome.storage.local.remove('arccopilot:pending_send')
         // Give React a tick to render the input, then focus amount
         setTimeout(() => amountRef.current?.focus(), 50)
+      } else {
+        setFromUniversalTip(false)
       }
     })
   }, [])
+
+  useEffect(() => {
+    if (!isExactRecipient) {
+      setRecipientContractStatus('idle')
+      return
+    }
+
+    const lookupToken = ++contractLookupTokenRef.current
+    const controller = new AbortController()
+
+    setRecipientContractStatus('checking')
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${EXPLORER_URL}/api/v2/addresses/${trimmedRecipient}`, {
+          headers: { accept: 'application/json' },
+          signal: controller.signal,
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const data = await response.json() as {
+          is_contract?: boolean
+          contract_code?: string | null
+          smart_contract?: unknown
+          contract?: unknown
+          type?: string
+        }
+
+        const type = String(data?.type ?? '').toLowerCase()
+        const isContract = Boolean(
+          data?.is_contract ||
+          (typeof data?.contract_code === 'string' && data.contract_code.length > 0) ||
+          data?.smart_contract ||
+          data?.contract ||
+          type.includes('contract')
+        )
+
+        if (contractLookupTokenRef.current === lookupToken) {
+          setRecipientContractStatus(isContract ? 'contract' : 'unknown')
+        }
+      } catch (error: any) {
+        if (error?.name === 'AbortError') return
+        if (contractLookupTokenRef.current === lookupToken) {
+          setRecipientContractStatus('unknown')
+        }
+      }
+    }, 250)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [isExactRecipient, trimmedRecipient])
 
   const refreshTimerRef = useRef<number | null>(null)
   const receiptPollTokenRef = useRef(0)
@@ -167,15 +236,13 @@ export function Send({ onBack }: SendProps) {
     clearScheduledRefresh()
     receiptPollTokenRef.current += 1
 
-    const trimmedRecipient = recipient.trim()
-
     if (!walletAddress) {
       setError('Connect your wallet first')
       return
     }
 
-    if (!trimmedRecipient.match(/^0x[a-fA-F0-9]{40}$/)) {
-      setError('Invalid recipient address')
+    if (!isExactRecipient) {
+      setError('Invalid recipient address.')
       return
     }
 
@@ -250,7 +317,6 @@ export function Send({ onBack }: SendProps) {
   const explorerUrl = txHash ? `${EXPLORER_URL}/tx/${txHash}` : ''
   const currentAmount = lastTransfer?.amount ?? amount.trim()
   const currentRecipient = lastTransfer?.recipient ?? recipient.trim()
-  const isSendDisabled = isLoading || !recipient || !amount || !!txHash
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
@@ -262,56 +328,84 @@ export function Send({ onBack }: SendProps) {
       </div>
 
       <div className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
-        <div className="relative">
-          <Input
-            label="Recipient address"
-            placeholder="0x... or label"
-            value={recipient}
-            onFocus={() => setShowSuggestions(true)}
-            onChange={(e) => {
-              setRecipient(e.target.value)
-              setError('')
-              setTxHash('')
-              setTxStatus('idle')
-              setLastTransfer(null)
-              setShowSuggestions(true)
-            }}
-          />
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-20 bg-arc-card border border-arc-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
-              {suggestions.map((s) => (
-                <button
-                  key={s.address}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-arc-border/30 transition-colors text-left"
-                  onClick={() => {
-                    setRecipient(s.address)
-                    setShowSuggestions(false)
-                  }}
-                >
-                  <div className="h-8 w-8 rounded-full bg-arc-gold/10 flex items-center justify-center text-arc-gold">
-                    <User size={14} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-arc-text truncate">{s.label}</p>
-                    <p className="text-[10px] text-arc-text-dim truncate">{formatAddress(s.address)}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
+        <div className="space-y-2">
+          <div className="relative">
+            <Input
+              label="Recipient address"
+              placeholder="0x... or label"
+              value={recipient}
+              error={recipientValidationError}
+              onFocus={() => setShowSuggestions(true)}
+              onChange={(e) => {
+                setRecipient(e.target.value)
+                setError('')
+                setTxHash('')
+                setTxStatus('idle')
+                setLastTransfer(null)
+                setFromUniversalTip(false)
+                setShowSuggestions(true)
+              }}
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-20 bg-arc-card border border-arc-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                {suggestions.map((s) => (
+                  <button
+                    key={s.address}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-arc-border/30 transition-colors text-left"
+                    onClick={() => {
+                      setRecipient(s.address)
+                      setShowSuggestions(false)
+                    }}
+                  >
+                    <div className="h-8 w-8 rounded-full bg-arc-gold/10 flex items-center justify-center text-arc-gold">
+                      <User size={14} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-arc-text truncate">{s.label}</p>
+                      <p className="text-[10px] text-arc-text-dim truncate">{formatAddress(s.address)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {isExactRecipient && (
+              <span className="rounded-full border border-arc-success/20 bg-arc-success/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-success">
+                Valid address
+              </span>
+            )}
+            {isUnknownRecipient && (
+              <span className="rounded-full border border-arc-gold/20 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-gold">
+                Unknown recipient
+              </span>
+            )}
+            {recipientContractStatus === 'contract' && (
+              <span className="rounded-full border border-arc-border bg-arc-card/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-text">
+                Contract address
+              </span>
+            )}
+          </div>
+
+          {showRecipientSafetyWarning && (
+            <p className="text-[11px] leading-relaxed text-arc-gold">
+              Verify this recipient before sending.
+            </p>
           )}
         </div>
 
-        {isValidAddress && (
+        {isExactRecipient && (
           <MemoryCard
-            address={recipient.trim()}
+            address={trimmedRecipient}
             compact
             onEdit={() => {
-              setSelectedAddress(recipient.trim())
+              setSelectedAddress(trimmedRecipient)
               setCurrentView('address-detail')
             }}
             onSave={() => {
-              addAddressMemory(recipient.trim(), { label: 'New Contact' })
-              setSelectedAddress(recipient.trim())
+              addAddressMemory(trimmedRecipient, { label: 'New Contact' })
+              setSelectedAddress(trimmedRecipient)
               setCurrentView('address-detail')
             }}
           />

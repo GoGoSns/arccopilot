@@ -46,7 +46,7 @@ export default function App() {
       onSend={() => go('send')}
       onReceive={() => go('receive')}
       onDiscover={() => go('discover')}
-      onMenu={() => go('profile')}
+      onMenu={() => go('settings')}
     />
   )
 }
