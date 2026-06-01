@@ -167,9 +167,14 @@ export function Send({ onBack }: SendProps) {
         throw new Error('Please open a web page first')
       }
 
-      const amountWei = BigInt(Math.floor(amountNum * 1e6))
+      const amountWei = BigInt(Math.round(amountNum * 1_000_000))
+      console.log('[Send DEBUG] amount input:', amount)
+      console.log('[Send DEBUG] amountNum:', amountNum)
+      console.log('[Send DEBUG] amount * 1e6:', amountNum * 1_000_000)
+      console.log('[Send DEBUG] amountWei (BigInt):', amountWei.toString())
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
+      console.log('[Send DEBUG] paddedAmount:', paddedAmount)
       const txData = '0xa9059cbb' + paddedRecipient + paddedAmount
 
       const results = await chrome.scripting.executeScript<[string, string, string], SendResult>({
