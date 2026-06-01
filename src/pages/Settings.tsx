@@ -1,10 +1,13 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Book, ChevronRight } from 'lucide-react'
+import { useStore } from '@/lib/store'
 
 interface SettingsProps {
   onBack: () => void
 }
 
 export function Settings({ onBack }: SettingsProps) {
+  const setCurrentView = useStore((s) => s.setCurrentView)
+
   return (
     <div className="flex flex-col h-full bg-arc-bg">
       <div className="flex items-center gap-3 px-4 py-3 border-b border-arc-border">
@@ -15,6 +18,19 @@ export function Settings({ onBack }: SettingsProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer group" onClick={() => setCurrentView('address-book')}>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+              <Book size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-arc-text">Address Book</p>
+              <p className="text-[10px] text-arc-text-dim">Manage saved addresses and insights</p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
+        </div>
+
         {[
           { section: 'Network',   items: [{ label: 'Current Network', value: 'Arc Testnet' }, { label: 'RPC URL', value: 'rpc.testnet.arc.network' }] },
           { section: 'Security',  items: [{ label: 'Lock Extension', value: '' }, { label: 'Export Private Key', value: '' }] },

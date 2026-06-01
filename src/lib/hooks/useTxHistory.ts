@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { timeAgo } from '@/lib/utils'
+import { useStore } from '@/lib/store'
 
 const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
 const POLL_INTERVAL_MS = 30_000
@@ -75,6 +76,9 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
   const [error, setError] = useState('')
   const transactionsRef = useRef<TxHistoryItem[]>([])
   const requestIdRef = useRef(0)
+  
+  const addXP = useStore((s) => s.addXP)
+  const seenTxHashes = useRef<Set<string>>(new Set())
 
   const refresh = useCallback(async () => {
     const requestId = ++requestIdRef.current
@@ -141,6 +145,16 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
         .map(({ timestamp: _timestamp, ...item }) => item)
 
       if (requestIdRef.current !== requestId) return
+
+      // Award XP for new transactions
+      let newTxCount = 0
+      nextTransactions.forEach(tx => {
+        if (!seenTxHashes.current.has(tx.hash)) {
+          seenTxHashes.current.add(tx.hash)
+          newTxCount++
+        }
+      })
+      if (newTxCount > 0) addXP(newTxCount)
 
       transactionsRef.current = nextTransactions
       setTransactions(nextTransactions)

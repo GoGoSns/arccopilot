@@ -26,7 +26,12 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
   const [copied, setCopied] = useState(false)
 
   const address = useStore((s) => s.walletAddress)
+  const xp = useStore((s) => s.xp)
+  const streak = useStore((s) => s.streak)
+  const setCurrentView = useStore((s) => s.setCurrentView)
   const { balance, isLoading } = useUSDCBalance()
+
+  const level = Math.max(1, Math.floor(xp / 100))
 
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab)
@@ -42,7 +47,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
-      <WalletHeader onMenu={onMenu} onNotifications={() => {}} />
+      <WalletHeader onMenu={() => setCurrentView('settings')} onNotifications={() => {}} />
 
       <div className="relative flex items-center gap-3 border-b border-arc-border px-4 py-2">
         <div className="flex h-8 w-8 select-none items-center justify-center rounded-full bg-arc-gold/20 text-sm font-bold text-arc-gold">
@@ -90,7 +95,13 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
         {activeTab === 'discover' && <DiscoverTab address={address} onViewAll={onDiscover} />}
       </div>
 
-      <BottomStatus level={47} streak={21} onOpenDashboard={onDiscover} />
+      <BottomStatus 
+        level={level} 
+        streak={streak} 
+        onOpenDashboard={onDiscover} 
+        onOpenAddressBook={() => setCurrentView('address-book')}
+        onOpenProfile={() => setCurrentView('profile')}
+      />
     </div>
   )
 }

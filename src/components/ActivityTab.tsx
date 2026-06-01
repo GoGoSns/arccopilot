@@ -3,13 +3,25 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useTxHistory } from '@/lib/hooks/useTxHistory'
 import { formatAddress } from '@/lib/utils'
+import { useStore } from '@/lib/store'
 
 interface ActivityTabProps {
   address: string | null
 }
 
+const TAG_COLORS = {
+  friend: 'bg-green-500',
+  work: 'bg-blue-500',
+  warning: 'bg-red-500',
+  self: 'bg-arc-gold',
+  other: 'bg-gray-400',
+}
+
 export function ActivityTab({ address }: ActivityTabProps) {
   const { transactions, isLoading, error, refresh } = useTxHistory(address)
+  const addressMemories = useStore((s) => s.addressMemories)
+  const setCurrentView = useStore((s) => s.setCurrentView)
+  const setSelectedAddress = useStore((s) => s.setSelectedAddress)
 
   if (isLoading) {
     return (
@@ -76,11 +88,18 @@ export function ActivityTab({ address }: ActivityTabProps) {
         const amountColor = isSend ? 'text-arc-danger' : 'text-arc-success'
         const amountBg = isSend ? 'bg-arc-danger/10 text-arc-danger' : 'bg-arc-success/10 text-arc-success'
         const Icon = isSend ? ArrowUpRight : ArrowDownLeft
+        
+        const memory = addressMemories[tx.counterpartyAddress.toLowerCase()]
+        const label = memory?.label || formatAddress(tx.counterpartyAddress)
+        const tagColor = memory?.tag ? TAG_COLORS[memory.tag] : null
 
         return (
           <button
             key={tx.hash}
-            onClick={() => window.open(tx.explorerUrl, '_blank', 'noopener,noreferrer')}
+            onClick={() => {
+              setSelectedAddress(tx.counterpartyAddress)
+              setCurrentView('address-detail')
+            }}
             className="flex items-center gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3 text-left transition-colors hover:border-arc-gold/30 hover:bg-arc-card/80"
           >
             <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${amountBg}`}>
@@ -95,9 +114,12 @@ export function ActivityTab({ address }: ActivityTabProps) {
                 </p>
                 <p className={`shrink-0 text-sm font-semibold ${amountColor}`}>{tx.signedAmount}</p>
               </div>
-              <p className="truncate text-xs text-arc-text-dim">
-                {tx.counterpartyPrefix} {formatAddress(tx.counterpartyAddress)} · {tx.timeLabel}
-              </p>
+              <div className="flex items-center gap-1.5">
+                {tagColor && <div className={`h-1.5 w-1.5 rounded-full ${tagColor}`} />}
+                <p className="truncate text-xs text-arc-text-dim">
+                  {tx.counterpartyPrefix} {label} · {tx.timeLabel}
+                </p>
+              </div>
             </div>
           </button>
         )

@@ -22,6 +22,7 @@ export default defineManifest({
     {
       matches: ['<all_urls>'],
       js: ['src/content/content.ts'],
+      run_at: 'document_idle',
     },
   ],
   options_page: 'src/options/index.html',

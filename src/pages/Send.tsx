@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Search, User } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { formatAddress, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
+import { MemoryCard } from '@/components/MemoryCard'
 
 interface SendProps {
   onBack: () => void
@@ -25,6 +26,10 @@ type TxStatus = 'idle' | 'pending' | 'confirmed'
 
 export function Send({ onBack }: SendProps) {
   const walletAddress = useStore((s) => s.walletAddress)
+  const addressMemories = useStore((s) => s.addressMemories)
+  const addAddressMemory = useStore((s) => s.addAddressMemory)
+  const setCurrentView = useStore((s) => s.setCurrentView)
+  const setSelectedAddress = useStore((s) => s.setSelectedAddress)
   const { balance, refresh } = useUSDCBalance()
 
   const [recipient, setRecipient] = useState('')
@@ -34,6 +39,32 @@ export function Send({ onBack }: SendProps) {
   const [txHash, setTxHash] = useState('')
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
   const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string } | null>(null)
+  
+  const amountRef = useRef<HTMLInputElement>(null)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+
+  const suggestions = useMemo(() => {
+    const q = recipient.toLowerCase()
+    if (!q || q.startsWith('0x')) return []
+    return Object.values(addressMemories)
+      .filter(m => m.label?.toLowerCase().includes(q))
+      .slice(0, 3)
+  }, [addressMemories, recipient])
+
+  const isValidAddress = /^0x[a-fA-F0-9]{40}$/.test(recipient.trim())
+
+  // Pre-fill recipient when opened via the Universal Tip Button
+  useEffect(() => {
+    chrome.storage.local.get('arccopilot:pending_send', (result) => {
+      const pending = result['arccopilot:pending_send']
+      if (pending?.recipient && Date.now() - pending.ts < 5_000) {
+        setRecipient(pending.recipient)
+        chrome.storage.local.remove('arccopilot:pending_send')
+        // Give React a tick to render the input, then focus amount
+        setTimeout(() => amountRef.current?.focus(), 50)
+      }
+    })
+  }, [])
 
   const refreshTimerRef = useRef<number | null>(null)
   const receiptPollTokenRef = useRef(0)
@@ -168,13 +199,8 @@ export function Send({ onBack }: SendProps) {
       }
 
       const amountWei = BigInt(Math.round(amountNum * 1_000_000))
-      console.log('[Send DEBUG] amount input:', amount)
-      console.log('[Send DEBUG] amountNum:', amountNum)
-      console.log('[Send DEBUG] amount * 1e6:', amountNum * 1_000_000)
-      console.log('[Send DEBUG] amountWei (BigInt):', amountWei.toString())
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
-      console.log('[Send DEBUG] paddedAmount:', paddedAmount)
       const txData = '0xa9059cbb' + paddedRecipient + paddedAmount
 
       const results = await chrome.scripting.executeScript<[string, string, string], SendResult>({
@@ -236,19 +262,63 @@ export function Send({ onBack }: SendProps) {
       </div>
 
       <div className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
+        <div className="relative">
+          <Input
+            label="Recipient address"
+            placeholder="0x... or label"
+            value={recipient}
+            onFocus={() => setShowSuggestions(true)}
+            onChange={(e) => {
+              setRecipient(e.target.value)
+              setError('')
+              setTxHash('')
+              setTxStatus('idle')
+              setLastTransfer(null)
+              setShowSuggestions(true)
+            }}
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-20 bg-arc-card border border-arc-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+              {suggestions.map((s) => (
+                <button
+                  key={s.address}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-arc-border/30 transition-colors text-left"
+                  onClick={() => {
+                    setRecipient(s.address)
+                    setShowSuggestions(false)
+                  }}
+                >
+                  <div className="h-8 w-8 rounded-full bg-arc-gold/10 flex items-center justify-center text-arc-gold">
+                    <User size={14} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-arc-text truncate">{s.label}</p>
+                    <p className="text-[10px] text-arc-text-dim truncate">{formatAddress(s.address)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {isValidAddress && (
+          <MemoryCard
+            address={recipient.trim()}
+            compact
+            onEdit={() => {
+              setSelectedAddress(recipient.trim())
+              setCurrentView('address-detail')
+            }}
+            onSave={() => {
+              addAddressMemory(recipient.trim(), { label: 'New Contact' })
+              setSelectedAddress(recipient.trim())
+              setCurrentView('address-detail')
+            }}
+          />
+        )}
+
         <Input
-          label="Recipient address"
-          placeholder="0x..."
-          value={recipient}
-          onChange={(e) => {
-            setRecipient(e.target.value)
-            setError('')
-            setTxHash('')
-            setTxStatus('idle')
-            setLastTransfer(null)
-          }}
-        />
-        <Input
+          ref={amountRef}
           label="Amount (USDC)"
           placeholder="0.00"
           type="number"
