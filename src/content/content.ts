@@ -1,7 +1,12 @@
 /**
  * ArcCopilot - Universal Tip Button
- * Scans web pages for Ethereum addresses and adds a hover tip button.
+ * Scans supported pages for Ethereum addresses and adds a hover tip button.
  */
+
+type SiteAdapter = {
+  name: 'genericAdapter' | 'arcscanAdapter' | 'githubAdapter' | 'twitterAdapter'
+  collectRoots: () => Element[]
+}
 
 function main(): void {
   console.log('[ArcCopilot] content script loaded', location.href)
@@ -11,6 +16,7 @@ function main(): void {
   // - 0x + 64 hex chars (tx hash) => no match
   // - shortened forms like 0x1234...abcd => no match
   const ADDRESS_RE = /(?:^|[^a-fA-F0-9])(0x[a-fA-F0-9]{40})(?![a-fA-F0-9])/g
+  const ADDRESS_TEST_RE = /(?:^|[^a-fA-F0-9])(0x[a-fA-F0-9]{40})(?![a-fA-F0-9])/
   const MARKER_ATTR = 'data-arccopilot'
   const MAX_ADDRS = 100
   const THROTTLE_MS = 200
@@ -27,12 +33,110 @@ function main(): void {
     matches: RegExpMatchArray[]
   }
 
+  type ScanResult = {
+    matches: number
+    wrapped: number
+  }
+
   let tipEl: HTMLButtonElement | null = null
   let hideTimer: ReturnType<typeof setTimeout> | null = null
   let scanTimer: ReturnType<typeof setTimeout> | null = null
   let scanQueued = false
   let addrCount = 0
   let overBtn = false
+
+  function hostMatches(domain: string): boolean {
+    const host = location.hostname.toLowerCase()
+    return host === domain || host.endsWith(`.${domain}`)
+  }
+
+  function hasStandaloneAddress(text: string): boolean {
+    return ADDRESS_TEST_RE.test(text)
+  }
+
+  function collectRootsBySelectors(selectors: string[]): Element[] {
+    if (!document.body) return []
+    return Array.from(document.querySelectorAll(selectors.join(', ')))
+  }
+
+  function dedupeRoots(roots: Element[]): Element[] {
+    const unique = Array.from(new Set(roots))
+    return unique.filter((root) => !unique.some((other) => other !== root && root.contains(other)))
+  }
+
+  function collectGenericRoots(): Element[] {
+    return document.body ? [document.body] : []
+  }
+
+  function collectArcscanRoots(): Element[] {
+    const roots = new Set<Element>()
+    const fieldLabelRe = /\b(?:From|To|Address)\b/i
+    const candidates = collectRootsBySelectors([
+      'main *',
+      'article *',
+      'section *',
+      'table *',
+      'dl *',
+      'tbody *',
+      'tr *',
+      'li *',
+    ])
+
+    for (const element of candidates) {
+      const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+      if (!text || !text.includes('0x')) continue
+      if (!fieldLabelRe.test(text)) continue
+      if (!hasStandaloneAddress(text)) continue
+      roots.add(element)
+      if (roots.size >= 40) break
+    }
+
+    return dedupeRoots(Array.from(roots))
+  }
+
+  function collectGithubRoots(): Element[] {
+    return dedupeRoots(collectRootsBySelectors([
+      'article.markdown-body',
+      '.markdown-body',
+    ]))
+  }
+
+  function collectTwitterRoots(): Element[] {
+    return dedupeRoots(collectRootsBySelectors([
+      '[data-testid="UserDescription"]',
+      '[data-testid="tweetText"]',
+    ]))
+  }
+
+  const genericAdapter: SiteAdapter = {
+    name: 'genericAdapter',
+    collectRoots: collectGenericRoots,
+  }
+
+  const arcscanAdapter: SiteAdapter = {
+    name: 'arcscanAdapter',
+    collectRoots: collectArcscanRoots,
+  }
+
+  const githubAdapter: SiteAdapter = {
+    name: 'githubAdapter',
+    collectRoots: collectGithubRoots,
+  }
+
+  const twitterAdapter: SiteAdapter = {
+    name: 'twitterAdapter',
+    collectRoots: collectTwitterRoots,
+  }
+
+  function pickAdapter(): SiteAdapter {
+    if (hostMatches('arcscan.app')) return arcscanAdapter
+    if (hostMatches('github.com')) return githubAdapter
+    if (hostMatches('twitter.com') || hostMatches('x.com')) return twitterAdapter
+    return genericAdapter
+  }
+
+  const activeAdapter = pickAdapter()
+  console.log('[ArcCopilot] adapter active:', activeAdapter.name)
 
   function applyTipTransform(scale = 1): void {
     if (!tipEl) return
@@ -158,12 +262,12 @@ function main(): void {
     }, HIDE_MS)
   }
 
-  function wrapTextNode(node: Text, matches: RegExpMatchArray[]): number {
+  function wrapTextNode(node: Text, matches: RegExpMatchArray[]): ScanResult {
     const text = node.textContent ?? ''
     const parent = node.parentElement
-    if (!parent) return 0
-    if (SKIP_TAGS.has(parent.tagName)) return 0
-    if (parent.closest(`[${MARKER_ATTR}]`)) return 0
+    if (!parent) return { matches: 0, wrapped: 0 }
+    if (SKIP_TAGS.has(parent.tagName)) return { matches: 0, wrapped: 0 }
+    if (parent.closest(`[${MARKER_ATTR}]`)) return { matches: 0, wrapped: 0 }
 
     const frag = document.createDocumentFragment()
     let lastIndex = 0
@@ -207,24 +311,26 @@ function main(): void {
       wrapped += 1
     }
 
-    if (wrapped === 0) return 0
+    if (wrapped === 0) return { matches: 0, wrapped: 0 }
 
     if (lastIndex < text.length) {
       frag.appendChild(document.createTextNode(text.slice(lastIndex)))
     }
 
     parent.replaceChild(frag, node)
-    return wrapped
+    return { matches: matches.length, wrapped }
   }
 
-  function scanDocumentBody(): void {
-    const body = document.body
-    if (!body || addrCount >= MAX_ADDRS) return
+  function scanRoot(root: Node): ScanResult {
+    if (addrCount >= MAX_ADDRS) return { matches: 0, wrapped: 0 }
+    if (!(root instanceof Element || root instanceof Document || root instanceof DocumentFragment)) {
+      return { matches: 0, wrapped: 0 }
+    }
 
     const pending: PendingMatch[] = []
     const matches: RegExpMatchArray[] = []
 
-    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         const textNode = node as Text
         const parent = textNode.parentElement
@@ -246,11 +352,10 @@ function main(): void {
     })
 
     while (walker.nextNode()) {
-      // The work is done in the acceptNode callback.
+      // Work is done in the acceptNode callback.
     }
 
-    console.log('[ArcCopilot] address matches found', matches.length)
-    if (matches.length === 0) return
+    if (matches.length === 0) return { matches: 0, wrapped: 0 }
 
     let wrapped = 0
     for (const entry of pending) {
@@ -258,14 +363,36 @@ function main(): void {
       if (!entry.node.isConnected) continue
 
       try {
-        wrapped += wrapTextNode(entry.node, entry.matches)
+        wrapped += wrapTextNode(entry.node, entry.matches).wrapped
       } catch (err) {
         console.warn('[ArcCopilot] wrap failed:', err)
       }
     }
 
-    if (wrapped > 0) {
-      console.log('[ArcCopilot] wrapped addresses', wrapped)
+    return { matches: matches.length, wrapped }
+  }
+
+  function scanActivePage(): void {
+    const roots = dedupeRoots(activeAdapter.collectRoots())
+    let totalMatches = 0
+    let totalWrapped = 0
+
+    for (const root of roots) {
+      if (addrCount >= MAX_ADDRS) break
+      const result = scanRoot(root)
+      totalMatches += result.matches
+      totalWrapped += result.wrapped
+    }
+
+    if (activeAdapter.name !== 'genericAdapter' && addrCount < MAX_ADDRS) {
+      const fallback = scanRoot(document.body)
+      totalMatches += fallback.matches
+      totalWrapped += fallback.wrapped
+    }
+
+    console.log('[ArcCopilot] address matches found', totalMatches)
+    if (totalWrapped > 0) {
+      console.log('[ArcCopilot] wrapped addresses', totalWrapped)
     }
   }
 
@@ -279,7 +406,7 @@ function main(): void {
       scanQueued = false
 
       try {
-        scanDocumentBody()
+        scanActivePage()
       } catch (err) {
         console.warn('[ArcCopilot] scan failed:', err)
       }
