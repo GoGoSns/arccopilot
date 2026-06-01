@@ -6,6 +6,7 @@ import { ActionButtons } from '@/components/ActionButtons'
 import { TabBar } from '@/components/TabBar'
 import { TokenList } from '@/components/TokenList'
 import { ActivityTab } from '@/components/ActivityTab'
+import { DiscoverTab } from '@/components/DiscoverTab'
 import { BottomStatus } from '@/components/BottomStatus'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -28,11 +29,6 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
   const { balance, isLoading } = useUSDCBalance()
 
   const handleTabChange = (tab: Tab) => {
-    if (tab === 'discover') {
-      onDiscover()
-      return
-    }
-
     setActiveTab(tab)
   }
 
@@ -91,6 +87,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
             No NFTs yet
           </div>
         )}
+        {activeTab === 'discover' && <DiscoverTab address={address} onViewAll={onDiscover} />}
       </div>
 
       <BottomStatus level={47} streak={21} onOpenDashboard={onDiscover} />

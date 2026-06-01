@@ -1,0 +1,147 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
+const REFRESH_INTERVAL_MS = 60_000
+
+interface BlockscoutStatsResponse {
+  total_transactions?: string
+  total_addresses?: string
+  average_block_time?: number
+  gas_used_today?: string
+  transactions_today?: string
+}
+
+export interface EcosystemStatsState {
+  volume24h: string
+  activeWallets: string
+  totalTxs: string
+  averageBlockTimeLabel: string
+  isLoading: boolean
+  error: string
+  refresh: () => Promise<void>
+}
+
+function normalizeError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return "Couldn't load ecosystem stats"
+}
+
+function formatCompactNumber(raw: string | number): string {
+  const value = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(value) || value <= 0) return '0'
+
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${(value / 1_000).toFixed(1)}K`
+  return `${Math.round(value)}`
+}
+
+function formatCompactCurrency(raw: string): string {
+  const amount = Number(raw) / 1_000_000
+  if (!Number.isFinite(amount) || amount <= 0) return '$0'
+
+  const abs = Math.abs(amount)
+  if (abs >= 1_000_000_000) return `$${(amount / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `$${(amount / 1_000).toFixed(1)}K`
+  return `$${amount.toFixed(2).replace(/\.00$/, '')}`
+}
+
+function formatBlockTimeLabel(raw: number): string {
+  if (!Number.isFinite(raw) || raw <= 0) return '0ms'
+  if (raw < 1_000) return `${Math.round(raw)}ms`
+
+  const seconds = raw / 1_000
+  if (seconds < 60) {
+    return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.round(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
+}
+
+export function useEcosystemStats(): EcosystemStatsState {
+  const [volume24h, setVolume24h] = useState('$0')
+  const [activeWallets, setActiveWallets] = useState('0')
+  const [totalTxs, setTotalTxs] = useState('0')
+  const [averageBlockTimeLabel, setAverageBlockTimeLabel] = useState('0ms')
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const hasLoadedRef = useRef(false)
+  const requestIdRef = useRef(0)
+
+  const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current
+    const shouldShowLoading = !hasLoadedRef.current
+
+    if (shouldShowLoading) {
+      setIsLoading(true)
+    }
+
+    setError('')
+
+    try {
+      const response = await fetch(`${BLOCKSCOUT_API_URL}/stats`, {
+        headers: { accept: 'application/json' },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const json = (await response.json()) as BlockscoutStatsResponse
+
+      const nextVolume24h = formatCompactCurrency(json.gas_used_today ?? '0')
+      const nextActiveWallets = formatCompactNumber(json.total_addresses ?? '0')
+      const nextTotalTxs = formatCompactNumber(json.transactions_today ?? json.total_transactions ?? '0')
+      const nextAverageBlockTimeLabel = formatBlockTimeLabel(Number(json.average_block_time ?? 0))
+
+      if (requestId !== requestIdRef.current) return
+
+      hasLoadedRef.current = true
+      setVolume24h(nextVolume24h)
+      setActiveWallets(nextActiveWallets)
+      setTotalTxs(nextTotalTxs)
+      setAverageBlockTimeLabel(nextAverageBlockTimeLabel)
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return
+
+      if (!hasLoadedRef.current) {
+        setError(normalizeError(error))
+      } else {
+        console.error('[useEcosystemStats] refresh failed:', error)
+      }
+    } finally {
+      if (requestId === requestIdRef.current && shouldShowLoading) {
+        setIsLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+
+    const intervalId = window.setInterval(() => {
+      void refresh()
+    }, REFRESH_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+      requestIdRef.current += 1
+    }
+  }, [refresh])
+
+  return {
+    volume24h,
+    activeWallets,
+    totalTxs,
+    averageBlockTimeLabel,
+    isLoading,
+    error,
+    refresh,
+  }
+}
