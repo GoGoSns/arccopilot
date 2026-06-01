@@ -62,42 +62,6 @@ export function Send({ onBack }: SendProps) {
     }, 3000)
   }
 
-  const addUSDCToken = async () => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (!tab?.id) return
-
-      await chrome.scripting.executeScript<[string], void>({
-        target: { tabId: tab.id },
-        world: 'MAIN',
-        args: [USDC_ADDRESS],
-        func: async (usdcAddress: string) => {
-          try {
-            const ethereum = (window as any).ethereum
-            if (!ethereum) return
-
-            await ethereum.request({
-              method: 'wallet_watchAsset',
-              params: {
-                type: 'ERC20',
-                options: {
-                  address: usdcAddress,
-                  symbol: 'USDC',
-                  decimals: 6,
-                  image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png',
-                },
-              },
-            })
-          } catch {
-            // Token already added or wallet rejected the request. Ignore.
-          }
-        },
-      })
-    } catch {
-      // Silent by design. Token add is a UX enhancement, not a blocker.
-    }
-  }
-
   const readTransactionReceipt = async (tabId: number, hash: string): Promise<ReceiptResult> => {
     const results = await chrome.scripting.executeScript<[string], ReceiptResult>({
       target: { tabId },
@@ -202,8 +166,6 @@ export function Send({ onBack }: SendProps) {
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
         throw new Error('Please open a web page first')
       }
-
-      await addUSDCToken()
 
       const amountWei = BigInt(Math.floor(amountNum * 1e6))
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
