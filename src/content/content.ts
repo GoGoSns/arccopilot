@@ -6,7 +6,11 @@
 function main(): void {
   console.log('[ArcCopilot] content script loaded', location.href)
 
-  const ADDRESS_RE = /0x[a-fA-F0-9]{40}/g
+  // Standalone addresses only:
+  // - 0x + 40 hex chars => match
+  // - 0x + 64 hex chars (tx hash) => no match
+  // - shortened forms like 0x1234...abcd => no match
+  const ADDRESS_RE = /(?:^|[^a-fA-F0-9])(0x[a-fA-F0-9]{40})(?![a-fA-F0-9])/g
   const MARKER_ATTR = 'data-arccopilot'
   const MAX_ADDRS = 100
   const THROTTLE_MS = 200
@@ -168,12 +172,16 @@ function main(): void {
     for (const match of matches) {
       if (addrCount >= MAX_ADDRS) break
 
-      const matchText = match[0]
-      const matchIndex = match.index ?? text.indexOf(matchText, lastIndex)
-      if (matchIndex < lastIndex) continue
+      const matchText = match[1]
+      if (!matchText) continue
 
-      if (matchIndex > lastIndex) {
-        frag.appendChild(document.createTextNode(text.slice(lastIndex, matchIndex)))
+      const prefixLength = match[0].length - matchText.length
+      const matchIndex = match.index ?? text.indexOf(matchText, lastIndex)
+      const addressIndex = matchIndex + prefixLength
+      if (addressIndex < lastIndex) continue
+
+      if (addressIndex > lastIndex) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex, addressIndex)))
       }
 
       const addr = matchText.toLowerCase()
@@ -194,7 +202,7 @@ function main(): void {
       addressSpan.addEventListener('mouseleave', () => scheduleHide())
 
       frag.appendChild(span)
-      lastIndex = matchIndex + matchText.length
+      lastIndex = addressIndex + matchText.length
       addrCount += 1
       wrapped += 1
     }
