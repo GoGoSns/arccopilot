@@ -2,16 +2,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/lib/store'
 import { formatBalance } from '@/lib/utils'
 
-const RPC_URL      = 'https://rpc.testnet.arc.network'
+const RPC_URL = 'https://rpc.testnet.arc.network'
 const USDC_ADDRESS = '0x3600000000000000000000000000000000000000'
-const BALANCE_OF    = '0x70a08231' // balanceOf(address) selector
+const BALANCE_OF = '0x70a08231' // balanceOf(address) selector
 // USDC on Arc Testnet uses 6 decimals (ERC-20 standard), NOT 18.
 // Arc's native currency has 18 decimals but the USDC token contract does not.
 const USDC_DECIMALS = 6
 
 export async function fetchUsdcBalance(address: string): Promise<string> {
   const padded = address.slice(2).toLowerCase().padStart(64, '0')
-  const data   = BALANCE_OF + padded
+  const data = BALANCE_OF + padded
 
   console.log('[useUSDCBalance] fetching RPC for', address.slice(0, 10) + '...')
 
@@ -43,26 +43,27 @@ export async function fetchUsdcBalance(address: string): Promise<string> {
 }
 
 export function useUSDCBalance() {
-  const address       = useStore((s) => s.walletAddress)
+  const address = useStore((s) => s.walletAddress)
   const storedBalance = useStore((s) => s.usdcBalance)
-  const persist       = useStore((s) => s.setBalance)
+  const persist = useStore((s) => s.setBalance)
 
-  console.log('[useUSDCBalance] called — address:', address, '| storedBalance:', storedBalance)
+  console.log('[useUSDCBalance] called â€” address:', address, '| storedBalance:', storedBalance)
 
   // Seed from persisted store so there's no "0.00 flash" on popup reopen
-  const [balance,   setBalance]   = useState<string>(storedBalance ?? '0.00')
+  const [balance, setBalance] = useState<string>(storedBalance ?? '0.00')
   const [isLoading, setIsLoading] = useState<boolean>(true)
 
-  const load = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (!address) {
-      console.log('[useUSDCBalance] no address yet — skipping fetch')
+      console.log('[useUSDCBalance] no address yet â€” skipping fetch')
       setIsLoading(false)
       return
     }
+
     try {
-      const b = await fetchUsdcBalance(address)
-      setBalance(b)
-      persist(b)
+      const nextBalance = await fetchUsdcBalance(address)
+      setBalance(nextBalance)
+      persist(nextBalance)
     } catch (err) {
       console.error('[useUSDCBalance] fetch error:', err)
       // Keep last known value rather than falling back to 0
@@ -73,15 +74,15 @@ export function useUSDCBalance() {
 
   // Re-run whenever address changes (covers Zustand rehydration lag)
   useEffect(() => {
-    load()
-    const id = window.setInterval(load, 15_000)
+    refresh()
+    const id = window.setInterval(refresh, 15_000)
     return () => window.clearInterval(id)
-  }, [load])
+  }, [refresh])
 
   // Extra guard: if address arrives late (rehydration after mount), trigger immediately
   useEffect(() => {
-    if (address) load()
-  }, [address]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (address) refresh()
+  }, [address, refresh])
 
-  return { balance, isLoading }
+  return { balance, isLoading, refresh }
 }
