@@ -20,7 +20,17 @@ export default defineManifest({
   },
   content_scripts: [
     {
-      matches: ['<all_urls>'],
+      matches: [
+        'https://*/*',
+        'http://*/*',
+        'http://localhost/*',
+        'https://twitter.com/*',
+        'https://x.com/*',
+        'https://github.com/*',
+        'https://www.youtube.com/*',
+        'https://testnet.arcscan.app/*',
+        'https://etherscan.io/*',
+      ],
       js: ['src/content/content.ts'],
       run_at: 'document_idle',
     },
