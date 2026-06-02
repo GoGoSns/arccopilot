@@ -1,8 +1,8 @@
 /**
- * ArcCopilot service worker — handles messages from content scripts.
+ * ArcCopilot service worker â€” handles messages from content scripts.
  */
 
-const PENDING_KEY = 'arccopilot:pending_send'
+import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 
 interface PendingSend {
   recipient: string
@@ -17,20 +17,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         console.error('[ArcCopilot SW] handleOpenSend error:', err)
         sendResponse({ ok: false })
       })
-    return true // keep channel open for async response
+    return true
   }
 })
 
 async function handleOpenSend(recipient: string): Promise<void> {
   const payload: PendingSend = { recipient: recipient.toLowerCase(), ts: Date.now() }
-  await chrome.storage.local.set({ [PENDING_KEY]: payload })
+  await chrome.storage.local.set({ [PENDING_SEND_STORAGE_KEY]: payload })
 
-  // chrome.action.openPopup() requires Chrome 127+ and a user-gesture context.
-  // When triggered by a content-script click the gesture usually propagates.
   try {
-    await (chrome.action as any).openPopup()
+    if (typeof chrome.action?.openPopup !== 'function') {
+      console.warn('[ArcCopilot SW] openPopup unavailable')
+      return
+    }
+
+    await chrome.action.openPopup()
   } catch (err) {
-    // Graceful degradation — the popup will still pre-fill if the user opens it manually.
     console.warn('[ArcCopilot SW] openPopup unavailable:', err)
   }
 }

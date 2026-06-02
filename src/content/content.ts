@@ -32,6 +32,8 @@ type AddressMemory = {
   tag?: 'friend' | 'work' | 'warning' | 'self' | 'other'
   createdAt: number
   lastUsedAt: number
+  source?: string
+  savedAt?: number
 }
 
 type AddressBookRecord = Record<string, AddressMemory>
@@ -48,7 +50,7 @@ function main(): void {
   const SAVE_KEY = 'arccopilot:address_book'
   const MAX_ADDRS = 100
   const THROTTLE_MS = 200
-  const HIDE_MS = 180
+  const HIDE_MS = 220
   const SOURCE_DOMAIN = location.hostname.replace(/^www\./i, '')
 
   const SKIP_TAGS = new Set([
@@ -67,6 +69,7 @@ function main(): void {
   let scanQueued = false
   let addrCount = 0
   let overCard = false
+  let overAddress = false
   let currentAddress = ''
   let currentAnchor: HTMLElement | null = null
 
@@ -199,9 +202,14 @@ function main(): void {
     }
   }
 
+  function isHoveringTipSurface(): boolean {
+    return overAddress || overCard
+  }
+
   function hideTipCard(): void {
     clearHideTimer()
     overCard = false
+    overAddress = false
     currentAddress = ''
     currentAnchor = null
 
@@ -217,32 +225,44 @@ function main(): void {
   }
 
   function scheduleHideTipCard(): void {
-    if (overCard) return
+    if (isHoveringTipSurface()) return
     clearHideTimer()
     hideTimer = setTimeout(() => {
       hideTimer = null
-      if (!overCard) hideTipCard()
+      if (!isHoveringTipSurface()) hideTipCard()
     }, HIDE_MS)
   }
 
   function setSaveButtonState(saved: boolean): void {
     if (!saveButtonEl) return
     saveButtonEl.disabled = saved
-    saveButtonEl.textContent = saved ? 'Saved' : 'Save'
+    saveButtonEl.textContent = saved ? 'Saved ✓' : 'Save'
     saveButtonEl.style.opacity = saved ? '0.8' : '1'
     saveButtonEl.style.cursor = saved ? 'default' : 'pointer'
   }
 
-  function sendOpenSend(address: string): void {
-    try {
-      chrome.runtime.sendMessage({ type: 'OPEN_SEND', recipient: address }, () => {
-        if (chrome.runtime.lastError) {
-          console.warn('[ArcCopilot] sendMessage failed:', chrome.runtime.lastError.message)
-        }
-      })
-    } catch (error) {
-      console.warn('[ArcCopilot] sendMessage error:', error)
-    }
+  function getActiveAddress(): string {
+    return cardEl?.dataset.address ?? currentAddress
+  }
+
+  function sendOpenSend(address: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'OPEN_SEND', recipient: address }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('[ArcCopilot] sendMessage failed:', chrome.runtime.lastError.message)
+            resolve(false)
+            return
+          }
+
+          console.log('[ArcCopilot] OPEN_SEND message sent', address)
+          resolve(true)
+        })
+      } catch (error) {
+        console.warn('[ArcCopilot] sendMessage error:', error)
+        resolve(false)
+      }
+    })
   }
 
   function normalizeStoredBook(raw: unknown): AddressBookRecord {
@@ -259,6 +279,8 @@ function main(): void {
         label: memory.label,
         note: memory.note,
         tag: memory.tag,
+        source: memory.source,
+        savedAt: typeof memory.savedAt === 'number' ? memory.savedAt : undefined,
       }
     }
     return next
@@ -267,6 +289,7 @@ function main(): void {
   function saveAddressToBook(address: string): void {
     const normalized = address.toLowerCase()
     const now = Date.now()
+    const shortLabel = shortenAddress(address)
 
     try {
       chrome.storage.local.get(SAVE_KEY, (result) => {
@@ -283,9 +306,11 @@ function main(): void {
             address: normalized,
             createdAt: current?.createdAt ?? now,
             lastUsedAt: now,
-            label: current?.label,
+            label: shortLabel,
             note: current?.note,
             tag: current?.tag ?? 'other',
+            source: location.hostname,
+            savedAt: now,
           },
         }
 
@@ -298,6 +323,8 @@ function main(): void {
           if (saveButtonEl && currentAddress.toLowerCase() === normalized) {
             setSaveButtonState(true)
           }
+
+          console.log('[ArcCopilot] address saved', address)
         })
       })
     } catch (error) {
@@ -479,8 +506,16 @@ function main(): void {
     tipButtonEl.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()
-      sendOpenSend(currentAddress)
-      hideTipCard()
+      const address = getActiveAddress()
+      if (!address) return
+
+      console.log('[ArcCopilot] tip clicked', address)
+      clearHideTimer()
+      void sendOpenSend(address).then((sent) => {
+        if (sent) {
+          hideTipCard()
+        }
+      })
     })
 
     saveButtonEl.addEventListener('mouseenter', () => {
@@ -495,7 +530,11 @@ function main(): void {
     saveButtonEl.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()
-      saveAddressToBook(currentAddress)
+      const address = getActiveAddress()
+      if (!address) return
+
+      console.log('[ArcCopilot] save clicked', address)
+      saveAddressToBook(address)
     })
 
     actions.append(tipButtonEl, saveButtonEl)
@@ -506,9 +545,17 @@ function main(): void {
       overCard = true
       clearHideTimer()
     })
-    container.addEventListener('mouseleave', () => {
+    container.addEventListener('mouseleave', (event) => {
       overCard = false
+      const next = event.relatedTarget
+      if (next instanceof Node && currentAnchor?.contains(next)) {
+        clearHideTimer()
+        return
+      }
       scheduleHideTipCard()
+    })
+    container.addEventListener('pointerdown', () => {
+      clearHideTimer()
     })
 
     const mountPoint = document.body ?? document.documentElement
@@ -541,11 +588,12 @@ function main(): void {
 
   function showTipCard(address: string, anchor: HTMLElement): void {
     clearHideTimer()
+    overAddress = true
     currentAddress = address
     currentAnchor = anchor
 
     const card = ensureTipCard()
-    card.dataset.address = address.toLowerCase()
+    card.dataset.address = address
     cardAddressEl!.textContent = shortenAddress(address)
     cardAddressEl!.title = address
     cardDomainEl!.textContent = `Source · ${SOURCE_DOMAIN}`
@@ -602,7 +650,7 @@ function main(): void {
       const address = match.address
       const span = document.createElement('span')
       span.setAttribute(MARKER_ATTR, 'address')
-      span.dataset.address = address.toLowerCase()
+      span.dataset.address = address
       span.textContent = address
       Object.assign(span.style, {
         backgroundColor: 'rgba(212, 175, 55, 0.12)',
@@ -612,8 +660,20 @@ function main(): void {
         borderRadius: '2px',
       } as CSSStyleDeclaration)
 
-      span.addEventListener('mouseenter', () => showTipCard(address, span))
-      span.addEventListener('mouseleave', () => scheduleHideTipCard())
+      span.addEventListener('mouseenter', () => {
+        overAddress = true
+        showTipCard(address, span)
+      })
+      span.addEventListener('mouseleave', (event) => {
+        overAddress = false
+        const next = event.relatedTarget
+        if (next instanceof Node && cardEl?.contains(next)) {
+          clearHideTimer()
+          return
+        }
+
+        scheduleHideTipCard()
+      })
 
       frag.appendChild(span)
       lastIndex = end

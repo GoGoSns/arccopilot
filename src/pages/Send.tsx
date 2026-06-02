@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
+import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { formatAddress, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -41,7 +42,7 @@ export function Send({ onBack }: SendProps) {
   const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string } | null>(null)
   const [fromUniversalTip, setFromUniversalTip] = useState(false)
   const [recipientContractStatus, setRecipientContractStatus] = useState<'idle' | 'checking' | 'contract' | 'unknown'>('idle')
-  
+
   const amountRef = useRef<HTMLInputElement>(null)
   const contractLookupTokenRef = useRef(0)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -59,19 +60,17 @@ export function Send({ onBack }: SendProps) {
     const q = recipient.toLowerCase()
     if (!q || q.startsWith('0x')) return []
     return Object.values(addressMemories)
-      .filter(m => m.label?.toLowerCase().includes(q))
+      .filter((m) => m.label?.toLowerCase().includes(q))
       .slice(0, 3)
   }, [addressMemories, recipient])
 
-  // Pre-fill recipient when opened via the Universal Tip Button
   useEffect(() => {
-    chrome.storage.local.get('arccopilot:pending_send', (result) => {
-      const pending = result['arccopilot:pending_send']
+    chrome.storage.local.get(PENDING_SEND_STORAGE_KEY, (result) => {
+      const pending = result[PENDING_SEND_STORAGE_KEY]
       if (pending?.recipient && Date.now() - pending.ts < 5_000) {
         setRecipient(pending.recipient)
         setFromUniversalTip(true)
-        chrome.storage.local.remove('arccopilot:pending_send')
-        // Give React a tick to render the input, then focus amount
+        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
         setTimeout(() => amountRef.current?.focus(), 50)
       } else {
         setFromUniversalTip(false)
