@@ -9,8 +9,8 @@ export type MetaMaskAccountResult =
   | { accounts: string[] }
   | { error: MetaMaskErrorInfo }
 
-const META_MASK_REJECTED_MESSAGE = 'MetaMask connection was rejected.'
-const META_MASK_PERMISSION_MESSAGE = 'MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.'
+export const META_MASK_REJECTED_MESSAGE = 'MetaMask connection was rejected.'
+export const META_MASK_PERMISSION_MESSAGE = 'MetaMask permission needed. Click Connect MetaMask.'
 
 function normalizeMetaMaskError(error: unknown): MetaMaskErrorInfo {
   if (error && typeof error === 'object') {
@@ -96,9 +96,9 @@ export async function ensureMetaMaskAccounts(tabId: number): Promise<MetaMaskAcc
   return requestMetaMaskAccounts(tabId)
 }
 
-const ARC_CHAIN_ID = '0x4cef52' // 5042002 decimal
+export const ARC_CHAIN_ID = '0x4cef52' // 5042002 decimal
 
-const ARC_CHAIN_PARAMS = {
+export const ARC_CHAIN_PARAMS = {
   chainId: ARC_CHAIN_ID,
   chainName: 'Arc Testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },

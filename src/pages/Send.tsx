@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import {
+  ARC_CHAIN_ID,
   ensureMetaMaskAccounts,
   getMetaMaskFriendlyError,
   probeMetaMaskAccounts,
@@ -356,12 +357,14 @@ export function Send({ onBack }: SendProps) {
         throw new Error('Please open a web page first')
       }
 
+      // We still probe/ensure accounts to update UI state, but the real enforcement
+      // happens inside the consolidated executeScript to avoid 4100 unauthorized.
       const accessResult = await ensureMetaMaskAccounts(tab.id)
       const activeAccount = handleMetaMaskAccountResult(accessResult)
       if (!activeAccount) {
         const error = 'error' in accessResult
           ? accessResult.error
-          : { message: 'MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.' }
+          : { message: 'MetaMask permission needed. Click Connect MetaMask.' }
 
         throw new Error(getMetaMaskFriendlyError(error))
       }
@@ -371,20 +374,40 @@ export function Send({ onBack }: SendProps) {
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
       const txData = '0xa9059cbb' + paddedRecipient + paddedAmount
 
-      // Switch to Arc Testnet before sending — non-fatal if user declines
-      await switchToArcTestnet(tab.id)
-
-      const results = await chrome.scripting.executeScript<[string, string, string], Promise<SendResult>>({
+      const results = await chrome.scripting.executeScript<[string, string, string, string], Promise<SendResult>>({
         target: { tabId: tab.id },
         world: 'MAIN',
-        args: [activeAccount, txData, USDC_ADDRESS],
-        func: async (from: string, data: string, to: string): Promise<SendResult> => {
+        args: [activeAccount, txData, USDC_ADDRESS, ARC_CHAIN_ID],
+        func: async (from: string, data: string, to: string, targetChainId: string): Promise<SendResult> => {
           try {
             const ethereum = (window as any).ethereum
             if (!ethereum) {
-              return { error: { message: 'MetaMask is not installed or not active on this page.' } }
+              return { error: { message: 'MetaMask not detected' } }
             }
 
+            // 1. Ensure authorized
+            try {
+              await ethereum.request({ method: 'eth_requestAccounts' })
+            } catch (err: any) {
+              if (err?.code === 4001) return { error: { code: 4001, message: 'MetaMask connection was rejected.' } }
+              if (err?.code === 4100) return { error: { code: 4100, message: 'MetaMask permission needed. Click Connect MetaMask.' } }
+              throw err
+            }
+
+            // 2. Ensure correct network
+            const currentChainId = await ethereum.request({ method: 'eth_chainId' })
+            if (currentChainId !== targetChainId) {
+              try {
+                await ethereum.request({
+                  method: 'wallet_switchEthereumChain',
+                  params: [{ chainId: targetChainId }],
+                })
+              } catch (switchError: any) {
+                return { error: { message: 'Network mismatch. Please switch to Arc Testnet in MetaMask.' } }
+              }
+            }
+
+            // 3. Send transaction
             const hash = await ethereum.request({
               method: 'eth_sendTransaction',
               params: [{
@@ -413,9 +436,7 @@ export function Send({ onBack }: SendProps) {
       if ('error' in result) {
         if (result.error.code === 4100 || /not been authorized|unauthorized/i.test(result.error.message)) {
           setMetaMaskAccessState('unauthorized')
-          throw new Error('MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.')
         }
-
         throw new Error(getMetaMaskFriendlyError(result.error))
       }
       if (!result.hash) throw new Error('No tx hash returned')
