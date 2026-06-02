@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, Search, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, User } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -10,6 +10,7 @@ import {
   getMetaMaskFriendlyError,
   probeMetaMaskAccounts,
   requestMetaMaskAccounts,
+  switchToArcTestnet,
   type MetaMaskAccountResult,
 } from '@/lib/metamask'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
@@ -31,7 +32,7 @@ type SendResult =
   | { error: MetaMaskError }
 
 type ReceiptResult = {
-  receipt: { status?: string } | null
+  receipt?: { status?: string } | null
   error?: string
 }
 
@@ -73,7 +74,6 @@ export function Send({ onBack }: SendProps) {
   const showRecipientSafetyWarning = fromUniversalTip && isExactRecipient
   const senderAddress = metaMaskAccount ?? walletAddress
   const isSendDisabled = isLoading || !senderAddress || !isExactRecipient || !isAmountValid || !!txHash
-  const hasMetaMaskAccess = metaMaskAccessState === 'authorized'
 
   const suggestions = useMemo(() => {
     const q = recipient.toLowerCase()
@@ -254,7 +254,7 @@ export function Send({ onBack }: SendProps) {
   }
 
   const readTransactionReceipt = async (tabId: number, hash: string): Promise<ReceiptResult> => {
-    const results = await chrome.scripting.executeScript<[string], ReceiptResult>({
+    const results = await chrome.scripting.executeScript<[string], Promise<ReceiptResult>>({
       target: { tabId },
       world: 'MAIN',
       args: [hash],
@@ -371,7 +371,10 @@ export function Send({ onBack }: SendProps) {
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
       const txData = '0xa9059cbb' + paddedRecipient + paddedAmount
 
-      const results = await chrome.scripting.executeScript<[string, string, string], SendResult>({
+      // Switch to Arc Testnet before sending — non-fatal if user declines
+      await switchToArcTestnet(tab.id)
+
+      const results = await chrome.scripting.executeScript<[string, string, string], Promise<SendResult>>({
         target: { tabId: tab.id },
         world: 'MAIN',
         args: [activeAccount, txData, USDC_ADDRESS],

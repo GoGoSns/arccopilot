@@ -1,3 +1,5 @@
+/// <reference types="chrome" />
+
 export type MetaMaskErrorInfo = {
   code?: number
   message: string
@@ -88,11 +90,49 @@ export async function requestMetaMaskAccounts(tabId: number): Promise<MetaMaskAc
   return runMetaMaskAccountRequest(tabId, 'eth_requestAccounts')
 }
 
+// Always call eth_requestAccounts — eth_accounts can return stale sessions
+// that MetaMask still rejects for eth_sendTransaction (4100).
 export async function ensureMetaMaskAccounts(tabId: number): Promise<MetaMaskAccountResult> {
-  const probe = await probeMetaMaskAccounts(tabId)
-  if ('error' in probe) return probe
-  if (probe.accounts.length > 0) return probe
   return requestMetaMaskAccounts(tabId)
+}
+
+const ARC_CHAIN_ID = '0x4cef52' // 5042002 decimal
+
+const ARC_CHAIN_PARAMS = {
+  chainId: ARC_CHAIN_ID,
+  chainName: 'Arc Testnet',
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+  rpcUrls: ['https://rpc.testnet.arc.network'],
+  blockExplorerUrls: ['https://testnet.arcscan.app'],
+}
+
+type ChainParams = typeof ARC_CHAIN_PARAMS
+
+// Switches MetaMask to Arc Testnet. Adds the chain if not yet known.
+// Non-fatal: errors are swallowed so a chain-already-current situation doesn't block the tx.
+export async function switchToArcTestnet(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript<[ChainParams], void>({
+      target: { tabId },
+      world: 'MAIN',
+      args: [ARC_CHAIN_PARAMS],
+      func: async (params: ChainParams): Promise<void> => {
+        const eth = (window as any).ethereum
+        if (!eth) return
+        try {
+          await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: params.chainId }] })
+        } catch (err: any) {
+          if (err?.code === 4902) {
+            // Chain not in MetaMask yet — add it
+            await eth.request({ method: 'wallet_addEthereumChain', params: [params] })
+          }
+          // code 4001 = user rejected switch — non-fatal, let the tx try anyway
+        }
+      },
+    })
+  } catch {
+    // executeScript itself failed (e.g. chrome:// page) — non-fatal
+  }
 }
 
 export function isMetaMaskUnauthorizedResult(result: MetaMaskAccountResult): boolean {
