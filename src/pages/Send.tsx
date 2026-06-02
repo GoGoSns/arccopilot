@@ -5,6 +5,13 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import {
+  ensureMetaMaskAccounts,
+  getMetaMaskFriendlyError,
+  probeMetaMaskAccounts,
+  requestMetaMaskAccounts,
+  type MetaMaskAccountResult,
+} from '@/lib/metamask'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { formatAddress, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -14,9 +21,14 @@ interface SendProps {
   onBack: () => void
 }
 
+type MetaMaskError = {
+  code?: number
+  message: string
+}
+
 type SendResult =
   | { hash: string }
-  | { error: string }
+  | { error: MetaMaskError }
 
 type ReceiptResult = {
   receipt: { status?: string } | null
@@ -24,9 +36,11 @@ type ReceiptResult = {
 }
 
 type TxStatus = 'idle' | 'pending' | 'confirmed'
+type MetaMaskAccessState = 'checking' | 'authorized' | 'unauthorized' | 'missing'
 
 export function Send({ onBack }: SendProps) {
   const walletAddress = useStore((s) => s.walletAddress)
+  const setWalletAddress = useStore((s) => s.setWalletAddress)
   const addressMemories = useStore((s) => s.addressMemories)
   const addAddressMemory = useStore((s) => s.addAddressMemory)
   const setCurrentView = useStore((s) => s.setCurrentView)
@@ -42,6 +56,9 @@ export function Send({ onBack }: SendProps) {
   const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string } | null>(null)
   const [fromUniversalTip, setFromUniversalTip] = useState(false)
   const [recipientContractStatus, setRecipientContractStatus] = useState<'idle' | 'checking' | 'contract' | 'unknown'>('idle')
+  const [metaMaskAccessState, setMetaMaskAccessState] = useState<MetaMaskAccessState>('checking')
+  const [metaMaskConnecting, setMetaMaskConnecting] = useState(false)
+  const [metaMaskAccount, setMetaMaskAccount] = useState<string | null>(walletAddress)
 
   const amountRef = useRef<HTMLInputElement>(null)
   const contractLookupTokenRef = useRef(0)
@@ -54,7 +71,9 @@ export function Send({ onBack }: SendProps) {
   const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
   const isAmountValid = amount.trim().length > 0 && !Number.isNaN(Number(amount)) && Number(amount) > 0
   const showRecipientSafetyWarning = fromUniversalTip && isExactRecipient
-  const isSendDisabled = isLoading || !walletAddress || !isExactRecipient || !isAmountValid || !!txHash
+  const senderAddress = metaMaskAccount ?? walletAddress
+  const isSendDisabled = isLoading || !senderAddress || !isExactRecipient || !isAmountValid || !!txHash
+  const hasMetaMaskAccess = metaMaskAccessState === 'authorized'
 
   const suggestions = useMemo(() => {
     const q = recipient.toLowerCase()
@@ -77,6 +96,79 @@ export function Send({ onBack }: SendProps) {
       }
     })
   }, [])
+
+  const syncMetaMaskAccount = (account: string): string => {
+    const normalized = account.toLowerCase()
+    setMetaMaskAccount(account)
+
+    if (!walletAddress || walletAddress.toLowerCase() !== normalized) {
+      setWalletAddress(account)
+    }
+
+    return account
+  }
+
+  const handleMetaMaskAccountResult = (result: MetaMaskAccountResult): string | null => {
+    if ('error' in result) {
+      setMetaMaskAccount(null)
+      const message = getMetaMaskFriendlyError(result.error)
+      setMetaMaskAccessState(/not installed|not active on this page/i.test(message) ? 'missing' : 'unauthorized')
+      return null
+    }
+
+    if (result.accounts.length === 0) {
+      setMetaMaskAccount(null)
+      setMetaMaskAccessState('unauthorized')
+      return null
+    }
+
+    setMetaMaskAccessState('authorized')
+    return syncMetaMaskAccount(result.accounts[0])
+  }
+
+  const refreshMetaMaskAccess = async (): Promise<void> => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        setMetaMaskAccessState('missing')
+        return
+      }
+
+      const result = await probeMetaMaskAccounts(tab.id)
+      handleMetaMaskAccountResult(result)
+    } catch {
+      setMetaMaskAccessState('missing')
+    }
+  }
+
+  useEffect(() => {
+    void refreshMetaMaskAccess()
+  }, [walletAddress])
+
+  const handleConnectMetaMask = async () => {
+    setMetaMaskConnecting(true)
+    setError('')
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        throw new Error('Please open a web page first.')
+      }
+
+      const result = await requestMetaMaskAccounts(tab.id)
+      const account = handleMetaMaskAccountResult(result)
+      if (!account) {
+        const error = 'error' in result ? result.error : { message: 'MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.' }
+        throw new Error(getMetaMaskFriendlyError(error))
+      }
+    } catch (err: any) {
+      const message = getMetaMaskFriendlyError(err)
+      setMetaMaskAccessState(/not installed|not active on this page/i.test(message) ? 'missing' : 'unauthorized')
+      setError(message)
+    } finally {
+      setMetaMaskConnecting(false)
+    }
+  }
 
   useEffect(() => {
     if (!isExactRecipient) {
@@ -235,7 +327,7 @@ export function Send({ onBack }: SendProps) {
     clearScheduledRefresh()
     receiptPollTokenRef.current += 1
 
-    if (!walletAddress) {
+    if (!senderAddress) {
       setError('Connect your wallet first')
       return
     }
@@ -264,6 +356,16 @@ export function Send({ onBack }: SendProps) {
         throw new Error('Please open a web page first')
       }
 
+      const accessResult = await ensureMetaMaskAccounts(tab.id)
+      const activeAccount = handleMetaMaskAccountResult(accessResult)
+      if (!activeAccount) {
+        const error = 'error' in accessResult
+          ? accessResult.error
+          : { message: 'MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.' }
+
+        throw new Error(getMetaMaskFriendlyError(error))
+      }
+
       const amountWei = BigInt(Math.round(amountNum * 1_000_000))
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
@@ -272,11 +374,13 @@ export function Send({ onBack }: SendProps) {
       const results = await chrome.scripting.executeScript<[string, string, string], SendResult>({
         target: { tabId: tab.id },
         world: 'MAIN',
-        args: [walletAddress, txData, USDC_ADDRESS],
+        args: [activeAccount, txData, USDC_ADDRESS],
         func: async (from: string, data: string, to: string): Promise<SendResult> => {
           try {
             const ethereum = (window as any).ethereum
-            if (!ethereum) return { error: 'MetaMask is not installed or not active on this page.' }
+            if (!ethereum) {
+              return { error: { message: 'MetaMask is not installed or not active on this page.' } }
+            }
 
             const hash = await ethereum.request({
               method: 'eth_sendTransaction',
@@ -289,14 +393,28 @@ export function Send({ onBack }: SendProps) {
 
             return { hash }
           } catch (err: any) {
-            return { error: err?.message ?? 'Failed to send transaction' }
+            return {
+              error: {
+                code: typeof err?.code === 'number' ? err.code : undefined,
+                message: typeof err?.message === 'string' && err.message.trim()
+                  ? err.message
+                  : 'Failed to send transaction',
+              },
+            }
           }
         },
       })
 
       const result = results[0]?.result
       if (!result) throw new Error('No response from the page.')
-      if ('error' in result) throw new Error(result.error)
+      if ('error' in result) {
+        if (result.error.code === 4100 || /not been authorized|unauthorized/i.test(result.error.message)) {
+          setMetaMaskAccessState('unauthorized')
+          throw new Error('MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.')
+        }
+
+        throw new Error(getMetaMaskFriendlyError(result.error))
+      }
       if (!result.hash) throw new Error('No tx hash returned')
 
       setTxHash(result.hash)
@@ -307,7 +425,11 @@ export function Send({ onBack }: SendProps) {
       const pollToken = receiptPollTokenRef.current
       void pollTransactionReceipt(tab.id, result.hash, pollToken)
     } catch (err: any) {
-      setError(err?.message ?? 'Failed to send')
+      const message = getMetaMaskFriendlyError(err)
+      if (/MetaMask permission needed/i.test(message)) {
+        setMetaMaskAccessState('unauthorized')
+      }
+      setError(message || (err?.message ?? 'Failed to send'))
     } finally {
       setIsLoading(false)
     }
@@ -393,6 +515,27 @@ export function Send({ onBack }: SendProps) {
             </p>
           )}
         </div>
+
+        {metaMaskAccessState === 'unauthorized' && (
+          <Card className="space-y-3 border-arc-gold/30 bg-arc-gold/10 p-3">
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-arc-gold">MetaMask permission needed</p>
+              <p className="text-xs leading-relaxed text-arc-text-dim">
+                Connect MetaMask to authorize this site before sending.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              fullWidth
+              size="sm"
+              onClick={handleConnectMetaMask}
+              disabled={metaMaskConnecting}
+            >
+              {metaMaskConnecting && <Loader2 size={14} className="animate-spin" />}
+              {metaMaskConnecting ? 'Connecting...' : 'Connect MetaMask'}
+            </Button>
+          </Card>
+        )}
 
         {isExactRecipient && (
           <MemoryCard
