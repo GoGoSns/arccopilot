@@ -62,6 +62,7 @@ function main(): void {
   let cardEl: HTMLDivElement | null = null
   let cardAddressEl: HTMLDivElement | null = null
   let cardDomainEl: HTMLDivElement | null = null
+  let cardTypeBadgeEl: HTMLDivElement | null = null
   let tipButtonEl: HTMLButtonElement | null = null
   let saveButtonEl: HTMLButtonElement | null = null
   let hideTimer: ReturnType<typeof setTimeout> | null = null
@@ -72,6 +73,67 @@ function main(): void {
   let overAddress = false
   let currentAddress = ''
   let currentAnchor: HTMLElement | null = null
+
+  // ─── contract-type cache ─────────────────────────────────────────────────
+  const addressTypeCache = new Map<string, 'eoa' | 'contract' | 'unknown'>()
+
+  async function fetchAddressType(address: string): Promise<'eoa' | 'contract' | 'unknown'> {
+    const normalized = address.toLowerCase()
+    const cached = addressTypeCache.get(normalized)
+    if (cached) return cached
+    try {
+      const res = await fetch(
+        `https://testnet.arcscan.app/api/v2/addresses/${normalized}`,
+        { headers: { accept: 'application/json' } },
+      )
+      if (!res.ok) return 'unknown'
+      const data = await res.json() as {
+        is_contract?: boolean
+        contract_code?: string | null
+        smart_contract?: unknown
+        type?: string
+      }
+      const isContract = Boolean(
+        data?.is_contract ||
+        (typeof data?.contract_code === 'string' && data.contract_code.length > 0) ||
+        data?.smart_contract ||
+        String(data?.type ?? '').toLowerCase().includes('contract'),
+      )
+      const type: 'eoa' | 'contract' = isContract ? 'contract' : 'eoa'
+      addressTypeCache.set(normalized, type)
+      return type
+    } catch {
+      return 'unknown'
+    }
+  }
+
+  function applyAddressTypeBadge(type: 'eoa' | 'contract' | 'unknown'): void {
+    if (!cardTypeBadgeEl || !tipButtonEl) return
+    if (type === 'contract') {
+      cardTypeBadgeEl.textContent = 'CONTRACT — Tips may be lost'
+      cardTypeBadgeEl.style.display = 'flex'
+      cardTypeBadgeEl.style.color = '#ff6b6b'
+      cardTypeBadgeEl.style.borderColor = 'rgba(255,107,107,0.30)'
+      cardTypeBadgeEl.style.background = 'rgba(255,107,107,0.10)'
+      tipButtonEl.disabled = true
+      tipButtonEl.style.opacity = '0.38'
+      tipButtonEl.style.cursor = 'not-allowed'
+      tipButtonEl.title = 'This is a smart contract. Tipping may result in lost funds.'
+    } else if (type === 'eoa') {
+      cardTypeBadgeEl.textContent = 'Wallet'
+      cardTypeBadgeEl.style.display = 'flex'
+      cardTypeBadgeEl.style.color = '#9aa3bf'
+      cardTypeBadgeEl.style.borderColor = 'rgba(255,255,255,0.08)'
+      cardTypeBadgeEl.style.background = 'rgba(255,255,255,0.04)'
+      tipButtonEl.disabled = false
+      tipButtonEl.style.opacity = '1'
+      tipButtonEl.style.cursor = 'pointer'
+      tipButtonEl.title = 'Tip with Arc'
+    } else {
+      cardTypeBadgeEl.style.display = 'none'
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   function hostMatches(domain: string): boolean {
     const host = location.hostname.toLowerCase()
@@ -220,6 +282,7 @@ function main(): void {
     cardEl = null
     cardAddressEl = null
     cardDomainEl = null
+    cardTypeBadgeEl = null
     tipButtonEl = null
     saveButtonEl = null
   }
@@ -538,7 +601,19 @@ function main(): void {
     })
 
     actions.append(tipButtonEl, saveButtonEl)
-    shell.append(header, cardAddressEl, cardDomainEl, actions)
+
+    cardTypeBadgeEl = document.createElement('div')
+    cardTypeBadgeEl.style.display = 'none'
+    cardTypeBadgeEl.style.alignItems = 'center'
+    cardTypeBadgeEl.style.padding = '3px 8px'
+    cardTypeBadgeEl.style.borderRadius = '999px'
+    cardTypeBadgeEl.style.border = '1px solid rgba(255,255,255,0.08)'
+    cardTypeBadgeEl.style.fontSize = '10px'
+    cardTypeBadgeEl.style.fontWeight = '700'
+    cardTypeBadgeEl.style.letterSpacing = '0.04em'
+    cardTypeBadgeEl.style.textTransform = 'uppercase'
+
+    shell.append(header, cardAddressEl, cardDomainEl, cardTypeBadgeEl, actions)
     container.appendChild(shell)
 
     container.addEventListener('mouseenter', () => {
@@ -598,6 +673,25 @@ function main(): void {
     cardAddressEl!.title = address
     cardDomainEl!.textContent = `Source · ${SOURCE_DOMAIN}`
     cardDomainEl!.title = SOURCE_DOMAIN
+
+    // Reset badge + tip button, then probe contract type
+    if (cardTypeBadgeEl) cardTypeBadgeEl.style.display = 'none'
+    if (tipButtonEl) {
+      tipButtonEl.disabled = false
+      tipButtonEl.style.opacity = '1'
+      tipButtonEl.style.cursor = 'pointer'
+      tipButtonEl.title = 'Tip with Arc'
+    }
+    const cachedType = addressTypeCache.get(address.toLowerCase())
+    if (cachedType) {
+      applyAddressTypeBadge(cachedType)
+    } else {
+      void fetchAddressType(address).then((type) => {
+        if (currentAddress.toLowerCase() === address.toLowerCase()) {
+          applyAddressTypeBadge(type)
+        }
+      })
+    }
 
     setSaveButtonState(false)
     try {

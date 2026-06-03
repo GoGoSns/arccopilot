@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, ExternalLink, Loader2, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Loader2, Share2, User, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -63,6 +63,7 @@ export function Send({ onBack }: SendProps) {
   const [metaMaskAccount, setMetaMaskAccount] = useState<string | null>(walletAddress)
 
   const amountRef = useRef<HTMLInputElement>(null)
+  const successTimerRef = useRef<number | null>(null)
   const contractLookupTokenRef = useRef(0)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
@@ -318,7 +319,26 @@ export function Send({ onBack }: SendProps) {
     setTxHash('')
     setTxStatus('idle')
     setLastTransfer(null)
+    if (successTimerRef.current !== null) {
+      window.clearTimeout(successTimerRef.current)
+      successTimerRef.current = null
+    }
   }
+
+  // Auto-return to form 8s after a successful send
+  useEffect(() => {
+    if (!txHash) return
+    successTimerRef.current = window.setTimeout(() => {
+      successTimerRef.current = null
+      resetSendForm()
+    }, 8_000)
+    return () => {
+      if (successTimerRef.current !== null) {
+        window.clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+    }
+  }, [txHash]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = async () => {
     setError('')
@@ -368,6 +388,9 @@ export function Send({ onBack }: SendProps) {
 
         throw new Error(getMetaMaskFriendlyError(error))
       }
+
+      // Switch to Arc Testnet before sending — non-fatal if user declines
+      await switchToArcTestnet(tab.id)
 
       const amountWei = BigInt(Math.round(amountNum * 1_000_000))
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
@@ -459,9 +482,83 @@ export function Send({ onBack }: SendProps) {
     }
   }
 
-  const explorerUrl = txHash ? `${EXPLORER_URL}/tx/${txHash}` : ''
-  const currentAmount = lastTransfer?.amount ?? amount.trim()
-  const currentRecipient = lastTransfer?.recipient ?? recipient.trim()
+  // ── Success view ──────────────────────────────────────────────────────────
+  if (txHash && lastTransfer) {
+    const displayRecipient = recipientMemory?.label ?? formatAddress(lastTransfer.recipient, 4)
+    const isInBook = Boolean(recipientMemory)
+    const shareText =
+      `Just sent ${lastTransfer.amount} USDC on Arc Testnet\n` +
+      `TX: ${EXPLORER_URL}/tx/${txHash}\n\n` +
+      `Sent via ArcCopilot`
+
+    return (
+      <div className="flex flex-col h-full bg-arc-bg">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-arc-border">
+          <button onClick={resetSendForm} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
+            <ArrowLeft size={18} />
+          </button>
+          <h2 className="text-base font-semibold text-arc-text">Send USDC</h2>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-5 py-6 gap-5">
+          <CheckCircle2 size={52} className="text-arc-gold" />
+
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-arc-text-dim">Sent</p>
+            <p className="text-2xl font-bold text-arc-text">{lastTransfer.amount} USDC</p>
+            <p className="text-sm text-arc-text-dim">to {displayRecipient}</p>
+            {txStatus === 'confirmed' && (
+              <span className="inline-block mt-1 rounded-full bg-arc-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-arc-success">
+                Confirmed
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={() => navigator.clipboard.writeText(txHash)}
+            className="flex items-center gap-2 rounded-xl bg-arc-card border border-arc-border px-3 py-2.5 w-full hover:border-arc-gold/30 transition-colors"
+          >
+            <p className="flex-1 text-left text-xs font-mono text-arc-text-dim truncate">{shortenTxHash(txHash)}</p>
+            <Copy size={13} className="shrink-0 text-arc-text-dim" />
+          </button>
+
+          <div className="flex flex-col gap-2 w-full">
+            <Button variant="outline" fullWidth
+              onClick={() => window.open(`${EXPLORER_URL}/tx/${txHash}`, '_blank', 'noopener,noreferrer')}
+            >
+              <ExternalLink size={14} />
+              View on ArcScan
+            </Button>
+            {!isInBook && (
+              <Button variant="ghost" fullWidth
+                onClick={() => {
+                  addAddressMemory(lastTransfer.recipient, { label: 'Contact' })
+                  setSelectedAddress(lastTransfer.recipient)
+                  setCurrentView('address-detail')
+                }}
+              >
+                <UserPlus size={14} />
+                Save Recipient
+              </Button>
+            )}
+            <Button variant="ghost" fullWidth
+              onClick={() => navigator.clipboard.writeText(shareText)}
+            >
+              <Share2 size={14} />
+              Share
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-4 pb-6">
+          <Button variant="ghost" fullWidth onClick={resetSendForm}>
+            Send another
+          </Button>
+        </div>
+      </div>
+    )
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
@@ -604,54 +701,6 @@ export function Send({ onBack }: SendProps) {
           <span>Available balance</span>
           <span className="text-arc-gold">{balance} USDC</span>
         </div>
-
-        {txHash && lastTransfer && (
-          <Card className="p-3 border-arc-success/30 bg-arc-success/10 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-start gap-3">
-                <CheckCircle2 className="mt-0.5 text-arc-success" size={18} />
-                <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-medium text-arc-success">
-                    Sent {currentAmount} USDC to {formatAddress(currentRecipient)}
-                  </p>
-                  <p className="text-xs text-arc-text-dim break-all">
-                    TX hash: {shortenTxHash(txHash)}
-                  </p>
-                </div>
-              </div>
-
-              <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                  txStatus === 'confirmed'
-                    ? 'bg-arc-success/15 text-arc-success'
-                    : 'bg-arc-gold/15 text-arc-gold'
-                }`}
-              >
-                {txStatus === 'confirmed' ? 'Confirmed' : 'Pending'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                size="sm"
-                fullWidth
-                onClick={() => window.open(explorerUrl, '_blank', 'noopener,noreferrer')}
-              >
-                <ExternalLink size={14} />
-                View on ArcScan
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                fullWidth
-                onClick={resetSendForm}
-              >
-                Send another
-              </Button>
-            </div>
-          </Card>
-        )}
 
         <div className="p-3 rounded-xl bg-arc-card border border-arc-border text-xs text-arc-text-dim space-y-1">
           <div className="flex justify-between">
