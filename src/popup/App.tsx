@@ -10,11 +10,11 @@ import { Profile } from '@/pages/Profile'
 import { Settings } from '@/pages/Settings'
 import { AddressBook } from '@/pages/AddressBook'
 import { AddressDetail } from '@/pages/AddressDetail'
+import { DailyBrief } from '@/pages/DailyBrief'
 
 export default function App() {
   const isOnboarded = useStore((s) => s.isOnboarded)
   const currentView = useStore((s) => s.currentView)
-  const previousView = useStore((s) => s.previousView)
   const setCurrentView = useStore((s) => s.setCurrentView)
   const goBack = useStore((s) => s.goBack)
 
@@ -37,8 +37,9 @@ export default function App() {
   if (view === 'discover') return <Discover onBack={goBack} />
   if (view === 'profile') return <Profile onBack={goBack} />
   if (view === 'settings') return <Settings onBack={goBack} />
-  if (view === 'address-book') return <AddressBook onBack={goBack} />
+  if (view === 'address-book')   return <AddressBook  onBack={goBack} />
   if (view === 'address-detail') return <AddressDetail onBack={goBack} />
+  if (view === 'daily-brief')    return <DailyBrief   onBack={goBack} />
 
   return (
     <Wallet

@@ -95,12 +95,13 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
         {activeTab === 'discover' && <DiscoverTab address={address} onViewAll={onDiscover} />}
       </div>
 
-      <BottomStatus 
-        level={level} 
-        streak={streak} 
-        onOpenDashboard={onDiscover} 
+      <BottomStatus
+        level={level}
+        streak={streak}
+        onOpenDashboard={onDiscover}
         onOpenAddressBook={() => setCurrentView('address-book')}
         onOpenProfile={() => setCurrentView('profile')}
+        onOpenBrief={() => setCurrentView('daily-brief')}
       />
     </div>
   )

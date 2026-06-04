@@ -1,4 +1,4 @@
-import { ChevronRight, Book } from 'lucide-react'
+import { Book, ChevronRight, Sun } from 'lucide-react'
 
 interface BottomStatusProps {
   level: number
@@ -6,28 +6,51 @@ interface BottomStatusProps {
   onOpenDashboard: () => void
   onOpenAddressBook?: () => void
   onOpenProfile?: () => void
+  onOpenBrief?: () => void
 }
 
-export function BottomStatus({ level, streak, onOpenDashboard, onOpenAddressBook, onOpenProfile }: BottomStatusProps) {
+export function BottomStatus({
+  level,
+  streak,
+  onOpenDashboard,
+  onOpenAddressBook,
+  onOpenProfile,
+  onOpenBrief,
+}: BottomStatusProps) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-arc-border bg-arc-card/50">
-      <button 
-        onClick={onOpenProfile}
-        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-      >
-        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-arc-gold/15 text-arc-gold">
-          Lv {Math.max(1, level)}
-        </span>
-        {streak > 0 ? (
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-arc-danger/15 text-arc-danger">
-            {streak}d streak
+    <div className="flex items-center justify-between border-t border-arc-border bg-arc-card/50 px-4 py-3">
+      {/* Left: profile badges + brief button */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onOpenProfile}
+          className="flex items-center gap-2 transition-opacity hover:opacity-80"
+        >
+          <span className="rounded-full bg-arc-gold/15 px-2 py-0.5 text-xs font-bold text-arc-gold">
+            Lv {Math.max(1, level)}
           </span>
-        ) : (
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-arc-success/15 text-arc-success">
-            New
-          </span>
+          {streak > 0 ? (
+            <span className="rounded-full bg-arc-danger/15 px-2 py-0.5 text-xs font-bold text-arc-danger">
+              {streak}d streak
+            </span>
+          ) : (
+            <span className="rounded-full bg-arc-success/15 px-2 py-0.5 text-xs font-bold text-arc-success">
+              New
+            </span>
+          )}
+        </button>
+
+        {onOpenBrief && (
+          <button
+            onClick={onOpenBrief}
+            title="Daily Brief"
+            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+          >
+            <Sun size={13} />
+          </button>
         )}
-      </button>
+      </div>
+
+      {/* Right: address book + dashboard */}
       <div className="flex items-center gap-3">
         {onOpenAddressBook && (
           <button
