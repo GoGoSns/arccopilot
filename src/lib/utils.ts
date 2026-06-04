@@ -38,3 +38,13 @@ export function timeAgo(timestamp: number): string {
 export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text)
 }
+
+export function formatRelativeTime(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime()
+  if (diff < 60_000)           return 'just now'
+  if (diff < 3_600_000)        return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000)       return `${Math.floor(diff / 3_600_000)}h ago`
+  const days = Math.floor(diff / 86_400_000)
+  if (days < 7)                return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
