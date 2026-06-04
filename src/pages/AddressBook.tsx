@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ArrowLeft, Search, Plus, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle, X } from 'lucide-react'
+import { ArrowLeft, Eye, Search, Plus, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -12,11 +12,12 @@ interface AddressBookProps {
 }
 
 const TAG_OPTIONS = [
-  { value: 'friend', label: 'Friend', icon: User, color: 'text-green-500' },
-  { value: 'work', label: 'Work', icon: Briefcase, color: 'text-blue-500' },
-  { value: 'warning', label: 'Warning', icon: AlertTriangle, color: 'text-red-500' },
-  { value: 'self', label: 'Self', icon: ShieldCheck, color: 'text-arc-gold' },
-  { value: 'other', label: 'Other', icon: HelpCircle, color: 'text-gray-400' },
+  { value: 'friend',  label: 'Friend',  icon: User,          color: 'text-green-500' },
+  { value: 'work',    label: 'Work',    icon: Briefcase,     color: 'text-blue-500'  },
+  { value: 'warning', label: 'Warning', icon: AlertTriangle, color: 'text-red-500'   },
+  { value: 'self',    label: 'Self',    icon: ShieldCheck,   color: 'text-arc-gold'  },
+  { value: 'whale',   label: 'Whale',   icon: Eye,           color: 'text-arc-gold'  },
+  { value: 'other',   label: 'Other',   icon: HelpCircle,    color: 'text-gray-400'  },
 ] as const
 
 export function AddressBook({ onBack }: AddressBookProps) {

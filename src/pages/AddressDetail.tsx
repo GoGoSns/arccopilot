@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Edit2, Trash2, Copy, ExternalLink, Send, Clock, ArrowUpRight, ArrowDownLeft, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle, Save } from 'lucide-react'
+import { ArrowLeft, Edit2, Eye, Trash2, Copy, ExternalLink, Send, Clock, ArrowUpRight, ArrowDownLeft, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle, Save } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
@@ -13,11 +13,12 @@ interface AddressDetailProps {
 }
 
 const TAG_OPTIONS = [
-  { value: 'friend', label: 'Friend', icon: User, color: 'text-green-500' },
-  { value: 'work', label: 'Work', icon: Briefcase, color: 'text-blue-500' },
-  { value: 'warning', label: 'Warning', icon: AlertTriangle, color: 'text-red-500' },
-  { value: 'self', label: 'Self', icon: ShieldCheck, color: 'text-arc-gold' },
-  { value: 'other', label: 'Other', icon: HelpCircle, color: 'text-gray-400' },
+  { value: 'friend',  label: 'Friend',  icon: User,          color: 'text-green-500' },
+  { value: 'work',    label: 'Work',    icon: Briefcase,     color: 'text-blue-500'  },
+  { value: 'warning', label: 'Warning', icon: AlertTriangle, color: 'text-red-500'   },
+  { value: 'self',    label: 'Self',    icon: ShieldCheck,   color: 'text-arc-gold'  },
+  { value: 'whale',   label: 'Whale',   icon: Eye,           color: 'text-arc-gold'  },
+  { value: 'other',   label: 'Other',   icon: HelpCircle,    color: 'text-gray-400'  },
 ] as const
 
 export function AddressDetail({ onBack }: AddressDetailProps) {
@@ -35,6 +36,25 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
   const [editTag, setEditTag] = useState<AddressMemory['tag']>(memory?.tag || 'friend')
   const [editNote, setEditNote] = useState(memory?.note || '')
   const [copied, setCopied] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+
+  const isWhale = memory?.tag === 'whale'
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2000)
+  }
+
+  const handleToggleWhale = () => {
+    if (!selectedAddress) return
+    if (isWhale) {
+      updateAddressMemory(selectedAddress, { tag: 'other' })
+      showToast('Untracked')
+    } else {
+      updateAddressMemory(selectedAddress, { tag: 'whale' })
+      showToast('Now tracking as Whale')
+    }
+  }
 
   useEffect(() => {
     if (memory) {
@@ -95,6 +115,13 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
         </div>
         <div className="flex gap-1">
           <button
+            onClick={handleToggleWhale}
+            title={isWhale ? 'Untrack whale' : 'Track as Whale'}
+            className={`p-1.5 rounded-lg transition-colors ${isWhale ? 'text-arc-gold bg-arc-gold/15' : 'text-arc-text-dim hover:text-arc-gold'}`}
+          >
+            <Eye size={18} />
+          </button>
+          <button
             onClick={() => setIsEditing(!isEditing)}
             className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'text-arc-gold bg-arc-gold/10' : 'text-arc-text-dim hover:text-arc-text'}`}
           >
@@ -108,6 +135,12 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
           </button>
         </div>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-arc-border bg-arc-card px-4 py-2 text-xs font-medium text-arc-text shadow-xl">
+          {toast}
+        </div>
+      )}
 
       <div className="p-4 space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">

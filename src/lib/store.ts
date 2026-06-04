@@ -9,7 +9,7 @@ export interface AddressMemory {
   address: string         // lowercase
   label?: string          // "Osman Abi"
   note?: string           // serbest notlar
-  tag?: 'friend' | 'work' | 'warning' | 'self' | 'other'
+  tag?: 'friend' | 'work' | 'warning' | 'self' | 'whale' | 'other'
   createdAt: number
   lastUsedAt: number
 }

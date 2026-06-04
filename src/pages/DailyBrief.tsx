@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react'
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
 import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
 
 // ─── constants ───────────────────────────────────────────────────────────────
-const USDC_CONTRACT = '0x3600000000000000000000000000000000000000'
-const USDC_DECIMALS = 6
-const TRANSFER_TTL  = 60_000       // 1 min
-const STATS_TTL     = 5 * 60_000   // 5 min
+const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
+const USDC_DECIMALS  = 6
+const TRANSFER_TTL   = 60_000       // 1 min
+const STATS_TTL      = 5 * 60_000   // 5 min
+const WHALE_TTL      = 5 * 60_000   // 5 min
 
 // ─── types ───────────────────────────────────────────────────────────────────
 interface RawTransfer {
@@ -24,7 +25,7 @@ interface RawTransfer {
 interface ActivityEntry {
   direction:    'in' | 'out'
   otherAddress: string
-  amount:       string   // formatted USDC
+  amount:       string
   timestamp:    string
 }
 
@@ -32,6 +33,15 @@ interface EcosystemStats {
   blockTime:       string
   totalTx:         string
   totalAddresses:  string
+}
+
+interface WhaleEntry {
+  address:   string
+  label:     string
+  amount:    string
+  direction: 'in' | 'out'
+  timestamp: string
+  hasRecent: boolean
 }
 
 // ─── localStorage cache ───────────────────────────────────────────────────────
@@ -57,15 +67,17 @@ function formatCompact(n: number): string {
   return String(n)
 }
 
+function isUsdcTransfer(tx: RawTransfer): boolean {
+  return tx.token?.address?.toLowerCase() === USDC_CONTRACT.toLowerCase()
+}
+
 // ─── API helpers ─────────────────────────────────────────────────────────────
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
   const url = `${EXPLORER_URL}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&limit=50`
   const res = await fetch(url, { headers: { accept: 'application/json' } })
   if (!res.ok) return []
   const data = await res.json() as { items?: RawTransfer[] }
-  return (data.items ?? []).filter(
-    tx => tx.token?.address?.toLowerCase() === USDC_CONTRACT.toLowerCase(),
-  )
+  return (data.items ?? []).filter(isUsdcTransfer)
 }
 
 function deriveBalanceChange(transfers: RawTransfer[], address: string): string | null {
@@ -104,9 +116,36 @@ async function fetchStats(): Promise<EcosystemStats | null> {
     }
     return {
       blockTime:      d.average_block_time != null ? `${Math.round(d.average_block_time)}ms` : '—',
-      totalTx:        d.total_transactions   ? formatCompact(parseInt(d.total_transactions, 10)) : '—',
-      totalAddresses: d.total_addresses      ? formatCompact(parseInt(d.total_addresses, 10))    : '—',
+      totalTx:        d.total_transactions ? formatCompact(parseInt(d.total_transactions, 10)) : '—',
+      totalAddresses: d.total_addresses    ? formatCompact(parseInt(d.total_addresses, 10))    : '—',
     }
+  } catch { return null }
+}
+
+type CachedWhaleTx = { amount: string; direction: 'in' | 'out'; timestamp: string; hasRecent: boolean }
+
+async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<WhaleEntry | null> {
+  const cacheKey = `arccopilot:whale:last:${whaleAddr.toLowerCase()}`
+  const cached   = readCache<CachedWhaleTx>(cacheKey)
+  if (cached) return { address: whaleAddr, label, ...cached }
+
+  try {
+    const url = `${EXPLORER_URL}/api/v2/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20&limit=5`
+    const res = await fetch(url, { headers: { accept: 'application/json' } })
+    if (!res.ok) return null
+    const data  = await res.json() as { items?: RawTransfer[] }
+    const items = (data.items ?? []).filter(isUsdcTransfer)
+    if (!items.length) return null
+
+    const latest  = items[0]
+    const wNorm   = whaleAddr.toLowerCase()
+    const direction: 'in' | 'out' = latest.to.hash.toLowerCase() === wNorm ? 'in' : 'out'
+    const amount   = formatBalance(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
+    const hasRecent = Date.now() - new Date(latest.timestamp).getTime() < 24 * 60 * 60 * 1000
+
+    const txData: CachedWhaleTx = { amount, direction, timestamp: latest.timestamp, hasRecent }
+    writeCache(cacheKey, txData, WHALE_TTL)
+    return { address: whaleAddr, label, ...txData }
   } catch { return null }
 }
 
@@ -118,20 +157,27 @@ interface DailyBriefProps {
 export function DailyBrief({ onBack }: DailyBriefProps) {
   const address         = useStore((s) => s.walletAddress)
   const profile         = useStore((s) => s.profile)
+  const addressMemories = useStore((s) => s.addressMemories)
   const getMemory       = useStore((s) => s.getAddressMemory)
+  const setCurrentView  = useStore((s) => s.setCurrentView)
   const { balance }     = useUSDCBalance()
 
-  // ── balance change ─
+  // Whale addresses (tag === 'whale'), top 3
+  const whales = useMemo(
+    () => Object.values(addressMemories).filter(m => m.tag === 'whale').slice(0, 3),
+    [addressMemories],
+  )
+
+  // ── state ─
   const [balanceChange,  setBalanceChange]  = useState<string | null>(null)
   const [changeLoading,  setChangeLoading]  = useState(true)
-
-  // ── recent activity ─
   const [activity,       setActivity]       = useState<ActivityEntry[] | null>(null)
   const [activityLoading,setActivityLoading]= useState(true)
-
-  // ── stats ─
   const [stats,          setStats]          = useState<EcosystemStats | null>(null)
   const [statsLoading,   setStatsLoading]   = useState(true)
+  const [whaleEntries,   setWhaleEntries]   = useState<WhaleEntry[]>([])
+  const [whaleLoading,   setWhaleLoading]   = useState(false)
+  const [whaleReady,     setWhaleReady]     = useState(false)
 
   // ── header ─
   const displayName = profile?.displayName?.trim() || 'GoGo'
@@ -140,17 +186,15 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const greeting    = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const dateStr     = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-  // ── effect: transfers (balance change + activity) ─────────────────────────
+  // ── effect: transfers ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!address) {
       setChangeLoading(false)
       setActivityLoading(false)
       return
     }
-
     const cacheKey = `arccopilot:brief:transfers:${address.toLowerCase()}`
     const cached   = readCache<RawTransfer[]>(cacheKey)
-
     if (cached) {
       setBalanceChange(deriveBalanceChange(cached, address))
       setActivity(deriveActivity(cached, address))
@@ -158,8 +202,6 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       setActivityLoading(false)
       return
     }
-
-    // Cache miss — fetch
     fetchRawTransfers(address)
       .then((items) => {
         writeCache(cacheKey, items, TRANSFER_TTL)
@@ -167,33 +209,36 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         setActivity(deriveActivity(items, address))
       })
       .catch(() => {})
-      .finally(() => {
-        setChangeLoading(false)
-        setActivityLoading(false)
-      })
+      .finally(() => { setChangeLoading(false); setActivityLoading(false) })
   }, [address])
 
-  // ── effect: ecosystem stats ───────────────────────────────────────────────
+  // ── effect: stats ─────────────────────────────────────────────────────────
   useEffect(() => {
     const cacheKey = 'arccopilot:brief:stats'
     const cached   = readCache<EcosystemStats>(cacheKey)
-
-    if (cached) {
-      setStats(cached)
-      setStatsLoading(false)
-      return
-    }
-
+    if (cached) { setStats(cached); setStatsLoading(false); return }
     fetchStats()
-      .then((s) => {
-        if (s) { writeCache(cacheKey, s, STATS_TTL); setStats(s) }
-      })
+      .then((s) => { if (s) { writeCache(cacheKey, s, STATS_TTL); setStats(s) } })
       .catch(() => {})
       .finally(() => setStatsLoading(false))
   }, [])
 
-  const isPositive = balanceChange?.startsWith('+')
-  const isNegative = balanceChange?.startsWith('-')
+  // ── effect: whale movements ───────────────────────────────────────────────
+  useEffect(() => {
+    setWhaleReady(false)
+    if (whales.length === 0) { setWhaleEntries([]); setWhaleReady(true); return }
+    setWhaleLoading(true)
+    Promise.all(
+      whales.map(w => fetchWhaleLastTx(w.address, w.label ?? formatAddress(w.address, 4)))
+    )
+      .then((results) => setWhaleEntries(results.filter(Boolean) as WhaleEntry[]))
+      .catch(() => {})
+      .finally(() => { setWhaleLoading(false); setWhaleReady(true) })
+  }, [whales])
+
+  const isPositive     = balanceChange?.startsWith('+')
+  const isNegative     = balanceChange?.startsWith('-')
+  const anyWhaleRecent = whaleEntries.some(e => e.hasRecent)
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
@@ -210,7 +255,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
 
-        {/* ── Balance Change ────────────────────────────────── */}
+        {/* ── 1. Balance Change ─────────────────────────────── */}
         <div className="space-y-2 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Your balance</p>
           <div className="flex items-end gap-3">
@@ -234,14 +279,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           </div>
         </div>
 
-        {/* ── Recent Activity ───────────────────────────────── */}
+        {/* ── 2. Recent Activity ────────────────────────────── */}
         <div className="space-y-1 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="mb-3 font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Recent activity</p>
-
           {activityLoading ? (
             <div className="space-y-2">
-              {[0, 100, 200].map((delay) => (
-                <div key={delay} className="h-10 animate-pulse rounded-xl bg-arc-border/70" style={{ animationDelay: `${delay}ms` }} />
+              {[0, 100, 200].map((d) => (
+                <div key={d} className="h-10 animate-pulse rounded-xl bg-arc-border/70" style={{ animationDelay: `${d}ms` }} />
               ))}
             </div>
           ) : !activity || activity.length === 0 ? (
@@ -249,19 +293,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           ) : (
             <div className="space-y-px">
               {activity.map((tx, i) => {
-                const memory = getMemory(tx.otherAddress)
-                const label  = memory?.label ?? formatAddress(tx.otherAddress, 4)
+                const mem   = getMemory(tx.otherAddress)
+                const label = mem?.label ?? formatAddress(tx.otherAddress, 4)
                 return (
-                  <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-arc-border/30 transition-colors">
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                      tx.direction === 'in'
-                        ? 'bg-arc-success/15 text-arc-success'
-                        : 'bg-arc-danger/15 text-arc-danger'
-                    }`}>
-                      {tx.direction === 'in'
-                        ? <ArrowDownLeft size={14} />
-                        : <ArrowUpRight  size={14} />
-                      }
+                  <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tx.direction === 'in' ? 'bg-arc-success/15 text-arc-success' : 'bg-arc-danger/15 text-arc-danger'}`}>
+                      {tx.direction === 'in' ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-medium text-arc-text">
@@ -279,28 +316,75 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        {/* ── Ecosystem Pulse ───────────────────────────────── */}
+        {/* ── 3. Ecosystem Pulse ───────────────────────────── */}
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Arc ecosystem</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Block time',   value: stats?.blockTime },
-              { label: 'Total tx',     value: stats?.totalTx },
-              { label: 'Wallets',      value: stats?.totalAddresses },
+              { label: 'Block time', value: stats?.blockTime },
+              { label: 'Total tx',   value: stats?.totalTx },
+              { label: 'Wallets',    value: stats?.totalAddresses },
             ].map(({ label, value }) => (
               <div key={label} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
                 <p className="text-[9px] text-arc-text-dim">{label}</p>
-                {statsLoading || !value ? (
-                  <div className="h-4 animate-pulse rounded bg-arc-border/70" />
-                ) : (
-                  <p className="text-sm font-bold text-arc-text">{value}</p>
-                )}
+                {statsLoading || !value
+                  ? <div className="h-4 animate-pulse rounded bg-arc-border/70" />
+                  : <p className="text-sm font-bold text-arc-text">{value}</p>
+                }
               </div>
             ))}
           </div>
         </div>
 
-        {/* ── AI Insight placeholder ────────────────────────── */}
+        {/* ── 4. Whale Movements ───────────────────────────── */}
+        <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-gold/60' : 'border-arc-border'}`}>
+          <div className="flex items-center gap-2">
+            <Eye size={14} className="text-arc-gold" />
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Whale Movements</p>
+          </div>
+
+          {whaleLoading && (
+            <div className="h-10 animate-pulse rounded-xl bg-arc-border/70" />
+          )}
+
+          {!whaleLoading && whaleReady && whales.length === 0 && (
+            <div className="py-1 text-center space-y-2">
+              <p className="text-xs text-arc-text-dim">No whales tracked yet</p>
+              <p className="text-[10px] text-arc-text-dim">Mark addresses as whale from Address Book</p>
+              <button
+                onClick={() => setCurrentView('address-book')}
+                className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
+              >
+                Browse Address Book
+              </button>
+            </div>
+          )}
+
+          {!whaleLoading && whaleReady && whaleEntries.length > 0 && (
+            <div className="space-y-px">
+              {whaleEntries.map((entry, i) => (
+                <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-gold/5' : ''}`}>
+                  <Eye size={14} className="shrink-0 text-arc-gold" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>
+                    <p className="text-[10px] text-arc-text-dim">
+                      {entry.direction === 'out' ? 'Sent' : 'Received'} {entry.amount} USDC · {formatRelativeTime(entry.timestamp)}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-xs font-semibold ${entry.direction === 'out' ? 'text-arc-danger' : 'text-arc-success'}`}>
+                    {entry.amount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!whaleLoading && whaleReady && whales.length > 0 && whaleEntries.length === 0 && (
+            <p className="py-1 text-center text-xs text-arc-text-dim">No recent whale activity</p>
+          )}
+        </div>
+
+        {/* ── 5. AI Insight placeholder ─────────────────────── */}
         <div className="space-y-2 rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
           <div className="flex items-center gap-2">
             <Sparkles size={14} className="text-arc-gold" />
