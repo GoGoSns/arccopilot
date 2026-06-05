@@ -11,6 +11,7 @@ import { Settings } from '@/pages/Settings'
 import { AddressBook } from '@/pages/AddressBook'
 import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
+import { GogoAI } from '@/pages/GogoAI'
 
 export default function App() {
   const isOnboarded = useStore((s) => s.isOnboarded)
@@ -51,6 +52,7 @@ export default function App() {
   if (view === 'address-book')   return <AddressBook  onBack={goBack} />
   if (view === 'address-detail') return <AddressDetail onBack={goBack} />
   if (view === 'daily-brief')    return <DailyBrief   onBack={goBack} />
+  if (view === 'gogo-ai')        return <GogoAI       onBack={goBack} />
 
   return (
     <Wallet
@@ -58,6 +60,7 @@ export default function App() {
       onReceive={() => go('receive')}
       onDiscover={() => go('discover')}
       onMenu={() => go('settings')}
+      onOpenGogo={() => go('gogo-ai')}
     />
   )
 }

@@ -1,4 +1,4 @@
-import { Book, ChevronRight, Sun } from 'lucide-react'
+import { Book, ChevronRight, Sun, Sparkles } from 'lucide-react'
 
 interface BottomStatusProps {
   level: number
@@ -7,6 +7,7 @@ interface BottomStatusProps {
   onOpenAddressBook?: () => void
   onOpenProfile?: () => void
   onOpenBrief?: () => void
+  onOpenGogo?: () => void
 }
 
 export function BottomStatus({
@@ -16,6 +17,7 @@ export function BottomStatus({
   onOpenAddressBook,
   onOpenProfile,
   onOpenBrief,
+  onOpenGogo,
 }: BottomStatusProps) {
   return (
     <div className="flex items-center justify-between border-t border-arc-border bg-arc-card/50 px-4 py-3">
@@ -46,6 +48,16 @@ export function BottomStatus({
             className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
           >
             <Sun size={13} />
+          </button>
+        )}
+
+        {onOpenGogo && (
+          <button
+            onClick={onOpenGogo}
+            title="Gogo AI"
+            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+          >
+            <Sparkles size={13} />
           </button>
         )}
       </div>

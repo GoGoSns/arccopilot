@@ -25,7 +25,7 @@ export interface GogoResponse {
 }
 
 export interface Message {
-  role: 'user' | 'model'
+  role: 'user' | 'model' | 'error'
   content: string
   action?: GogoAction
 }

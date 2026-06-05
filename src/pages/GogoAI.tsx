@@ -77,8 +77,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
       const response = await askGogo(userMsg.content, context, messages)
       setMessages((prev) => [...prev, { role: 'model', content: response.reply, action: response.action }])
     } catch (err: any) {
-      const errorMessage = err?.message || "Couldn't reach Gogo. Try again."
-      setError(errorMessage)
+      const errorMessage = err.message || "Couldn't reach Gogo. Try again."
+      setMessages((prev) => [...prev, { role: 'error', content: errorMessage }])
     } finally {
       setIsLoading(false)
     }
@@ -163,6 +163,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                   m.role === 'user' 
                     ? 'bg-arc-gold text-arc-bg font-medium' 
+                    : m.role === 'error'
+                    ? 'bg-arc-danger/10 border border-arc-danger/20 text-arc-danger'
                     : 'bg-arc-card border border-arc-border text-arc-text'
                 }`}>
                   {m.content}

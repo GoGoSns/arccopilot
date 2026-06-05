@@ -1,5 +1,7 @@
-import { ArrowLeft, Book, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Book, ChevronRight, Key, Trash2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { useEffect, useState } from 'react'
+import { getApiKey, clearApiKey } from '@/lib/gogoAI'
 
 interface SettingsProps {
   onBack: () => void
@@ -7,6 +9,16 @@ interface SettingsProps {
 
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
+  const [apiKey, setApiKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    getApiKey().then(setApiKey)
+  }, [])
+
+  const handleClearKey = async () => {
+    await clearApiKey()
+    setApiKey(null)
+  }
 
   return (
     <div className="flex flex-col h-full bg-arc-bg">
@@ -29,6 +41,35 @@ export function Settings({ onBack }: SettingsProps) {
             </div>
           </div>
           <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
+        </div>
+
+        {/* Gemini API Key Section */}
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+          AI Features
+        </p>
+        <div className="px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer group" onClick={() => setCurrentView('gogo-ai')}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+                <Key size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-arc-text">Gemini API Key</p>
+                <p className={`text-[10px] ${apiKey ? 'text-arc-success' : 'text-arc-danger'}`}>
+                  {apiKey ? 'Saved' : 'Not set'}
+                </p>
+              </div>
+            </div>
+            {apiKey && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleClearKey() }}
+                className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                title="Clear API Key"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {[

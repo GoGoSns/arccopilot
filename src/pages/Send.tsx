@@ -88,11 +88,15 @@ export function Send({ onBack }: SendProps) {
   useEffect(() => {
     chrome.storage.local.get(PENDING_SEND_STORAGE_KEY, (result) => {
       const pending = result[PENDING_SEND_STORAGE_KEY]
-      if (pending?.recipient && Date.now() - pending.ts < 5_000) {
-        setRecipient(pending.recipient)
+      // 30s TTL for inter-page navigation
+      if (pending && Date.now() - pending.ts < 30_000) {
+        if (pending.recipient) setRecipient(pending.recipient)
+        if (pending.amount) setAmount(pending.amount)
         setFromUniversalTip(true)
         chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
-        setTimeout(() => amountRef.current?.focus(), 50)
+        if (!pending.amount) {
+          setTimeout(() => amountRef.current?.focus(), 50)
+        }
       } else {
         setFromUniversalTip(false)
       }

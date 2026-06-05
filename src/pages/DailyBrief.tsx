@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
 import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
+import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
+import { DISMISSED_PATTERNS_KEY, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import { Button } from '@/components/ui/Button'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
@@ -179,6 +182,16 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
 
+  // -- Pattern State --
+  const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
+  const [dismissed,       setDismissed]       = useState<DismissedPattern[]>([])
+  const [patternLoading,  setPatternLoading]  = useState(true)
+
+  const activePattern = useMemo(() => {
+    if (!address) return null
+    return detectPatterns(rawTransfers, address, addressMemories, dismissed)[0] ?? null
+  }, [rawTransfers, address, addressMemories, dismissed])
+
   // Clear badge when this page mounts (user has seen whale activity)
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }, () => {
@@ -198,26 +211,69 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     if (!address) {
       setChangeLoading(false)
       setActivityLoading(false)
+      setPatternLoading(false)
       return
     }
     const cacheKey = `arccopilot:brief:transfers:${address.toLowerCase()}`
     const cached   = readCache<RawTransfer[]>(cacheKey)
-    if (cached) {
-      setBalanceChange(deriveBalanceChange(cached, address))
-      setActivity(deriveActivity(cached, address))
+
+    const process = (items: RawTransfer[]) => {
+      setRawTransfers(items)
+      setBalanceChange(deriveBalanceChange(items, address))
+      setActivity(deriveActivity(items, address))
       setChangeLoading(false)
       setActivityLoading(false)
+      setPatternLoading(false)
+    }
+
+    if (cached) {
+      process(cached)
       return
     }
     fetchRawTransfers(address)
       .then((items) => {
         writeCache(cacheKey, items, TRANSFER_TTL)
-        setBalanceChange(deriveBalanceChange(items, address))
-        setActivity(deriveActivity(items, address))
+        process(items)
       })
-      .catch(() => {})
-      .finally(() => { setChangeLoading(false); setActivityLoading(false) })
+      .catch(() => {
+        setChangeLoading(false)
+        setActivityLoading(false)
+        setPatternLoading(false)
+      })
   }, [address])
+
+  // ── effect: dismissed patterns ──────────────────────────────────────────
+  useEffect(() => {
+    chrome.storage.local.get(DISMISSED_PATTERNS_KEY, (res) => {
+      if (res[DISMISSED_PATTERNS_KEY]) {
+        setDismissed(res[DISMISSED_PATTERNS_KEY])
+      }
+    })
+  }, [])
+
+  const dismissPattern = (p: Pattern) => {
+    const key = getPatternKey(p)
+    const newEntry: DismissedPattern = { kind: p.kind, key, dismissedAt: Date.now() }
+    const next = [...dismissed, newEntry]
+    setDismissed(next)
+    chrome.storage.local.set({ [DISMISSED_PATTERNS_KEY]: next })
+  }
+
+  const handlePatternAction = (p: Pattern) => {
+    if (p.kind === 'recurring-recipient' || p.kind === 'amount-cluster') {
+      const pending = {
+        recipient: p.kind === 'recurring-recipient' ? p.address : undefined,
+        amount: p.kind === 'amount-cluster' ? p.amount : undefined,
+        ts: Date.now(),
+      }
+      chrome.storage.local.set({ [PENDING_SEND_STORAGE_KEY]: pending }, () => {
+        setCurrentView('send')
+      })
+    } else {
+      // day-of-week action is "Got it"
+      dismissPattern(p)
+    }
+  }
 
   // ── effect: stats ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -391,13 +447,53 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        {/* ── 5. AI Insight placeholder ─────────────────────── */}
-        <div className="space-y-2 rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-arc-gold" />
-            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">Insight</p>
+        {/* ── 5. AI Insight ─────────────────────────────────── */}
+        <div className="relative overflow-hidden rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} className="text-arc-gold" />
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">Insight</p>
+            </div>
+            {activePattern && (
+              <button
+                onClick={() => dismissPattern(activePattern)}
+                className="rounded-lg p-1 text-arc-text-dim transition-colors hover:bg-arc-border/30 hover:text-arc-text"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
-          <p className="text-sm leading-relaxed text-arc-text-dim">Building patterns from your activity…</p>
+
+          {patternLoading ? (
+            <div className="h-10 animate-pulse rounded-xl bg-arc-border/70" />
+          ) : activePattern ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium leading-relaxed text-arc-text">
+                {activePattern.suggestion}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-7 px-3 text-[10px]"
+                  onClick={() => handlePatternAction(activePattern)}
+                >
+                  {activePattern.kind === 'recurring-recipient' && 'Send again'}
+                  {activePattern.kind === 'day-of-week' && 'Got it'}
+                  {activePattern.kind === 'amount-cluster' && `Send ${activePattern.amount.replace(/\.?0+$/, '')} USDC`}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm leading-relaxed text-arc-text-dim">
+                {rawTransfers.length < 3 ? 'Building patterns from your activity…' : 'No new patterns detected today.'}
+              </p>
+              {rawTransfers.length < 3 && (
+                <p className="text-[10px] text-arc-text-dim/60">Need at least 3 transactions</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Dev: manual whale check trigger ─────────────── */}

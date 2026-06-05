@@ -19,9 +19,10 @@ interface WalletProps {
   onReceive: () => void
   onDiscover: () => void
   onMenu: () => void
+  onOpenGogo?: () => void
 }
 
-export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
+export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: WalletProps) {
   const [activeTab, setActiveTab] = useState<Tab>('tokens')
   const [copied, setCopied] = useState(false)
 
@@ -102,6 +103,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu }: WalletProps) {
         onOpenAddressBook={() => setCurrentView('address-book')}
         onOpenProfile={() => setCurrentView('profile')}
         onOpenBrief={() => setCurrentView('daily-brief')}
+        onOpenGogo={onOpenGogo}
       />
     </div>
   )
