@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, MessageCircle, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
@@ -7,6 +7,7 @@ import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
 import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
 import { DISMISSED_PATTERNS_KEY, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
+import { fetchArcTweets, getTwitterToken, type TwitterTweet } from '@/lib/twitterApi'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
@@ -14,6 +15,7 @@ const USDC_DECIMALS  = 6
 const TRANSFER_TTL   = 60_000       // 1 min
 const STATS_TTL      = 5 * 60_000   // 5 min
 const WHALE_TTL      = 5 * 60_000   // 5 min
+const TWEETS_TTL     = 10 * 60_000  // 10 min
 
 // ─── types ───────────────────────────────────────────────────────────────────
 interface RawTransfer {
@@ -182,6 +184,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
 
+  // -- Twitter State --
+  const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
+  const [tweetsLoading,  setTweetsLoading]  = useState(true)
+  const [tweetsError,    setTweetsError]    = useState<string | null>(null)
+  const [hasTwitterToken,setHasTwitterToken]= useState(false)
+
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
   const [dismissed,       setDismissed]       = useState<DismissedPattern[]>([])
@@ -298,6 +306,35 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       .catch(() => {})
       .finally(() => { setWhaleLoading(false); setWhaleReady(true) })
   }, [whales])
+
+  // ── effect: twitter feed ──────────────────────────────────────────────────
+  useEffect(() => {
+    const cacheKey = 'arccopilot:tweets:arc'
+    const cached   = readCache<TwitterTweet[]>(cacheKey)
+
+    if (cached) {
+      setTweets(cached)
+      setTweetsLoading(false)
+      setHasTwitterToken(true)
+      return
+    }
+
+    getTwitterToken().then(token => {
+      if (!token) {
+        setHasTwitterToken(false)
+        setTweetsLoading(false)
+        return
+      }
+      setHasTwitterToken(true)
+      fetchArcTweets()
+        .then(items => {
+          writeCache(cacheKey, items, TWEETS_TTL)
+          setTweets(items)
+        })
+        .catch(err => setTweetsError(err.message))
+        .finally(() => setTweetsLoading(false))
+    })
+  }, [])
 
   const isPositive     = balanceChange?.startsWith('+')
   const isNegative     = balanceChange?.startsWith('-')

@@ -1,7 +1,8 @@
-import { ArrowLeft, Book, ChevronRight, Key, Trash2 } from 'lucide-react'
+import { ArrowLeft, Book, ChevronRight, Key, Trash2, Twitter } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useEffect, useState } from 'react'
-import { getApiKey, clearApiKey } from '@/lib/gogoAI'
+import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
+import { getTwitterToken, clearTwitterToken, setTwitterToken } from '@/lib/twitterApi'
 
 interface SettingsProps {
   onBack: () => void
@@ -10,14 +11,41 @@ interface SettingsProps {
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
   const [apiKey, setApiKey] = useState<string | null>(null)
+  const [twitterToken, setTwitterTokenState] = useState<string | null>(null)
+  const [isAddingGemini, setIsAddingGemini] = useState(false)
+  const [isAddingTwitter, setIsAddingTwitter] = useState(false)
+  const [tempKey, setTempKey] = useState('')
+  const [tempTwitter, setTempTwitter] = useState('')
 
   useEffect(() => {
     getApiKey().then(setApiKey)
+    getTwitterToken().then(setTwitterTokenState)
   }, [])
 
   const handleClearKey = async () => {
     await clearApiKey()
     setApiKey(null)
+  }
+
+  const handleClearTwitter = async () => {
+    await clearTwitterToken()
+    setTwitterTokenState(null)
+  }
+
+  const handleSaveGemini = async () => {
+    if (!tempKey.trim()) return
+    await saveGeminiKey(tempKey.trim())
+    setApiKey(tempKey.trim())
+    setIsAddingGemini(false)
+    setTempKey('')
+  }
+
+  const handleSaveTwitter = async () => {
+    if (!tempTwitter.trim()) return
+    await setTwitterToken(tempTwitter.trim())
+    setTwitterTokenState(tempTwitter.trim())
+    setIsAddingTwitter(false)
+    setTempTwitter('')
   }
 
   return (
