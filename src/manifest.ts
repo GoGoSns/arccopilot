@@ -37,7 +37,7 @@ export default defineManifest({
   ],
   options_page: 'src/options/index.html',
   permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'sidePanel', 'alarms'],
-  host_permissions: ['https://*/*', 'http://*/*'],
+  host_permissions: ['https://generativelanguage.googleapis.com/*', 'https://*/*', 'http://*/*'],
   icons: {
     '16': 'icons/icon-16.png',
     '32': 'icons/icon-32.png',
