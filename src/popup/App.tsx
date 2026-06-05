@@ -21,13 +21,24 @@ export default function App() {
   const go = (v: View) => setCurrentView(v)
 
   useEffect(() => {
-    chrome.storage.local.get(PENDING_SEND_STORAGE_KEY, (result) => {
-      const pending = result[PENDING_SEND_STORAGE_KEY]
-      if (pending && Date.now() - pending.ts < 5_000) {
-        go('send')
-      }
-    })
-  }, [])
+    chrome.storage.local.get(
+      [PENDING_SEND_STORAGE_KEY, 'arccopilot:pending_view'],
+      (result) => {
+        // Notification click → route to Daily Brief (or other view)
+        const pendingView = result['arccopilot:pending_view'] as string | undefined
+        if (pendingView && isOnboarded) {
+          go(pendingView as View)
+          void chrome.storage.local.remove('arccopilot:pending_view')
+          return
+        }
+        // Tip button → route to Send
+        const pending = result[PENDING_SEND_STORAGE_KEY]
+        if (pending && Date.now() - pending.ts < 5_000) {
+          go('send')
+        }
+      },
+    )
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const view: View = !isOnboarded ? 'welcome' : currentView === 'welcome' ? 'wallet' : currentView
 

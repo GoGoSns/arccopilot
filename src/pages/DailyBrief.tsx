@@ -179,6 +179,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
 
+  // Clear badge when this page mounts (user has seen whale activity)
+  useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }, () => {
+      if (chrome.runtime.lastError) { /* ignore — popup may have opened before SW ready */ }
+    })
+  }, [])
+
   // ── header ─
   const displayName = profile?.displayName?.trim() || 'GoGo'
   const now         = new Date()
@@ -392,6 +399,20 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           </div>
           <p className="text-sm leading-relaxed text-arc-text-dim">Building patterns from your activity…</p>
         </div>
+
+        {/* ── Dev: manual whale check trigger ─────────────── */}
+        {import.meta.env.DEV && (
+          <button
+            onClick={() => {
+              chrome.runtime.sendMessage({ type: 'CHECK_WHALES_NOW' }, (res) => {
+                console.log('[DailyBrief] CHECK_WHALES_NOW response:', res)
+              })
+            }}
+            className="w-full text-center text-[10px] text-arc-text-dim/40 hover:text-arc-text-dim transition-colors py-1"
+          >
+            Check whales now (dev)
+          </button>
+        )}
 
       </div>
     </div>
