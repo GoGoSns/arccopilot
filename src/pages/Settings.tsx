@@ -47,29 +47,113 @@ export function Settings({ onBack }: SettingsProps) {
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
           AI Features
         </p>
-        <div className="px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer group" onClick={() => setCurrentView('gogo-ai')}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
-                <Key size={20} />
+        <div className="border-b border-arc-border/50">
+          <div 
+            className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group" 
+            onClick={() => apiKey ? setCurrentView('gogo-ai') : setIsAddingGemini(!isAddingGemini)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+                  <Key size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-arc-text">Gemini API Key</p>
+                  <p className={`text-[10px] ${apiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                    {apiKey ? 'Saved' : 'Not set'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-arc-text">Gemini API Key</p>
-                <p className={`text-[10px] ${apiKey ? 'text-arc-success' : 'text-arc-danger'}`}>
-                  {apiKey ? 'Saved' : 'Not set'}
-                </p>
+              <div className="flex items-center gap-1">
+                {apiKey && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleClearKey() }}
+                    className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                    title="Clear API Key"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                {!apiKey && <ChevronRight size={16} className="text-arc-text-dim" />}
               </div>
             </div>
-            {apiKey && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleClearKey() }}
-                className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
-                title="Clear API Key"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
           </div>
+          {isAddingGemini && !apiKey && (
+            <div className="px-4 pb-4 animate-in slide-in-from-top-2">
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  type="password"
+                  placeholder="Paste Gemini API Key..."
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-gold"
+                  value={tempKey}
+                  onChange={(e) => setTempKey(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveGemini()}
+                />
+                <button 
+                  onClick={handleSaveGemini}
+                  className="bg-arc-gold text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Twitter Bearer Token Section */}
+        <div className="border-b border-arc-border/50">
+          <div 
+            className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group"
+            onClick={() => setIsAddingTwitter(!isAddingTwitter)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-arc-gold/10 text-[#d4af37] group-hover:bg-arc-gold/20 transition-colors">
+                  <Twitter size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-arc-text">Twitter Bearer Token</p>
+                  <p className={`text-[10px] ${twitterToken ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                    {twitterToken ? 'Saved' : 'Not set'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {twitterToken && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleClearTwitter() }}
+                    className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                    title="Clear Token"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <ChevronRight size={16} className={`text-arc-text-dim transition-transform ${isAddingTwitter ? 'rotate-90' : ''}`} />
+              </div>
+            </div>
+          </div>
+          {isAddingTwitter && (
+            <div className="px-4 pb-4 animate-in slide-in-from-top-2">
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  type="password"
+                  placeholder="Bearer Token (AAAA...)"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-gold"
+                  value={tempTwitter}
+                  onChange={(e) => setTempTwitter(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveTwitter()}
+                />
+                <button 
+                  onClick={handleSaveTwitter}
+                  className="bg-arc-gold text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                >
+                  {twitterToken ? 'Update' : 'Save'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {[

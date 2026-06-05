@@ -447,7 +447,88 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        {/* ── 5. AI Insight ─────────────────────────────────── */}
+        {/* ── 5. Arc on X ─────────────────────────────────────── */}
+        <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
+          <div className="flex items-center gap-2">
+            <Twitter size={14} className="text-[#d4af37]" />
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Arc on X</p>
+          </div>
+
+          {tweetsLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="h-6 w-6 rounded-full bg-arc-border/70 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-2 w-24 bg-arc-border/70 rounded" />
+                    <div className="h-3 w-full bg-arc-border/70 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : !hasTwitterToken ? (
+            <div className="py-2 text-center space-y-3">
+              <p className="text-xs text-arc-text-dim px-4">Connect your X account to see Arc news</p>
+              <Button 
+                variant="primary" 
+                size="sm" 
+                className="h-7 text-[10px] font-bold bg-[#d4af37] text-arc-bg"
+                onClick={() => setCurrentView('settings')}
+              >
+                Set Twitter Token
+              </Button>
+            </div>
+          ) : tweetsError ? (
+            <div className="py-1 space-y-2">
+              <p className="text-[10px] text-arc-danger">{tweetsError}</p>
+              <button 
+                onClick={() => setCurrentView('settings')}
+                className="text-[10px] text-arc-gold hover:underline"
+              >
+                Update token in Settings
+              </button>
+            </div>
+          ) : tweets.length === 0 ? (
+            <p className="py-2 text-center text-xs text-arc-text-dim">No recent tweets found</p>
+          ) : (
+            <div className="space-y-4">
+              {tweets.slice(0, 3).map((tweet) => (
+                <div 
+                  key={tweet.id} 
+                  className="flex gap-3 cursor-pointer group"
+                  onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
+                >
+                  <img 
+                    src={tweet.authorAvatar || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'} 
+                    alt="" 
+                    className="h-6 w-6 rounded-full shrink-0 border border-arc-border/50"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-[11px] font-semibold text-arc-text truncate">{tweet.authorName}</span>
+                      <span className="text-[10px] text-arc-text-dim truncate">@{tweet.authorHandle} · {formatRelativeTime(tweet.createdAt)}</span>
+                    </div>
+                    <p className="text-xs text-arc-text line-clamp-2 leading-snug group-hover:text-arc-gold transition-colors">
+                      {tweet.text}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <div className="flex items-center gap-1 text-[9px] text-arc-text-dim">
+                        <TrendingUp size={10} />
+                        <span>{tweet.likes}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[9px] text-arc-text-dim">
+                        <MessageCircle size={10} />
+                        <span>{tweet.retweets}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── 6. AI Insight ─────────────────────────────────── */}
         <div className="relative overflow-hidden rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">

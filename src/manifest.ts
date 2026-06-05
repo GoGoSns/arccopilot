@@ -41,6 +41,7 @@ export default defineManifest({
     'https://generativelanguage.googleapis.com/*',
     'https://rpc.testnet.arc.network/*',
     'https://testnet.arcscan.app/*',
+    'https://api.twitter.com/*',
     'https://*/*',
     'http://*/*'
   ],
