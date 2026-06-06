@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, MessageCircle, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
@@ -7,7 +7,7 @@ import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
 import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
 import { DISMISSED_PATTERNS_KEY, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
-import { fetchArcTweets, getTwitterToken, type TwitterTweet } from '@/lib/twitterApi'
+import { fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
 
 // ─── constants ───────────────────────────────────────────────────────────────
 const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
@@ -15,7 +15,7 @@ const USDC_DECIMALS  = 6
 const TRANSFER_TTL   = 60_000       // 1 min
 const STATS_TTL      = 5 * 60_000   // 5 min
 const WHALE_TTL      = 5 * 60_000   // 5 min
-const TWEETS_TTL     = 10 * 60_000  // 10 min
+const TWEETS_TTL     = 60 * 60_000  // 60 min
 
 // ─── types ───────────────────────────────────────────────────────────────────
 interface RawTransfer {
@@ -188,7 +188,6 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
   const [tweetsLoading,  setTweetsLoading]  = useState(true)
   const [tweetsError,    setTweetsError]    = useState<string | null>(null)
-  const [hasTwitterToken,setHasTwitterToken]= useState(false)
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -311,29 +310,23 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   useEffect(() => {
     const cacheKey = 'arccopilot:tweets:arc'
     const cached   = readCache<TwitterTweet[]>(cacheKey)
+    setTweetsError(null)
 
     if (cached) {
       setTweets(cached)
       setTweetsLoading(false)
-      setHasTwitterToken(true)
       return
     }
 
-    getTwitterToken().then(token => {
-      if (!token) {
-        setHasTwitterToken(false)
-        setTweetsLoading(false)
-        return
-      }
-      setHasTwitterToken(true)
-      fetchArcTweets()
-        .then(items => {
-          writeCache(cacheKey, items, TWEETS_TTL)
-          setTweets(items)
-        })
-        .catch(err => setTweetsError(err.message))
-        .finally(() => setTweetsLoading(false))
-    })
+    fetchArcTweets()
+      .then(items => {
+        writeCache(cacheKey, items, TWEETS_TTL)
+        setTweets(items)
+      })
+      .catch(err => {
+        setTweetsError(err instanceof Error ? err.message : 'Tweets unavailable right now. Try refreshing in a few minutes.')
+      })
+      .finally(() => setTweetsLoading(false))
   }, [])
 
   const isPositive     = balanceChange?.startsWith('+')
@@ -503,30 +496,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 </div>
               ))}
             </div>
-          ) : !hasTwitterToken ? (
-            <div className="py-2 text-center space-y-3">
-              <p className="text-xs text-arc-text-dim px-4">Connect your X account to see Arc news</p>
-              <Button 
-                variant="primary" 
-                size="sm" 
-                className="h-7 text-[10px] font-bold bg-[#d4af37] text-arc-bg"
-                onClick={() => setCurrentView('settings')}
-              >
-                Set Twitter Token
-              </Button>
-            </div>
           ) : tweetsError ? (
-            <div className="py-1 space-y-2">
-              <p className="text-[10px] text-arc-danger">{tweetsError}</p>
-              <button 
-                onClick={() => setCurrentView('settings')}
-                className="text-[10px] text-arc-gold hover:underline"
-              >
-                Update token in Settings
-              </button>
-            </div>
+            <p className="py-1 text-center text-xs text-arc-danger">{tweetsError}</p>
           ) : tweets.length === 0 ? (
-            <p className="py-2 text-center text-xs text-arc-text-dim">No recent tweets found</p>
+            <p className="py-2 text-center text-xs text-arc-text-dim">No Arc tweets found yet</p>
           ) : (
             <div className="space-y-4">
               {tweets.slice(0, 3).map((tweet) => (
@@ -539,25 +512,18 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                     src={tweet.authorAvatar || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'} 
                     alt="" 
                     className="h-6 w-6 rounded-full shrink-0 border border-arc-border/50"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'
+                    }}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-[11px] font-semibold text-arc-text truncate">{tweet.authorName}</span>
-                      <span className="text-[10px] text-arc-text-dim truncate">@{tweet.authorHandle} · {formatRelativeTime(tweet.createdAt)}</span>
+                      <span className="text-[10px] text-arc-text-dim truncate">@{tweet.authorHandle} | {formatRelativeTime(tweet.createdAt)}</span>
                     </div>
                     <p className="text-xs text-arc-text line-clamp-2 leading-snug group-hover:text-arc-gold transition-colors">
                       {tweet.text}
                     </p>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <div className="flex items-center gap-1 text-[9px] text-arc-text-dim">
-                        <TrendingUp size={10} />
-                        <span>{tweet.likes}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-[9px] text-arc-text-dim">
-                        <MessageCircle size={10} />
-                        <span>{tweet.retweets}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}
