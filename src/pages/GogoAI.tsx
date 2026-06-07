@@ -9,6 +9,7 @@ import {
   askGogo,
   clearGogoHistory,
   getApiKey,
+  getProactiveGreeting,
   loadGogoHistory,
   saveGogoHistory,
   setApiKey as saveGeminiApiKey,
@@ -93,7 +94,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const setSelectedAddress = useStore((s) => s.setSelectedAddress)
   const addAddressMemory = useStore((s) => s.addAddressMemory)
   const updateAddressMemory = useStore((s) => s.updateAddressMemory)
-  const { balance } = useUSDCBalance()
+  const { balance, isLoading: balanceLoading } = useUSDCBalance()
 
   const [apiKey, setLocalApiKey] = useState<string | null>(null)
   const [keyInput, setKeyInput] = useState('')
@@ -106,6 +107,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesRef = useRef<Message[]>([])
+  const proactiveGreetingQueuedRef = useRef(false)
+  const proactiveGreetingStartedRef = useRef(false)
 
   const addressEntries = useMemo(() => Object.values(addressMemories), [addressMemories])
 
@@ -146,7 +149,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
   )
 
   const hasMessages = messages.length > 0
+  const hasUserMessages = messages.some((message) => message.role === 'user')
   const hasApiKey = Boolean(apiKey)
+  const isProactiveGreetingPending = Boolean(
+    historyLoaded &&
+      proactiveGreetingQueuedRef.current &&
+      !proactiveGreetingStartedRef.current &&
+      hasApiKey &&
+      !hasMessages &&
+      address,
+  )
+  const isComposerLocked = isLoading || isProactiveGreetingPending
+  const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
 
   const resolveAddress = (value?: string): string | null => {
     const trimmed = value?.trim()
@@ -173,6 +187,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
         setLocalApiKey(storedKey)
         setMessages(history)
         messagesRef.current = history
+        proactiveGreetingQueuedRef.current = Boolean(storedKey && history.length === 0)
+        proactiveGreetingStartedRef.current = false
         setHistoryLoaded(true)
       })
       .catch((error) => {
@@ -190,6 +206,48 @@ export function GogoAI({ onBack }: GogoAIProps) {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!historyLoaded) return
+    if (!proactiveGreetingQueuedRef.current) return
+    if (proactiveGreetingStartedRef.current) return
+    if (!apiKey || !address || balanceLoading) return
+    if (messagesRef.current.length > 0) {
+      proactiveGreetingQueuedRef.current = false
+      return
+    }
+
+    let cancelled = false
+    proactiveGreetingStartedRef.current = true
+    proactiveGreetingQueuedRef.current = false
+    setIsLoading(true)
+
+    void (async () => {
+      try {
+        const response = await getProactiveGreeting()
+        if (cancelled) return
+
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: response.reply,
+          action: response.action,
+          timestamp: Date.now(),
+        }
+
+        const finalMessages = [assistantMessage]
+        messagesRef.current = finalMessages
+        setMessages(finalMessages)
+      } catch (error) {
+        console.error('[GogoAI] proactive greeting failed:', error)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [address, apiKey, balanceLoading, historyLoaded])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -230,7 +288,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleSend = async () => {
     const trimmed = userInput.trim()
-    if (!trimmed || isLoading || !address) return
+    if (!trimmed || isComposerLocked || !address) return
 
     const history = messagesRef.current
     const userMessage: Message = {
@@ -380,7 +438,31 @@ export function GogoAI({ onBack }: GogoAIProps) {
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-        {!hasMessages && hasApiKey && (
+        {!hasMessages && hasApiKey && isComposerLocked && (
+          <div className="flex h-full items-center justify-center">
+            <Card className="w-full max-w-md p-5 shadow-xl shadow-black/20">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-gold/10">
+                  <Sparkles size={22} className="text-arc-gold" />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-arc-text">Gogo is preparing your brief.</p>
+                  <p className="text-sm text-arc-text-dim">I&apos;m checking your balance, activity, whales and patterns.</p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-arc-border bg-arc-bg/50 px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.1s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold" />
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {!hasMessages && hasApiKey && !isComposerLocked && (
           <div className="flex h-full items-center justify-center">
             <Card className="w-full max-w-md p-5 shadow-xl shadow-black/20">
               <div className="flex items-center gap-3">
@@ -513,6 +595,25 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 </div>
               </div>
             )}
+
+            {showStarterSuggestions && (
+              <Card className="border border-arc-border/80 bg-arc-card/80 p-4">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                  Quick suggestions
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {QUICK_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => handleQuickSuggestion(suggestion)}
+                      className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
@@ -561,11 +662,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
               className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-4 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
               value={userInput}
               onChange={(event) => setUserInput(event.target.value)}
-              disabled={isLoading || !address}
+              disabled={isComposerLocked || !address}
             />
             <button
               type="submit"
-              disabled={isLoading || !userInput.trim() || !address}
+              disabled={isComposerLocked || !userInput.trim() || !address}
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-arc-gold p-2 text-arc-bg transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Send"
             >

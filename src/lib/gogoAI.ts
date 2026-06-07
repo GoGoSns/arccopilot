@@ -1,6 +1,7 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import { GOGO_HISTORY } from '@/lib/storageKeys'
+import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
@@ -98,6 +99,7 @@ Speak like a smart friend who knows crypto. Match the user's language (Turkish o
 
 CAPABILITIES:
 Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
+The balance is denominated in USDC on Arc Testnet.
 
 OUTPUT (JSON only):
 { "reply": "max 3 sentences", "action": { "type": "...", "params": { } } }
@@ -222,6 +224,47 @@ function normalizeAction(raw: unknown): GogoAction {
     default:
       return { type: 'none', params: {}, ...done }
   }
+}
+
+function buildGogoContextFromStore(): GogoContext {
+  const state = useStore.getState()
+  const addressBook = Object.fromEntries(
+    Object.values(state.addressMemories).map((entry) => [
+      entry.address.toLowerCase(),
+      {
+        label: entry.label?.trim() || undefined,
+        tag: entry.tag,
+        lastUsedAt: entry.lastUsedAt,
+      },
+    ]),
+  )
+
+  const whales = Object.values(state.addressMemories)
+    .filter((entry) => entry.tag === 'whale')
+    .map((entry) => ({
+      address: entry.address,
+      label: entry.label?.trim() || undefined,
+    }))
+
+  return {
+    walletAddress: state.walletAddress ?? '',
+    balance: state.usdcBalance ?? '0.00',
+    addressBook,
+    whales,
+  }
+}
+
+function getLikelyLanguage(): 'Turkish' | 'English' {
+  if (typeof navigator === 'undefined') return 'English'
+  return navigator.language?.toLowerCase().startsWith('tr') ? 'Turkish' : 'English'
+}
+
+function getTimeOfDayLabel(): 'morning' | 'afternoon' | 'evening' | 'night' {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'morning'
+  if (hour < 18) return 'afternoon'
+  if (hour < 22) return 'evening'
+  return 'night'
 }
 
 function normalizeMessage(raw: unknown): Message | null {
@@ -377,6 +420,33 @@ function buildSystemPrompt(context: PromptContext): string {
   return `${SYSTEM_PROMPT}\n\nLIVE CONTEXT (JSON):\n${JSON.stringify(context)}`
 }
 
+function buildProactiveGreetingPrompt(context: PromptContext): string {
+  const likelyLanguage = getLikelyLanguage()
+  const timeOfDay = getTimeOfDayLabel()
+  const counts = {
+    recentActivityCount: context.recentTransfers.length,
+    whaleCount: context.whales.length,
+    tweetCount: context.recentTweets.length,
+    patternCount: context.detectedPatterns.length,
+  }
+
+  return `${SYSTEM_PROMPT}
+
+OPENING MODE:
+You are writing the first assistant message immediately after the app opens.
+Greet the user by time of day (${timeOfDay}).
+Briefly summarize their current situation using REAL numbers from context: balance, recent activity count, whale count, tweet count, and any relevant pattern count.
+Then suggest exactly ONE concrete next step if relevant, based on a pattern, whale movement, or a useful follow-up check.
+Keep it to 2-3 sentences, warm, and in the user's likely language (${likelyLanguage}).
+If a suggestion is not relevant, keep the action as none.
+
+COUNTS:
+${JSON.stringify({ ...counts, balance: `${context.wallet.balance} USDC` })}
+
+LIVE CONTEXT (JSON):
+${JSON.stringify(context)}`
+}
+
 function extractJsonPayload(text: string): string {
   const trimmed = text.trim()
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -392,6 +462,13 @@ function normalizeResponse(raw: unknown): GogoResponse {
     reply,
     action: normalizeAction(raw.action),
   }
+}
+
+function normalizeOptionalResponse(raw: unknown): { reply: string; action?: GogoAction } {
+  const response = normalizeResponse(raw)
+  return response.action.type === 'none'
+    ? { reply: response.reply }
+    : { reply: response.reply, action: response.action }
 }
 
 export async function loadGogoHistory(): Promise<Message[]> {
@@ -430,6 +507,62 @@ export async function setApiKey(key: string): Promise<void> {
 
 export async function clearApiKey(): Promise<void> {
   await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
+}
+
+export async function getProactiveGreeting(): Promise<{ reply: string; action?: GogoAction }> {
+  const apiKey = await getApiKey()
+  if (!apiKey) throw new Error('NO_API_KEY')
+
+  const modelName = 'gemini-2.5-flash'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+  const promptContext = buildPromptContext(buildGogoContextFromStore())
+
+  const body = {
+    systemInstruction: {
+      parts: [{ text: buildProactiveGreetingPrompt(promptContext) }],
+    },
+    contents: [
+      {
+        role: 'user',
+        parts: [{
+          text: 'Generate the proactive opening greeting now. Return JSON only.',
+        }],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.35,
+      topP: 0.95,
+    },
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error('[GogoAI] Greeting API error:', res.status, errorText)
+      if (res.status === 403) throw new Error('Invalid API key. Update in Settings.')
+      if (res.status === 400) throw new Error('Bad request. Model may be deprecated.')
+      if (res.status === 429) throw new Error('Free tier limit reached. Try in a minute.')
+      throw new Error(`API error ${res.status}`)
+    }
+
+    const data = await res.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) throw new Error('PARSE_ERROR')
+
+    const payload = extractJsonPayload(text)
+    return normalizeOptionalResponse(JSON.parse(payload))
+  } catch (err: unknown) {
+    console.error('[GogoAI] Greeting failed:', err)
+    if (err instanceof Error) throw err
+    throw new Error(String(err))
+  }
 }
 
 export async function askGogo(
