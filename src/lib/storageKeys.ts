@@ -2,4 +2,5 @@ export const PENDING_SEND_STORAGE_KEY = 'arccopilot:pending-send'
 export const DISMISSED_PATTERNS_KEY = 'arccopilot:patterns:dismissed'
 export const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 export const TWITTERAPI_KEY = 'arccopilot:twitterapi-key'
-export const GOGO_HISTORY_STORAGE_KEY = 'arccopilot:gogo-history'
+export const GOGO_HISTORY = 'arccopilot:gogo-history'
+export const GOGO_HISTORY_STORAGE_KEY = GOGO_HISTORY
