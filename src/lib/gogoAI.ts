@@ -1,9 +1,11 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
+import { EXPLORER_URL } from '@/lib/arc'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import { GOGO_HISTORY } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
+const BLOCKSCOUT_API_URL = `${EXPLORER_URL}/api/v2`
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const BRIEF_TWEETS_CACHE_KEY = 'arccopilot:tweets:arc'
 const MAX_HISTORY_MESSAGES = 50
@@ -44,6 +46,27 @@ type RecentTweetSummary = {
   retweets: number
 }
 
+export interface AddressAnalysis {
+  isContract: boolean
+  txCount: number
+  hasActivity: boolean
+  summary: string
+}
+
+type BlockscoutAddressInfo = {
+  is_contract?: boolean
+  coin_balance?: string | number
+  tx_count?: number | string
+  transactions_count?: number | string
+}
+
+type BlockscoutTransactionsResponse = {
+  items?: unknown[]
+  count?: number | string
+  total_count?: number | string
+  tx_count?: number | string
+}
+
 type PromptContext = {
   wallet: {
     address: string
@@ -68,7 +91,7 @@ export type GogoAction =
   | { type: 'send'; params: { recipient?: string; amount?: string }; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
-  | { type: 'analyze_address'; params: { address: string }; completed?: boolean }
+  | { type: 'analyze_address'; params: { address: string }; completed?: boolean; analysis?: AddressAnalysis }
   | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean }
   | { type: 'find_pattern'; params: Record<string, never>; completed?: boolean }
   | { type: 'open_brief'; params: Record<string, never>; completed?: boolean }
@@ -103,6 +126,8 @@ Read the user's balance, activity, address book, whales, patterns, and recent Ar
 The balance is denominated in USDC on Arc Testnet.
 
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
+
+When the user asks about an address (is it safe, analyze this address, bu adres güvenli mi, 0x... hakkında), use the analyze_address action with the address. The app will fetch on-chain data and you'll explain the risk clearly. Warn strongly about contract addresses.
 
 OUTPUT (JSON only):
 { "reply": "max 3 sentences", "action": { "type": "...", "params": { } } }
@@ -175,6 +200,62 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value))
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed))
+  }
+
+  return null
+}
+
+function toBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
+  }
+  return null
+}
+
+function buildAddressRiskSummary(isContract: boolean, txCount: number, hasActivity: boolean): string {
+  const language = getLikelyLanguage()
+
+  if (language === 'Turkish') {
+    if (isContract) return 'Bu bir kontrat adresi. Tip/transfer yaparsan fonların kaybolabilir.'
+    if (!hasActivity) return 'Bu adres hiç kullanılmamış, yeni veya boş olabilir.'
+    return `Normal bir cüzdan, ${txCount} işlem yapmış.`
+  }
+
+  if (isContract) return 'This is a contract address. If you tip or transfer to it, funds can be lost.'
+  if (!hasActivity) return 'This address has never been used, so it may be new or empty.'
+  return `This is a normal wallet with ${txCount} transactions.`
+}
+
+function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
+  if (!isRecord(raw)) return null
+
+  const isContract = toBoolean(raw.isContract ?? raw.is_contract) ?? false
+  const txCount = toFiniteNumber(raw.txCount ?? raw.tx_count ?? raw.transactions_count) ?? 0
+  const hasActivity = typeof raw.hasActivity === 'boolean' ? raw.hasActivity : txCount > 0
+  const summary = typeof raw.summary === 'string' && raw.summary.trim()
+    ? raw.summary.trim()
+    : buildAddressRiskSummary(isContract, txCount, hasActivity)
+
+  return {
+    isContract,
+    txCount,
+    hasActivity,
+    summary,
+  }
+}
+
 function normalizeAction(raw: unknown): GogoAction {
   if (!isRecord(raw)) return { type: 'none', params: {} }
 
@@ -210,6 +291,7 @@ function normalizeAction(raw: unknown): GogoAction {
       return {
         type: 'analyze_address',
         params: { address: typeof params.address === 'string' ? params.address : '' },
+        analysis: normalizeAddressAnalysis(raw.analysis) ?? undefined,
         ...done,
       }
     case 'summarize_activity': {
@@ -517,6 +599,50 @@ export async function setApiKey(key: string): Promise<void> {
 
 export async function clearApiKey(): Promise<void> {
   await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
+}
+
+async function fetchBlockscoutJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${BLOCKSCOUT_API_URL}${path}`, {
+    headers: { accept: 'application/json' },
+  })
+
+  if (!res.ok) {
+    throw new Error(`Blockscout error ${res.status}`)
+  }
+
+  return (await res.json()) as T
+}
+
+function resolveTxCount(addressInfo: BlockscoutAddressInfo, txInfo: BlockscoutTransactionsResponse): number {
+  return (
+    toFiniteNumber(txInfo.total_count)
+    ?? toFiniteNumber(txInfo.count)
+    ?? toFiniteNumber(txInfo.tx_count)
+    ?? toFiniteNumber(addressInfo.tx_count)
+    ?? toFiniteNumber(addressInfo.transactions_count)
+    ?? (Array.isArray(txInfo.items) ? txInfo.items.length : 0)
+  )
+}
+
+export async function analyzeAddress(address: string): Promise<AddressAnalysis> {
+  const normalized = normalizeAddress(address)
+  if (!normalized) throw new Error('ADDRESS_REQUIRED')
+
+  const [addressInfo, txInfo] = await Promise.all([
+    fetchBlockscoutJson<BlockscoutAddressInfo>(`/addresses/${normalized}`),
+    fetchBlockscoutJson<BlockscoutTransactionsResponse>(`/addresses/${normalized}/transactions?limit=1`),
+  ])
+
+  const isContract = addressInfo.is_contract === true || addressInfo.is_contract === 'true'
+  const txCount = resolveTxCount(addressInfo, txInfo)
+  const hasActivity = txCount > 0 || (Array.isArray(txInfo.items) && txInfo.items.length > 0)
+
+  return {
+    isContract,
+    txCount,
+    hasActivity,
+    summary: buildAddressRiskSummary(isContract, txCount, hasActivity),
+  }
 }
 
 export async function getProactiveGreeting(): Promise<{ reply: string; action?: GogoAction }> {
