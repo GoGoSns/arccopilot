@@ -1,5 +1,5 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
-import { EXPLORER_URL } from '@/lib/arc'
+import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import { GOGO_HISTORY } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
@@ -53,6 +53,27 @@ export interface AddressAnalysis {
   summary: string
 }
 
+export interface SpendingAnalysis {
+  totalSent: number
+  totalReceived: number
+  net: number
+  txCount: number
+  topRecipient: { label: string; amount: number } | null
+  summary: string
+}
+
+type SpendingTransfer = BlockscoutTransfer & {
+  transaction_hash?: string
+}
+
+type BlockscoutTransferPage = {
+  items?: SpendingTransfer[]
+  next_page_params?: {
+    block_number?: number
+    index?: number
+  }
+}
+
 type BlockscoutAddressInfo = {
   is_contract?: boolean
   coin_balance?: string | number
@@ -92,7 +113,7 @@ export type GogoAction =
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
   | { type: 'analyze_address'; params: { address: string }; completed?: boolean; analysis?: AddressAnalysis }
-  | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean }
+  | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean; analysis?: SpendingAnalysis }
   | { type: 'find_pattern'; params: Record<string, never>; completed?: boolean }
   | { type: 'open_brief'; params: Record<string, never>; completed?: boolean }
   | { type: 'draft_tweet'; params: { text: string }; completed?: boolean }
@@ -128,6 +149,8 @@ The balance is denominated in USDC on Arc Testnet.
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
 
 When the user asks about an address (is it safe, analyze this address, bu adres güvenli mi, 0x... hakkında), use the analyze_address action with the address. The app will fetch on-chain data and you'll explain the risk clearly. Warn strongly about contract addresses.
+
+When the user asks about spending or activity over a period (how much did I spend, bu ay ne kadar harcadim, son 7 gunde ne yaptim), use summarize_activity with the period. The app fetches real on-chain data and you summarize it with specific numbers.
 
 OUTPUT (JSON only):
 { "reply": "max 3 sentences", "action": { "type": "...", "params": { } } }
@@ -213,6 +236,19 @@ function toFiniteNumber(value: unknown): number | null {
   return null
 }
 
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  return null
+}
+
 function toBoolean(value: unknown): boolean | null {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
@@ -222,6 +258,55 @@ function toBoolean(value: unknown): boolean | null {
     if (normalized === 'false') return false
   }
   return null
+}
+
+function toUsdcNumber(value: bigint): number {
+  const sign = value < 0n ? -1 : 1
+  const abs = value < 0n ? -value : value
+  const whole = abs / BigInt(10 ** USDC_DECIMALS)
+  const fraction = abs % BigInt(10 ** USDC_DECIMALS)
+  return sign * Number(`${whole.toString()}.${fraction.toString().padStart(USDC_DECIMALS, '0')}`)
+}
+
+function getPeriodMs(period: '24h' | '7d' | '30d'): number {
+  switch (period) {
+    case '7d':
+      return 7 * 24 * 60 * 60 * 1000
+    case '30d':
+      return 30 * 24 * 60 * 60 * 1000
+    case '24h':
+    default:
+      return 24 * 60 * 60 * 1000
+  }
+}
+
+function getPeriodLabel(period: '24h' | '7d' | '30d'): string {
+  const language = getLikelyLanguage()
+  if (language === 'Turkish') {
+    switch (period) {
+      case '7d':
+        return '7 gunde'
+      case '30d':
+        return '30 gunde'
+      case '24h':
+      default:
+        return '24 saatte'
+    }
+  }
+
+  switch (period) {
+    case '7d':
+      return 'last 7 days'
+    case '30d':
+      return 'last 30 days'
+    case '24h':
+    default:
+      return 'last 24 hours'
+  }
+}
+
+function formatUsdcAmount(value: bigint): string {
+  return formatBalance(value, USDC_DECIMALS)
 }
 
 function buildAddressRiskSummary(isContract: boolean, txCount: number, hasActivity: boolean): string {
@@ -238,6 +323,40 @@ function buildAddressRiskSummary(isContract: boolean, txCount: number, hasActivi
   return `This is a normal wallet with ${txCount} transactions.`
 }
 
+function buildSpendingSummary(
+  period: '24h' | '7d' | '30d',
+  totalSentUnits: bigint,
+  totalReceivedUnits: bigint,
+  netUnits: bigint,
+  txCount: number,
+  topRecipient: { label: string; amountUnits: bigint } | null,
+): string {
+  const language = getLikelyLanguage()
+  const sent = formatUsdcAmount(totalSentUnits)
+  const received = formatUsdcAmount(totalReceivedUnits)
+  const netAbs = netUnits < 0n ? -netUnits : netUnits
+  const netValue = formatUsdcAmount(netAbs)
+  const signedNet = `${netUnits > 0n ? '+' : netUnits < 0n ? '-' : ''}${netValue}`
+  const periodLabel = getPeriodLabel(period)
+  const topRecipientText = topRecipient
+    ? language === 'Turkish'
+      ? ` En cok gonderdigin kisi: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
+      : ` Top recipient: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
+    : ''
+
+  if (txCount === 0) {
+    return language === 'Turkish'
+      ? `Son ${periodLabel} USDC harcama hareketi bulunamadi.`
+      : `No USDC spending activity was found in the ${periodLabel}.`
+  }
+
+  if (language === 'Turkish') {
+    return `Son ${periodLabel} ${txCount} transfer yaptin. ${sent} USDC gonderdin, ${received} USDC aldin ve net ${signedNet} USDC ile kapattin.${topRecipientText}`
+  }
+
+  return `Over the ${periodLabel}, you made ${txCount} transfers. You sent ${sent} USDC, received ${received} USDC, and finished at net ${signedNet} USDC.${topRecipientText}`
+}
+
 function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
   if (!isRecord(raw)) return null
 
@@ -252,6 +371,44 @@ function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
     isContract,
     txCount,
     hasActivity,
+    summary,
+  }
+}
+
+function normalizeSpendingAnalysis(raw: unknown, period: '24h' | '7d' | '30d' = '24h'): SpendingAnalysis | null {
+  if (!isRecord(raw)) return null
+
+  const totalSent = toNumber(raw.totalSent) ?? 0
+  const totalReceived = toNumber(raw.totalReceived) ?? 0
+  const net = toNumber(raw.net) ?? totalReceived - totalSent
+  const txCount = toFiniteNumber(raw.txCount) ?? 0
+  const topRecipientRaw = isRecord(raw.topRecipient) ? raw.topRecipient : null
+  const topRecipient = topRecipientRaw
+    ? {
+        label: typeof topRecipientRaw.label === 'string' && topRecipientRaw.label.trim()
+          ? topRecipientRaw.label.trim()
+          : '',
+        amount: toNumber(topRecipientRaw.amount) ?? 0,
+      }
+    : null
+
+  const summary = typeof raw.summary === 'string' && raw.summary.trim()
+    ? raw.summary.trim()
+    : buildSpendingSummary(
+        period,
+        BigInt(Math.round(totalSent * 10 ** USDC_DECIMALS)),
+        BigInt(Math.round(totalReceived * 10 ** USDC_DECIMALS)),
+        BigInt(Math.round(net * 10 ** USDC_DECIMALS)),
+        txCount,
+        topRecipient ? { label: topRecipient.label || 'Unknown', amountUnits: BigInt(Math.round(topRecipient.amount * 10 ** USDC_DECIMALS)) } : null,
+      )
+
+  return {
+    totalSent,
+    totalReceived,
+    net,
+    txCount,
+    topRecipient,
     summary,
   }
 }
@@ -299,6 +456,7 @@ function normalizeAction(raw: unknown): GogoAction {
       return {
         type: 'summarize_activity',
         params: { period },
+        analysis: normalizeSpendingAnalysis(raw.analysis, period) ?? undefined,
         ...done,
       }
     }
@@ -624,6 +782,70 @@ function resolveTxCount(addressInfo: BlockscoutAddressInfo, txInfo: BlockscoutTr
   )
 }
 
+function buildTransferKey(transfer: SpendingTransfer): string {
+  const hash = typeof transfer.transaction_hash === 'string' && transfer.transaction_hash.trim()
+    ? transfer.transaction_hash.trim().toLowerCase()
+    : ''
+  if (hash) return hash
+
+  const from = normalizeAddress(transfer.from?.hash)
+  const to = normalizeAddress(transfer.to?.hash)
+  const value = transfer.total?.value ?? '0'
+  return `${transfer.timestamp}|${from}|${to}|${value}`
+}
+
+function dedupeTransfers(transfers: SpendingTransfer[]): SpendingTransfer[] {
+  const seen = new Set<string>()
+  const unique: SpendingTransfer[] = []
+
+  for (const transfer of transfers) {
+    const key = buildTransferKey(transfer)
+    if (seen.has(key)) continue
+    seen.add(key)
+    unique.push(transfer)
+  }
+
+  return unique
+}
+
+async function fetchSpendingTransfers(address: string, cutoffMs: number): Promise<SpendingTransfer[]> {
+  const normalized = normalizeAddress(address)
+  if (!normalized) return []
+
+  const transfers: SpendingTransfer[] = []
+  let nextPageParams: BlockscoutTransferPage['next_page_params'] | undefined
+
+  for (let page = 0; page < 8; page++) {
+    const query = new URLSearchParams()
+    query.set('type', 'ERC-20')
+    query.set('token', USDC_ADDRESS)
+    if (nextPageParams?.block_number != null) {
+      query.set('block_number', String(nextPageParams.block_number))
+    }
+    if (nextPageParams?.index != null) {
+      query.set('index', String(nextPageParams.index))
+    }
+
+    const pageData = await fetchBlockscoutJson<BlockscoutTransferPage>(`/addresses/${normalized}/token-transfers?${query.toString()}`)
+    const items = Array.isArray(pageData.items) ? pageData.items : []
+    transfers.push(...items)
+
+    if (items.length === 0) break
+
+    const oldest = items.reduce((min, item) => {
+      const timestamp = item.timestamp ? new Date(item.timestamp).getTime() : 0
+      return timestamp > 0 && timestamp < min ? timestamp : min
+    }, Number.POSITIVE_INFINITY)
+
+    if (oldest < cutoffMs) break
+
+    if (!pageData.next_page_params) break
+    nextPageParams = pageData.next_page_params
+  }
+
+  return transfers
+}
+
 export async function analyzeAddress(address: string): Promise<AddressAnalysis> {
   const normalized = normalizeAddress(address)
   if (!normalized) throw new Error('ADDRESS_REQUIRED')
@@ -642,6 +864,84 @@ export async function analyzeAddress(address: string): Promise<AddressAnalysis> 
     txCount,
     hasActivity,
     summary: buildAddressRiskSummary(isContract, txCount, hasActivity),
+  }
+}
+
+export async function analyzeSpending(period: '24h' | '7d' | '30d'): Promise<SpendingAnalysis> {
+  const state = buildGogoContextFromStore()
+  const normalized = normalizeAddress(state.walletAddress)
+  if (!normalized) throw new Error('ADDRESS_REQUIRED')
+
+  const cutoffMs = Date.now() - getPeriodMs(period)
+  const cacheKey = `${BRIEF_TRANSFER_CACHE_PREFIX}${normalized}`
+  const cachedTransfers = readLocalCache<SpendingTransfer[]>(cacheKey) ?? []
+
+  let liveTransfers: SpendingTransfer[] = []
+  try {
+    liveTransfers = await fetchSpendingTransfers(normalized, cutoffMs)
+  } catch (error) {
+    if (cachedTransfers.length === 0) {
+      throw error instanceof Error ? error : new Error(String(error))
+    }
+  }
+
+  const transfers = dedupeTransfers([...cachedTransfers, ...liveTransfers])
+    .filter((transfer) => {
+      const timestamp = transfer.timestamp ? new Date(transfer.timestamp).getTime() : 0
+      return timestamp >= cutoffMs
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime()
+      const bTime = new Date(b.timestamp).getTime()
+      return bTime - aTime
+    })
+
+  const addressBook = state.addressBook
+  let sentUnits = 0n
+  let receivedUnits = 0n
+  const outgoingByRecipient = new Map<string, bigint>()
+
+  for (const transfer of transfers) {
+    const amount = BigInt(transfer.total?.value ?? '0')
+    const from = normalizeAddress(transfer.from?.hash)
+    const to = normalizeAddress(transfer.to?.hash)
+
+    if (from === normalized) {
+      sentUnits += amount
+      if (to) {
+        outgoingByRecipient.set(to, (outgoingByRecipient.get(to) ?? 0n) + amount)
+      }
+    }
+
+    if (to === normalized) {
+      receivedUnits += amount
+    }
+  }
+
+  const topRecipientEntry = Array.from(outgoingByRecipient.entries()).sort(([, a], [, b]) => (b > a ? 1 : b < a ? -1 : 0))[0]
+  const topRecipient = topRecipientEntry
+    ? {
+        address: topRecipientEntry[0],
+        amountUnits: topRecipientEntry[1],
+        label: addressBook[topRecipientEntry[0]]?.label?.trim() || shortAddr(topRecipientEntry[0]),
+      }
+    : null
+
+  const netUnits = receivedUnits - sentUnits
+  const summary = buildSpendingSummary(period, sentUnits, receivedUnits, netUnits, transfers.length, topRecipient)
+
+  return {
+    totalSent: toUsdcNumber(sentUnits),
+    totalReceived: toUsdcNumber(receivedUnits),
+    net: toUsdcNumber(netUnits),
+    txCount: transfers.length,
+    topRecipient: topRecipient
+      ? {
+          label: topRecipient.label,
+          amount: toUsdcNumber(topRecipient.amountUnits),
+        }
+      : null,
+    summary,
   }
 }
 
