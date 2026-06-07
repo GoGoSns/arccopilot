@@ -72,6 +72,7 @@ export type GogoAction =
   | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean }
   | { type: 'find_pattern'; params: Record<string, never>; completed?: boolean }
   | { type: 'open_brief'; params: Record<string, never>; completed?: boolean }
+  | { type: 'draft_tweet'; params: { text: string }; completed?: boolean }
   | { type: 'none'; params: Record<string, never>; completed?: boolean }
 
 export interface GogoResponse {
@@ -101,6 +102,8 @@ CAPABILITIES:
 Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
 The balance is denominated in USDC on Arc Testnet.
 
+If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
+
 OUTPUT (JSON only):
 { "reply": "max 3 sentences", "action": { "type": "...", "params": { } } }
 
@@ -115,6 +118,7 @@ ACTION TYPES:
 - summarize_activity: { period: "24h" | "7d" | "30d" }
 - find_pattern: { }
 - open_brief: { }
+- draft_tweet: { text: "..." }
 - none: { }`
 
 function canUseChromeStorage(): boolean {
@@ -220,6 +224,12 @@ function normalizeAction(raw: unknown): GogoAction {
       return { type: 'find_pattern', params: {}, ...done }
     case 'open_brief':
       return { type: 'open_brief', params: {}, ...done }
+    case 'draft_tweet':
+      return {
+        type: 'draft_tweet',
+        params: { text: typeof params.text === 'string' ? params.text : '' },
+        ...done,
+      }
     case 'none':
     default:
       return { type: 'none', params: {}, ...done }

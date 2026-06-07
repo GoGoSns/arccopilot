@@ -64,6 +64,8 @@ function getActionLabel(action: GogoAction): string {
       return 'Find Patterns'
     case 'open_brief':
       return 'Open Brief'
+    case 'draft_tweet':
+      return 'Draft Tweet'
     case 'none':
     default:
       return ''
@@ -103,6 +105,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
   const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [copiedDraftKey, setCopiedDraftKey] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -157,7 +160,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
       !proactiveGreetingStartedRef.current &&
       hasApiKey &&
       !hasMessages &&
-      address,
+      address &&
+      balanceLoading,
   )
   const isComposerLocked = isLoading || isProactiveGreetingPending
   const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
@@ -388,10 +392,30 @@ export function GogoAI({ onBack }: GogoAIProps) {
       case 'open_brief':
         setCurrentView('daily-brief')
         break
+      case 'draft_tweet':
+        break
       case 'none':
       default:
         break
     }
+  }
+
+  const handleCopyDraftTweet = async (text: string, draftKey: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedDraftKey(draftKey)
+    } catch (error) {
+      console.error('[GogoAI] copy draft failed:', error)
+    }
+  }
+
+  const handleOpenTweetCompose = (text: string) => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url })
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   if (isInitializing) {
@@ -536,7 +560,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
             {messages.map((message, index) => {
               const isUser = message.role === 'user'
               const isError = message.role === 'error'
-              const action = message.action && message.action.type !== 'none' ? message.action : null
+              const draftTweet = message.action && message.action.type === 'draft_tweet' ? message.action : null
+              const action = message.action && message.action.type !== 'none' && message.action.type !== 'draft_tweet'
+                ? message.action
+                : null
+              const draftKey = `${message.timestamp}-${index}`
+              const draftText = draftTweet?.params.text ?? ''
+              const draftLength = draftText.length
 
               return (
                 <div key={`${message.timestamp}-${index}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
@@ -555,6 +585,44 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <div className={`mt-1 text-[11px] text-arc-text-dim ${isUser ? 'pr-1 text-right' : 'pl-1'}`}>
                     {formatTime(message.timestamp)}
                   </div>
+
+                  {draftTweet && (
+                    <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+                      <div className="rounded-2xl border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                            Tweet draft
+                          </p>
+                          <span className={`text-xs font-medium ${draftLength > 280 ? 'text-arc-danger' : 'text-arc-text-dim'}`}>
+                            {draftLength}/280
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-arc-border bg-arc-bg/80 p-3 text-sm leading-relaxed whitespace-pre-wrap text-arc-text">
+                          {draftText}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-[11px]"
+                            onClick={() => void handleCopyDraftTweet(draftText, draftKey)}
+                          >
+                            {copiedDraftKey === draftKey ? 'Copied ✓' : 'Copy'}
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            className="h-8 px-3 text-[11px]"
+                            onClick={() => handleOpenTweetCompose(draftText)}
+                          >
+                            Tweet
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {action && (
                     <div className={`mt-2 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
