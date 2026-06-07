@@ -1,14 +1,31 @@
-const NITTER_INSTANCES = [
-  "https://nitter.privacydev.net",
-  "https://nitter.poast.org",
-  "https://nitter.tiekoetter.com",
-  "https://nitter.weiler.rocks",
-  "https://nitter.lucabased.xyz"
-]
+import { TWITTERAPI_KEY } from '@/lib/storageKeys'
 
-const SEARCH_QUERIES = ["Arc Network stablecoin", "Arc testnet"]
-const FETCH_TIMEOUT_MS = 8000
-const UNAVAILABLE_ERROR = "Tweets unavailable right now. Try refreshing in a few minutes."
+const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
+const TWITTER_SEARCH_QUERY = encodeURIComponent('"Arc Network" OR "ArcStablecoin" OR "Arc testnet"')
+const TWITTER_SEARCH_URL = `https://api.twitterapi.io/twitter/tweet/advanced_search?query=${TWITTER_SEARCH_QUERY}&queryType=Latest`
+
+type TwitterApiAuthor = {
+  userName?: string
+  name?: string
+  profilePicture?: string
+  isBlueVerified?: boolean
+}
+
+type TwitterApiTweet = {
+  id?: string
+  url?: string
+  text?: string
+  createdAt?: string
+  likeCount?: number
+  retweetCount?: number
+  author?: TwitterApiAuthor
+}
+
+type TwitterApiResponse = {
+  tweets?: TwitterApiTweet[]
+  has_next_page?: boolean
+  next_cursor?: string
+}
 
 export type TwitterTweet = {
   id: string
@@ -17,80 +34,60 @@ export type TwitterTweet = {
   authorHandle: string
   authorAvatar: string
   createdAt: string
+  likes: number
+  retweets: number
+  verified: boolean
   tweetUrl: string
 }
 
-async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), ms)
-  try {
-    const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
-    return res
-  } catch (err) {
-    clearTimeout(timeout)
-    throw err
+export async function getTwitterApiKey(): Promise<string | null> {
+  const res = await chrome.storage.local.get([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY]) as Record<string, string | undefined>
+  const key = res[TWITTERAPI_KEY] || res[LEGACY_TWITTERAPI_KEY] || null
+
+  if (key && !res[TWITTERAPI_KEY]) {
+    await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
+    await chrome.storage.local.remove(LEGACY_TWITTERAPI_KEY)
   }
+
+  return key
+}
+
+export async function setTwitterApiKey(key: string): Promise<void> {
+  await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
+  await chrome.storage.local.remove(LEGACY_TWITTERAPI_KEY)
+}
+
+export async function clearTwitterApiKey(): Promise<void> {
+  await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
 }
 
 export async function fetchArcTweets(): Promise<TwitterTweet[]> {
-  const errors: string[] = []
-  let sawValidFeed = false
+  const apiKey = await getTwitterApiKey()
+  if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
 
-  for (const instance of NITTER_INSTANCES) {
-    for (const query of SEARCH_QUERIES) {
-      try {
-        const url = instance + "/search/rss?q=" + encodeURIComponent(query) + "&f=tweets"
-        const res = await fetchWithTimeout(url, FETCH_TIMEOUT_MS)
-        if (!res.ok) {
-          errors.push(instance + ": " + res.status)
-          continue
-        }
+  const res = await fetch(TWITTER_SEARCH_URL, {
+    headers: { 'X-API-Key': apiKey },
+  })
 
-        const xmlText = await res.text()
-        const tweets = parseNitterRSS(xmlText)
-        sawValidFeed = true
-
-        if (tweets.length > 0) {
-          console.log("[Nitter] Success via " + instance + ", " + tweets.length + " tweets")
-          return tweets
-        }
-      } catch (err) {
-        errors.push(instance + ": fetch failed")
-      }
-    }
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw new Error('Invalid TwitterAPI key. Update in Settings.')
+    if (res.status === 429) throw new Error('Rate limit. Try again later.')
+    throw new Error(`TwitterAPI error ${res.status}`)
   }
 
-  if (sawValidFeed) return []
+  const data = await res.json() as TwitterApiResponse
+  const tweets = Array.isArray(data.tweets) ? data.tweets : []
 
-  console.warn("[Nitter] All instances failed:", errors)
-  throw new Error(UNAVAILABLE_ERROR)
-}
-
-function parseNitterRSS(xmlText: string): TwitterTweet[] {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(xmlText, "text/xml")
-  const parseError = doc.querySelector("parsererror")
-  if (parseError) throw new Error("Invalid RSS")
-
-  const items = Array.from(doc.querySelectorAll("item"))
-  return items.slice(0, 5).map((item, i) => {
-    const title = item.querySelector("title")?.textContent || ""
-    const link = item.querySelector("link")?.textContent || ""
-    const pubDate = item.querySelector("pubDate")?.textContent || ""
-    let creator = ""
-    const creatorEl = item.getElementsByTagNameNS("http://purl.org/dc/elements/1.1/", "creator")[0]
-    if (creatorEl) creator = creatorEl.textContent || ""
-    const tweetUrl = link.replace(/https?:\/\/[^/]+/, "https://twitter.com")
-    const handle = creator.replace(/^@/, "").trim() || "unknown"
-    return {
-      id: link.split("/").pop() || "tweet-" + i + "-" + Date.now(),
-      text: title.replace(/^R to @\w+:\s*/, "").trim(),
-      authorName: handle,
-      authorHandle: handle,
-      authorAvatar: "https://unavatar.io/twitter/" + handle,
-      createdAt: pubDate,
-      tweetUrl: tweetUrl
-    }
-  })
+  return tweets.slice(0, 5).map((t: any) => ({
+    id: t.id || String(Math.random()),
+    text: t.text || '',
+    authorName: t.author?.name || t.author?.userName || 'Unknown',
+    authorHandle: t.author?.userName || 'unknown',
+    authorAvatar: t.author?.profilePicture || '',
+    createdAt: t.createdAt || '',
+    likes: t.likeCount || 0,
+    retweets: t.retweetCount || 0,
+    verified: t.author?.isBlueVerified || false,
+    tweetUrl: t.url || `https://twitter.com/${t.author?.userName}/status/${t.id}`,
+  }))
 }

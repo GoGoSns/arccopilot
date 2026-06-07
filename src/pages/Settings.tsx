@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Book, ChevronRight, Key, Trash2 } from 'lucide-react'
+import { ArrowLeft, Book, ChevronRight, Key, Trash2, Twitter } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
+import { clearTwitterApiKey, getTwitterApiKey, setTwitterApiKey } from '@/lib/twitterApi'
 
 interface SettingsProps {
   onBack: () => void
@@ -9,25 +10,48 @@ interface SettingsProps {
 
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
-  const [apiKey, setApiKey] = useState<string | null>(null)
+  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
+  const [twitterApiKey, setTwitterApiKeyState] = useState<string | null>(null)
   const [isAddingGemini, setIsAddingGemini] = useState(false)
+  const [isAddingTwitter, setIsAddingTwitter] = useState(false)
   const [tempKey, setTempKey] = useState('')
+  const [twitterTempKey, setTwitterTempKey] = useState('')
 
   useEffect(() => {
-    getApiKey().then(setApiKey)
+    Promise.all([getApiKey(), getTwitterApiKey()]).then(([geminiKey, twitterKey]) => {
+      setGeminiApiKey(geminiKey)
+      setTwitterApiKeyState(twitterKey)
+    })
   }, [])
 
-  const handleClearKey = async () => {
+  const handleClearGeminiKey = async () => {
     await clearApiKey()
-    setApiKey(null)
+    setGeminiApiKey(null)
+    setIsAddingGemini(false)
+    setTempKey('')
   }
 
   const handleSaveGemini = async () => {
     if (!tempKey.trim()) return
     await saveGeminiKey(tempKey.trim())
-    setApiKey(tempKey.trim())
+    setGeminiApiKey(tempKey.trim())
     setIsAddingGemini(false)
     setTempKey('')
+  }
+
+  const handleClearTwitterKey = async () => {
+    await clearTwitterApiKey()
+    setTwitterApiKeyState(null)
+    setIsAddingTwitter(false)
+    setTwitterTempKey('')
+  }
+
+  const handleSaveTwitterKey = async () => {
+    if (!twitterTempKey.trim()) return
+    await setTwitterApiKey(twitterTempKey.trim())
+    setTwitterApiKeyState(twitterTempKey.trim())
+    setIsAddingTwitter(false)
+    setTwitterTempKey('')
   }
 
   return (
@@ -62,7 +86,7 @@ export function Settings({ onBack }: SettingsProps) {
         <div className="border-b border-arc-border/50">
           <div
             className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group"
-            onClick={() => apiKey ? setCurrentView('gogo-ai') : setIsAddingGemini(!isAddingGemini)}
+            onClick={() => geminiApiKey ? setCurrentView('gogo-ai') : setIsAddingGemini(!isAddingGemini)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -71,26 +95,26 @@ export function Settings({ onBack }: SettingsProps) {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-arc-text">Gemini API Key</p>
-                  <p className={`text-[10px] ${apiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {apiKey ? 'Saved' : 'Not set'}
+                  <p className={`text-[10px] ${geminiApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                    {geminiApiKey ? 'Saved' : 'Not set'}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                {apiKey && (
+                {geminiApiKey && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleClearKey() }}
+                    onClick={(e) => { e.stopPropagation(); handleClearGeminiKey() }}
                     className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
                     title="Clear API Key"
                   >
                     <Trash2 size={16} />
                   </button>
                 )}
-                {!apiKey && <ChevronRight size={16} className="text-arc-text-dim" />}
+                {!geminiApiKey && <ChevronRight size={16} className="text-arc-text-dim" />}
               </div>
             </div>
           </div>
-          {isAddingGemini && !apiKey && (
+          {isAddingGemini && !geminiApiKey && (
             <div className="px-4 pb-4 animate-in slide-in-from-top-2">
               <div className="flex gap-2">
                 <input
@@ -107,6 +131,74 @@ export function Settings({ onBack }: SettingsProps) {
                   className="bg-arc-gold text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   Save
+                </button>
+              </div>
+            </div>
+          )}
+          <div
+            className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group border-t border-arc-border/50"
+            onClick={() => {
+              if (!twitterApiKey) {
+                setIsAddingTwitter(!isAddingTwitter)
+              }
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37] group-hover:bg-[#d4af37]/20 transition-colors">
+                  <Twitter size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-arc-text">TwitterAPI.io Key</p>
+                  <p className={`text-[10px] ${twitterApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                    {twitterApiKey ? 'Saved' : 'Not set'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {twitterApiKey ? (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setTwitterTempKey(twitterApiKey)
+                        setIsAddingTwitter(true)
+                      }}
+                      className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#d4af37] hover:bg-[#d4af37]/10 transition-colors"
+                    >
+                      Update
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleClearTwitterKey() }}
+                      className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                      title="Clear TwitterAPI.io Key"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
+                ) : (
+                  <ChevronRight size={16} className="text-arc-text-dim" />
+                )}
+              </div>
+            </div>
+          </div>
+          {isAddingTwitter && (
+            <div className="px-4 pb-4 animate-in slide-in-from-top-2">
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  type="password"
+                  placeholder="TwitterAPI.io key"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-[#d4af37]"
+                  value={twitterTempKey}
+                  onChange={(e) => setTwitterTempKey(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveTwitterKey()}
+                />
+                <button
+                  onClick={handleSaveTwitterKey}
+                  className="bg-[#d4af37] text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                >
+                  {twitterApiKey ? 'Update' : 'Save'}
                 </button>
               </div>
             </div>

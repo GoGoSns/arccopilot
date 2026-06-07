@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Eye, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Eye, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
@@ -74,6 +74,33 @@ function formatCompact(n: number): string {
 
 function isUsdcTransfer(tx: RawTransfer): boolean {
   return tx.token?.address?.toLowerCase() === USDC_CONTRACT.toLowerCase()
+}
+
+function getTweetAvatarInitial(authorName: string, authorHandle: string): string {
+  const source = authorName.trim() || authorHandle.trim() || '?'
+  return source.charAt(0).toUpperCase()
+}
+
+function TweetAvatar({ tweet }: { tweet: TwitterTweet }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const fallback = getTweetAvatarInitial(tweet.authorName, tweet.authorHandle)
+
+  if (!tweet.authorAvatar || imageFailed) {
+    return (
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-arc-border/50 bg-arc-border/40 text-[10px] font-semibold text-arc-text-dim">
+        {fallback}
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={tweet.authorAvatar}
+      alt=""
+      className="h-6 w-6 shrink-0 rounded-full border border-arc-border/50 object-cover"
+      onError={() => setImageFailed(true)}
+    />
+  )
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -497,35 +524,45 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               ))}
             </div>
           ) : tweetsError ? (
-            <p className="py-1 text-center text-xs text-arc-danger">{tweetsError}</p>
+            <div className="space-y-2 py-1 text-center">
+              <p className="text-xs text-arc-danger">{tweetsError}</p>
+              <button
+                onClick={() => setCurrentView('settings')}
+                className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
+              >
+                Update key in Settings
+              </button>
+            </div>
           ) : tweets.length === 0 ? (
             <p className="py-2 text-center text-xs text-arc-text-dim">No Arc tweets found yet</p>
           ) : (
             <div className="space-y-4">
               {tweets.slice(0, 3).map((tweet) => (
-                <div 
+                <button
                   key={tweet.id} 
-                  className="flex gap-3 cursor-pointer group"
+                  type="button"
+                  className="flex w-full gap-3 cursor-pointer text-left group"
                   onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
                 >
-                  <img 
-                    src={tweet.authorAvatar || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'} 
-                    alt="" 
-                    className="h-6 w-6 rounded-full shrink-0 border border-arc-border/50"
-                    onError={(e) => {
-                      e.currentTarget.src = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'
-                    }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[11px] font-semibold text-arc-text truncate">{tweet.authorName}</span>
-                      <span className="text-[10px] text-arc-text-dim truncate">@{tweet.authorHandle} | {formatRelativeTime(tweet.createdAt)}</span>
+                  <TweetAvatar tweet={tweet} />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="truncate text-[11px] font-semibold text-arc-text">{tweet.authorName}</span>
+                      {tweet.verified && <BadgeCheck size={11} className="shrink-0 text-[#1d9bf0]" />}
                     </div>
-                    <p className="text-xs text-arc-text line-clamp-2 leading-snug group-hover:text-arc-gold transition-colors">
+                    <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
+                      <span className="truncate">@{tweet.authorHandle}</span>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : 'Unknown time'}</span>
+                    </div>
+                    <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
                       {tweet.text}
                     </p>
+                    <p className="text-[10px] font-medium text-arc-text-dim">
+                      ❤ {tweet.likes} · ↻ {tweet.retweets}
+                    </p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

@@ -41,12 +41,7 @@ export default defineManifest({
     'https://generativelanguage.googleapis.com/*',
     'https://rpc.testnet.arc.network/*',
     'https://testnet.arcscan.app/*',
-    'https://nitter.privacydev.net/*',
-    'https://nitter.poast.org/*',
-    'https://nitter.tiekoetter.com/*',
-    'https://nitter.weiler.rocks/*',
-    'https://nitter.lucabased.xyz/*',
-    'https://unavatar.io/*',
+    'https://api.twitterapi.io/*',
     'https://*/*',
     'http://*/*'
   ],
