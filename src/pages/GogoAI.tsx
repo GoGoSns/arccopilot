@@ -207,6 +207,68 @@ function getRiskLabel(tone: 'contract' | 'empty' | 'normal'): string {
   }
 }
 
+function getMessageActions(message: Message): GogoAction[] {
+  if (Array.isArray(message.actions) && message.actions.length > 0) {
+    return message.actions
+  }
+
+  if (message.action && message.action.type !== 'none') {
+    return [message.action]
+  }
+
+  return []
+}
+
+function getRecipientDisplayName(
+  value: string | undefined,
+  resolveAddress: (value?: string) => string | null,
+  addressMemories: Record<string, { label?: string }>,
+): string {
+  const trimmed = value?.trim()
+  if (!trimmed) return 'unknown recipient'
+
+  const resolved = resolveAddress(trimmed)
+  if (resolved) {
+    return addressMemories[resolved]?.label?.trim() || formatAddress(resolved, 4)
+  }
+
+  return trimmed
+}
+
+function getMultiStepActionTitle(
+  action: GogoAction,
+  resolveAddress: (value?: string) => string | null,
+  addressMemories: Record<string, { label?: string }>,
+): string {
+  switch (action.type) {
+    case 'send': {
+      const amount = action.params.amount?.trim()
+      const amountLabel = amount ? `${formatUsdcAmount(amount)} USDC` : 'USDC'
+      const recipient = getRecipientDisplayName(action.params.recipient, resolveAddress, addressMemories)
+      return action.params.recipient
+        ? `Send ${amountLabel} to ${recipient}`
+        : `Send ${amountLabel}`
+    }
+    case 'view_address':
+      return `View address ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+    case 'track_whale':
+      return `Track whale ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+    case 'analyze_address':
+      return `Analyze address ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+    case 'summarize_activity':
+      return `Summarize ${action.params.period} activity`
+    case 'find_pattern':
+      return 'Find patterns'
+    case 'open_brief':
+      return 'Open brief'
+    case 'draft_tweet':
+      return 'Tweet draft'
+    case 'none':
+    default:
+      return 'Next step'
+  }
+}
+
 async function persistPendingSend(recipient?: string, amount?: string): Promise<void> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) return
 
@@ -640,7 +702,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.reply,
-        action: response.action,
+        actions: response.actions,
+        action: response.actions[0],
         timestamp: Date.now(),
       }
 
@@ -665,7 +728,38 @@ export function GogoAI({ onBack }: GogoAIProps) {
     }
   }
 
-  const handleAction = async (messageIndex: number, action: GogoAction, messageKey: string) => {
+  const updateMessageAction = (
+    messageIndex: number,
+    actionIndex: number,
+    updater: (action: GogoAction) => GogoAction,
+    messageUpdater?: (message: Message) => Message,
+  ): Message[] => {
+    const nextMessages = messagesRef.current.map((message, index) => {
+      if (index !== messageIndex) return message
+
+      const actions = getMessageActions(message)
+      if (!actions[actionIndex]) return message
+
+      const nextActions = actions.map((existingAction, idx) => (
+        idx === actionIndex ? updater(existingAction) : existingAction
+      ))
+
+      const nextMessage: Message = {
+        ...message,
+        actions: nextActions,
+        action: nextActions[0],
+      }
+
+      return messageUpdater ? messageUpdater(nextMessage) : nextMessage
+    })
+
+    messagesRef.current = nextMessages
+    setMessages(nextMessages)
+    void saveGogoHistory(nextMessages)
+    return nextMessages
+  }
+
+  const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction, messageKey: string) => {
     if (action.completed) return
     if ((action.type === 'analyze_address' || action.type === 'summarize_activity') && analysisLoadingKey === messageKey) return
 
@@ -675,20 +769,10 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     switch (action.type) {
       case 'send': {
-        const nextMessages = messagesRef.current.map((message, index) => {
-          if (index !== messageIndex || !message.action) return message
-          return {
-            ...message,
-            action: {
-              ...message.action,
-              completed: true,
-            },
-          }
-        })
-
-        messagesRef.current = nextMessages
-        setMessages(nextMessages)
-        void saveGogoHistory(nextMessages)
+        updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
+          ...currentAction,
+          completed: true,
+        }))
 
         const recipient = resolveAddress(action.params.recipient)
         const amount = action.params.amount?.trim() || undefined
@@ -701,20 +785,10 @@ export function GogoAI({ onBack }: GogoAIProps) {
       case 'find_pattern':
       case 'open_brief':
       case 'draft_tweet': {
-        const nextMessages = messagesRef.current.map((message, index) => {
-          if (index !== messageIndex || !message.action) return message
-          return {
-            ...message,
-            action: {
-              ...message.action,
-              completed: true,
-            },
-          }
-        })
-
-        messagesRef.current = nextMessages
-        setMessages(nextMessages)
-        void saveGogoHistory(nextMessages)
+        updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
+          ...currentAction,
+          completed: true,
+        }))
 
         if (action.type === 'view_address') {
           if (!resolvedAddress) return
@@ -749,27 +823,24 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
         try {
           const analysis = await analyzeSpending(action.params.period)
-          const nextMessages = messagesRef.current.map((message, index) => {
-            if (index !== messageIndex || !message.action || message.action.type !== 'summarize_activity') return message
-            return {
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) => ({
+              ...currentAction,
+              completed: true,
+              analysis,
+            }),
+            (message) => ({
               ...message,
               content: analysis.summary,
-              action: {
-                ...message.action,
-                completed: true,
-                analysis,
-              },
-            }
-          })
-
-          messagesRef.current = nextMessages
-          setMessages(nextMessages)
-          void saveGogoHistory(nextMessages)
+            }),
+          )
         } catch (error) {
           console.error('[GogoAI] spending analysis failed:', error)
           const errorMessage = error instanceof Error ? error.message : 'Could not summarize spending right now.'
           const nextMessages = messagesRef.current.map((message, index) => {
-            if (index !== messageIndex || !message.action || message.action.type !== 'summarize_activity') return message
+            if (index !== messageIndex) return message
             return {
               ...message,
               content: errorMessage,
@@ -790,31 +861,28 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
         try {
           const analysis = await analyzeAddress(resolvedAddress)
-          const nextMessages = messagesRef.current.map((message, index) => {
-            if (index !== messageIndex || !message.action || message.action.type !== 'analyze_address') return message
-            return {
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) => ({
+              ...currentAction,
+              completed: true,
+              params: {
+                ...currentAction.params,
+                address: resolvedAddress,
+              },
+              analysis,
+            }),
+            (message) => ({
               ...message,
               content: analysis.summary,
-              action: {
-                ...message.action,
-                completed: true,
-                params: {
-                  ...message.action.params,
-                  address: resolvedAddress,
-                },
-                analysis,
-              },
-            }
-          })
-
-          messagesRef.current = nextMessages
-          setMessages(nextMessages)
-          void saveGogoHistory(nextMessages)
+            }),
+          )
         } catch (error) {
           console.error('[GogoAI] address analysis failed:', error)
           const errorMessage = error instanceof Error ? error.message : 'Could not analyze this address right now.'
           const nextMessages = messagesRef.current.map((message, index) => {
-            if (index !== messageIndex || !message.action || message.action.type !== 'analyze_address') return message
+            if (index !== messageIndex) return message
             return {
               ...message,
               content: errorMessage,
@@ -851,6 +919,252 @@ export function GogoAI({ onBack }: GogoAIProps) {
       return
     }
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  const renderActionStep = (
+    message: Message,
+    messageIndex: number,
+    action: GogoAction,
+    actionIndex: number,
+    baseKey: string,
+    isUser: boolean,
+  ) => {
+    const actionKey = `${baseKey}-step-${actionIndex}`
+    const actionCompleted = Boolean(action.completed)
+    const analyzeAction = action.type === 'analyze_address' ? action : null
+    const summaryAction = action.type === 'summarize_activity' ? action : null
+    const draftTweetAction = action.type === 'draft_tweet' ? action : null
+    const isAnalyzeAction = Boolean(analyzeAction)
+    const isSummaryAction = Boolean(summaryAction)
+    const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (isAnalyzeAction || isSummaryAction))
+    const draftText = draftTweetAction?.params.text ?? ''
+    const draftLength = draftText.length
+    const draftKey = `${baseKey}-draft-${actionIndex}`
+    const analysis = analyzeAction?.analysis ?? null
+    const spendingAnalysis: SpendingAnalysis | null = summaryAction?.analysis ?? null
+    const riskTone = analysis ? getRiskTone(analysis) : null
+    const riskStyles = riskTone ? getRiskStyles(riskTone) : null
+    const riskLabel = riskTone ? getRiskLabel(riskTone) : ''
+    const spendingTone = spendingAnalysis ? getSpendingTone(spendingAnalysis.net) : null
+    const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
+    const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'
+    const actionLoadingLabel = getActionLoadingLabel(action)
+
+    return (
+      <div
+        key={`${baseKey}-step-card-${actionIndex}`}
+        className="rounded-2xl border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10"
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+              actionCompleted
+                ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold'
+                : 'border-arc-border bg-arc-bg/80 text-arc-text-dim'
+            }`}
+          >
+            {actionIndex + 1}
+          </div>
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                  Adım {actionIndex + 1}
+                </p>
+                <p className="mt-1 text-sm font-medium text-arc-text">
+                  {getMultiStepActionTitle(action, resolveAddress, addressMemories)}
+                </p>
+              </div>
+              <span className="rounded-full border border-arc-border bg-arc-bg/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                {getActionLabel(action)}
+              </span>
+            </div>
+
+            {draftTweetAction && (
+              <div className="rounded-xl border border-arc-border bg-arc-bg/80 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                    Tweet draft
+                  </p>
+                  <span className={`text-xs font-medium ${draftLength > 280 ? 'text-arc-danger' : 'text-arc-text-dim'}`}>
+                    {draftLength}/280
+                  </span>
+                </div>
+
+                <div className="rounded-xl border border-arc-border bg-arc-card/80 p-3 text-sm leading-relaxed whitespace-pre-wrap text-arc-text">
+                  {draftText}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-[11px]"
+                    onClick={() => void handleCopyDraftTweet(draftText, draftKey)}
+                  >
+                    {copiedDraftKey === draftKey ? 'Copied ✓' : 'Copy'}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="h-8 px-3 text-[11px]"
+                    onClick={() => handleOpenTweetCompose(draftText)}
+                  >
+                    Tweet
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {isAnalyzeAction && (
+              <Card className={`border p-4 shadow-lg shadow-black/10 ${riskStyles?.card ?? 'border-arc-border bg-arc-card'}`}>
+                {isActionLoading ? (
+                  <div className="flex items-center gap-3">
+                    <Loader2 size={18} className="animate-spin text-arc-gold" />
+                    <div>
+                      <p className="text-sm font-medium text-arc-text">Checking this address on ArcScan...</p>
+                      <p className="text-xs text-arc-text-dim">Fetching contract status and transaction history.</p>
+                    </div>
+                  </div>
+                ) : analysis && riskStyles ? (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                          Address risk analysis
+                        </p>
+                        <h4 className={`mt-1 text-base font-semibold ${riskStyles.accent}`}>
+                          {riskLabel}
+                        </h4>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${riskStyles.badge}`}>
+                        ArcScan
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Contract</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">
+                          {analysis.isContract ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Transactions</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">{analysis.txCount}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                      <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
+                    </div>
+                  </>
+                ) : null}
+              </Card>
+            )}
+
+            {isSummaryAction && (
+              <Card className={`border p-4 shadow-lg shadow-black/10 ${spendingStyles?.card ?? 'border-arc-border bg-arc-card'}`}>
+                {isActionLoading ? (
+                  <div className="flex items-center gap-3">
+                    <Loader2 size={18} className="animate-spin text-arc-gold" />
+                    <div>
+                      <p className="text-sm font-medium text-arc-text">Summarizing your spending...</p>
+                      <p className="text-xs text-arc-text-dim">Counting sent and received USDC transfers.</p>
+                    </div>
+                  </div>
+                ) : spendingAnalysis && spendingStyles ? (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                          Spending summary
+                        </p>
+                        <h4 className={`mt-1 text-base font-semibold ${spendingStyles.accent}`}>
+                          {spendingLabel}
+                        </h4>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${spendingStyles.badge}`}>
+                        USDC
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Sent</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">
+                          {formatSpendingAmount(spendingAnalysis.totalSent)} USDC
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Received</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">
+                          {formatSpendingAmount(spendingAnalysis.totalReceived)} USDC
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Net</p>
+                        <p className={`mt-1 text-sm font-medium ${spendingStyles.accent}`}>
+                          {spendingAnalysis.net > 0 ? '+' : spendingAnalysis.net < 0 ? '-' : ''}
+                          {formatSpendingAmount(Math.abs(spendingAnalysis.net))} USDC
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Tx count</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">{spendingAnalysis.txCount}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Top recipient</p>
+                      <p className="mt-1 text-sm leading-relaxed text-arc-text">
+                        {spendingAnalysis.topRecipient
+                          ? `${spendingAnalysis.topRecipient.label} (${formatSpendingAmount(spendingAnalysis.topRecipient.amount)} USDC)`
+                          : 'No outgoing transfers in this period.'}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                      <p className="mt-1 text-sm leading-relaxed text-arc-text">{spendingAnalysis.summary}</p>
+                    </div>
+                  </>
+                ) : null}
+              </Card>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`h-8 text-[11px] ${
+                  actionCompleted
+                    ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
+                    : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
+                }`}
+                onClick={() => void handleAction(messageIndex, actionIndex, action, actionKey)}
+                disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
+              >
+                {isActionLoading ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {actionLoadingLabel}
+                  </>
+                ) : actionCompleted ? (
+                  <>
+                    <Check size={12} />
+                    Done ✓
+                  </>
+                ) : (
+                  'Onayla'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (isInitializing) {
@@ -995,12 +1309,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
             {messages.map((message, index) => {
               const isUser = message.role === 'user'
               const isError = message.role === 'error'
-              const draftTweet = message.action && message.action.type === 'draft_tweet' ? message.action : null
-              const action = message.action && message.action.type !== 'none' && message.action.type !== 'draft_tweet'
-                ? message.action
+              const messageActions = getMessageActions(message)
+              const hasMultipleActions = messageActions.length > 1
+              const primaryAction = messageActions[0] ?? null
+              const draftTweet = primaryAction && primaryAction.type === 'draft_tweet' ? primaryAction : null
+              const action = primaryAction && primaryAction.type !== 'none' && primaryAction.type !== 'draft_tweet'
+                ? primaryAction
                 : null
               const draftKey = `${message.timestamp}-${index}`
-              const actionKey = draftKey
+              const actionKey = `${draftKey}-0`
               const analyzeAction = action && action.type === 'analyze_address' ? action : null
               const summaryAction = action && action.type === 'summarize_activity' ? action : null
               const isAnalyzeAction = Boolean(analyzeAction)
@@ -1059,6 +1376,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     </div>
                   )}
 
+                  {hasMultipleActions ? (
+                    <div className={`mt-3 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+                      <div className="space-y-3">
+                        {messageActions.map((stepAction, actionIndex) =>
+                          renderActionStep(message, index, stepAction, actionIndex, draftKey, isUser),
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {draftTweet && (
                     <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
                       <div className="rounded-2xl border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
@@ -1107,7 +1434,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
                             : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
                         }`}
-                        onClick={() => void handleAction(index, action, actionKey)}
+                        onClick={() => void handleAction(index, 0, action, actionKey)}
                         disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
                       >
                         {isActionLoading ? (
@@ -1262,6 +1589,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                         </Card>
                       ) : null}
                     </div>
+                  )}
+                    </>
                   )}
                 </div>
               )
