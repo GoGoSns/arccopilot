@@ -1,13 +1,12 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
-import { GOGO_HISTORY } from '@/lib/storageKeys'
+import { GOGO_HISTORY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 const BLOCKSCOUT_API_URL = `${EXPLORER_URL}/api/v2`
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
-const BRIEF_TWEETS_CACHE_KEY = 'arccopilot:tweets:arc'
 const MAX_HISTORY_MESSAGES = 50
 const GEMINI_HISTORY_MESSAGES = 15
 const USDC_DECIMALS = 6
@@ -623,7 +622,7 @@ function getRecentTransfers(walletAddress: string, addressBook: Record<string, A
 }
 
 function getRecentTweets(): RecentTweetSummary[] {
-  const tweets = readLocalCache<RecentTweetSummary[]>(BRIEF_TWEETS_CACHE_KEY) ?? []
+  const tweets = readLocalCache<RecentTweetSummary[]>(TWITTER_TWEETS_CACHE_KEY) ?? []
   return tweets.slice(0, 3).map((tweet) => ({
     authorName: tweet.authorName,
     authorHandle: tweet.authorHandle,

@@ -1,8 +1,20 @@
-import { TWITTERAPI_KEY } from '@/lib/storageKeys'
+import { TWITTERAPI_KEY, TWITTER_SEARCH_QUERY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
-const TWITTER_SEARCH_QUERY = encodeURIComponent('"Arc Network" OR "ArcStablecoin" OR "Arc testnet"')
-const TWITTER_SEARCH_URL = `https://api.twitterapi.io/twitter/tweet/advanced_search?query=${TWITTER_SEARCH_QUERY}&queryType=Latest`
+export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
+
+function canUseChromeStorage(): boolean {
+  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
+}
+
+async function clearTweetsCache(): Promise<void> {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.removeItem(TWITTER_TWEETS_CACHE_KEY)
+  } catch {
+    // Ignore cache cleanup failures. The next fetch will still use the current query.
+  }
+}
 
 type TwitterApiAuthor = {
   userName?: string
@@ -41,6 +53,8 @@ export type TwitterTweet = {
 }
 
 export async function getTwitterApiKey(): Promise<string | null> {
+  if (!canUseChromeStorage()) return null
+
   const res = await chrome.storage.local.get([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY]) as Record<string, string | undefined>
   const key = res[TWITTERAPI_KEY] || res[LEGACY_TWITTERAPI_KEY] || null
 
@@ -53,19 +67,54 @@ export async function getTwitterApiKey(): Promise<string | null> {
 }
 
 export async function setTwitterApiKey(key: string): Promise<void> {
+  if (!canUseChromeStorage()) return
+
   await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
   await chrome.storage.local.remove(LEGACY_TWITTERAPI_KEY)
 }
 
 export async function clearTwitterApiKey(): Promise<void> {
+  if (!canUseChromeStorage()) return
+
   await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+}
+
+export async function getSearchQuery(): Promise<string> {
+  if (!canUseChromeStorage()) return DEFAULT_TWITTER_SEARCH_QUERY
+
+  const res = await chrome.storage.local.get([TWITTER_SEARCH_QUERY]) as Record<string, string | undefined>
+  const stored = typeof res[TWITTER_SEARCH_QUERY] === 'string' ? res[TWITTER_SEARCH_QUERY]!.trim() : ''
+
+  return stored || DEFAULT_TWITTER_SEARCH_QUERY
+}
+
+export async function setSearchQuery(query: string): Promise<void> {
+  const normalized = query.trim()
+
+  try {
+    await clearTweetsCache()
+    if (canUseChromeStorage()) {
+      if (normalized) {
+        await chrome.storage.local.set({ [TWITTER_SEARCH_QUERY]: normalized })
+      } else {
+        await chrome.storage.local.remove(TWITTER_SEARCH_QUERY)
+      }
+    }
+  } finally {
+    await clearTweetsCache()
+  }
 }
 
 export async function fetchArcTweets(): Promise<TwitterTweet[]> {
   const apiKey = await getTwitterApiKey()
   if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
 
-  const res = await fetch(TWITTER_SEARCH_URL, {
+  const query = await getSearchQuery()
+  const searchUrl = new URL('https://api.twitterapi.io/twitter/tweet/advanced_search')
+  searchUrl.searchParams.set('query', query)
+  searchUrl.searchParams.set('queryType', 'Latest')
+
+  const res = await fetch(searchUrl.toString(), {
     headers: { 'X-API-Key': apiKey },
   })
 

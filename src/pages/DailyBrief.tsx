@@ -5,7 +5,12 @@ import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
 import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
 import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
-import { DISMISSED_PATTERNS_KEY, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import {
+  DISMISSED_PATTERNS_KEY,
+  PENDING_SEND_STORAGE_KEY,
+  TWITTER_SEARCH_QUERY,
+  TWITTER_TWEETS_CACHE_KEY,
+} from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
 import { fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
 
@@ -375,25 +380,53 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
   // â”€â”€ effect: twitter feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
-    const cacheKey = 'arccopilot:tweets:arc'
-    const cached   = readCache<TwitterTweet[]>(cacheKey)
-    setTweetsError(null)
+    let cancelled = false
+    let requestVersion = 0
 
-    if (cached) {
-      setTweets(cached)
-      setTweetsLoading(false)
-      return
+    const loadTweets = async () => {
+      const currentVersion = ++requestVersion
+      setTweetsLoading(true)
+      setTweetsError(null)
+
+      const cached = readCache<TwitterTweet[]>(TWITTER_TWEETS_CACHE_KEY)
+      if (cached) {
+        if (!cancelled && currentVersion === requestVersion) {
+          setTweets(cached)
+          setTweetsLoading(false)
+        }
+        return
+      }
+
+      try {
+        const items = await fetchArcTweets()
+        if (cancelled || currentVersion !== requestVersion) return
+        writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWEETS_TTL)
+        setTweets(items)
+      } catch (err) {
+        if (cancelled || currentVersion !== requestVersion) return
+        setTweetsError(err instanceof Error ? err.message : 'Tweets unavailable right now. Try refreshing in a few minutes.')
+      } finally {
+        if (!cancelled && currentVersion === requestVersion) setTweetsLoading(false)
+      }
     }
 
-    fetchArcTweets()
-      .then(items => {
-        writeCache(cacheKey, items, TWEETS_TTL)
-        setTweets(items)
-      })
-      .catch(err => {
-        setTweetsError(err instanceof Error ? err.message : 'Tweets unavailable right now. Try refreshing in a few minutes.')
-      })
-      .finally(() => setTweetsLoading(false))
+    const onStorageChanged = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string,
+    ) => {
+      if (areaName !== 'local') return
+      if (changes[TWITTER_SEARCH_QUERY]) {
+        void loadTweets()
+      }
+    }
+
+    void loadTweets()
+    chrome.storage.onChanged.addListener(onStorageChanged)
+
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(onStorageChanged)
+    }
   }, [])
 
   const isPositive     = balanceChange?.startsWith('+')

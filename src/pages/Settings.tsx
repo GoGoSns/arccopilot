@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Bell, Book, ChevronRight, Key, Mic, Trash2, Twitter, Volume2 } from 'lucide-react'
+import { ArrowLeft, Bell, Book, ChevronRight, Key, Mic, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
-import { clearTwitterApiKey, getTwitterApiKey, setTwitterApiKey } from '@/lib/twitterApi'
+import {
+  DEFAULT_TWITTER_SEARCH_QUERY,
+  clearTwitterApiKey,
+  getSearchQuery,
+  getTwitterApiKey,
+  setSearchQuery,
+  setTwitterApiKey,
+} from '@/lib/twitterApi'
 import {
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 
 interface SettingsProps {
   onBack: () => void
@@ -26,11 +35,13 @@ export function Settings({ onBack }: SettingsProps) {
   const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
+  const [twitterSearchQuery, setTwitterSearchQueryState] = useState(DEFAULT_TWITTER_SEARCH_QUERY)
 
   useEffect(() => {
-    Promise.all([getApiKey(), getTwitterApiKey()]).then(([geminiKey, twitterKey]) => {
+    Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery()]).then(([geminiKey, twitterKey, searchQuery]) => {
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
+      setTwitterSearchQueryState(searchQuery)
     })
 
     chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
@@ -96,6 +107,17 @@ export function Settings({ onBack }: SettingsProps) {
     setTwitterApiKeyState(twitterTempKey.trim())
     setIsAddingTwitter(false)
     setTwitterTempKey('')
+  }
+
+  const handleSaveTwitterSearchQuery = async () => {
+    const nextQuery = twitterSearchQuery.trim() || DEFAULT_TWITTER_SEARCH_QUERY
+    await setSearchQuery(nextQuery === DEFAULT_TWITTER_SEARCH_QUERY ? '' : nextQuery)
+    setTwitterSearchQueryState(nextQuery)
+  }
+
+  const handleResetTwitterSearchQuery = async () => {
+    await setSearchQuery('')
+    setTwitterSearchQueryState(DEFAULT_TWITTER_SEARCH_QUERY)
   }
 
   return (
@@ -247,6 +269,45 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
             </div>
           )}
+          <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+                <Search size={20} />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-arc-text">Tweet Search Topics</p>
+                    <p className="text-[10px] text-arc-text-dim">Topics to track on X. Separate with OR.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetTwitterSearchQuery}
+                    className="shrink-0 text-[10px] font-semibold text-[#d4af37] underline-offset-2 hover:underline"
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                <Input
+                  value={twitterSearchQuery}
+                  onChange={(e) => setTwitterSearchQueryState(e.target.value)}
+                  placeholder={DEFAULT_TWITTER_SEARCH_QUERY}
+                  aria-label="Tweet Search Topics"
+                  className="font-mono text-xs"
+                />
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveTwitterSearchQuery}
+                    className="min-w-24"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
