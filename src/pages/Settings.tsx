@@ -13,9 +13,16 @@ import {
 import {
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
+  REMINDERS,
   VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import {
+  getReminders,
+  getReminderDetails,
+  removeReminder,
+  type Reminder,
+} from '@/lib/reminders'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 
@@ -36,6 +43,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
   const [twitterSearchQuery, setTwitterSearchQueryState] = useState(DEFAULT_TWITTER_SEARCH_QUERY)
+  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [remindersLoading, setRemindersLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery()]).then(([geminiKey, twitterKey, searchQuery]) => {
@@ -53,6 +62,44 @@ export function Settings({ onBack }: SettingsProps) {
       setVoiceInputEnabled(result[VOICE_INPUT_STORAGE_KEY] === true)
       setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
     })
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadReminders = async () => {
+      setRemindersLoading(true)
+      try {
+        const items = await getReminders()
+        if (active) {
+          setReminders(items)
+        }
+      } catch (error) {
+        console.warn('[Settings] reminders load failed:', error)
+        if (active) {
+          setReminders([])
+        }
+      } finally {
+        if (active) {
+          setRemindersLoading(false)
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[REMINDERS]) {
+        void loadReminders()
+      }
+    }
+
+    void loadReminders()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
   }, [])
 
   const handleToggleIncomingAlerts = async () => {
@@ -118,6 +165,15 @@ export function Settings({ onBack }: SettingsProps) {
   const handleResetTwitterSearchQuery = async () => {
     await setSearchQuery('')
     setTwitterSearchQueryState(DEFAULT_TWITTER_SEARCH_QUERY)
+  }
+
+  const handleRemoveReminder = async (id: string) => {
+    try {
+      await removeReminder(id)
+      setReminders((current) => current.filter((reminder) => reminder.id !== id))
+    } catch (error) {
+      console.warn('[Settings] reminder remove failed:', error)
+    }
   }
 
   return (
@@ -308,6 +364,40 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
             </div>
           </div>
+        </div>
+
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+          Reminders
+        </p>
+        <div className="border-b border-arc-border/50">
+          {remindersLoading ? (
+            <div className="space-y-3 px-4 py-4">
+              <div className="h-4 w-24 animate-pulse rounded bg-arc-border/70" />
+              <div className="h-3 w-3/4 animate-pulse rounded bg-arc-border/70" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
+            </div>
+          ) : reminders.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-arc-text-dim">
+              No reminders yet.
+            </div>
+          ) : (
+            reminders.map((reminder, index) => (
+              <div key={reminder.id} className={`flex items-start justify-between gap-3 px-4 py-3 hover:bg-arc-card/30 transition-colors ${index > 0 ? 'border-t border-arc-border/50' : ''}`}>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-semibold text-arc-text">{reminder.title}</p>
+                  <p className="text-[10px] text-arc-text-dim">{getReminderDetails(reminder)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveReminder(reminder.id)}
+                  className="shrink-0 rounded-lg p-2 text-arc-text-dim hover:text-arc-danger transition-colors"
+                  title="Delete reminder"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))
+          )}
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">

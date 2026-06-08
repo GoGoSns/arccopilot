@@ -4,6 +4,7 @@ export const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 export const TWITTERAPI_KEY = 'arccopilot:twitterapi-key'
 export const TWITTER_SEARCH_QUERY = 'arccopilot:twitter-search-query'
 export const TWITTER_TWEETS_CACHE_KEY = 'arccopilot:tweets:arc'
+export const REMINDERS = 'arccopilot:reminders'
 export const GOGO_HISTORY = 'arccopilot:gogo-history'
 export const GOGO_HISTORY_STORAGE_KEY = GOGO_HISTORY
 export const WALLET_ADDRESS_STORAGE_KEY = 'arccopilot:wallet-address'

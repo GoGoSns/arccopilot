@@ -115,6 +115,7 @@ export type GogoAction =
   | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean; analysis?: SpendingAnalysis }
   | { type: 'find_pattern'; params: Record<string, never>; completed?: boolean }
   | { type: 'open_brief'; params: Record<string, never>; completed?: boolean }
+  | { type: 'create_reminder'; params: { title: string; recipient?: string; amount?: string; frequency: 'daily' | 'weekly' | 'monthly'; dayOfWeek?: number; dayOfMonth?: number }; completed?: boolean }
   | { type: 'draft_tweet'; params: { text: string }; completed?: boolean }
   | { type: 'none'; params: Record<string, never>; completed?: boolean }
 
@@ -155,6 +156,8 @@ When the user asks about an address (is it safe, analyze this address, bu adres 
 
 When the user asks about spending or activity over a period (how much did I spend, bu ay ne kadar harcadim, son 7 gunde ne yaptim), use summarize_activity with the period. The app fetches real on-chain data and you summarize it with specific numbers.
 
+If the user wants a recurring reminder (for example, "remind me every Monday to tip Osman" or "her Pazartesi hatırlat"), use the create_reminder action. Parse the frequency (daily/weekly/monthly) and the day. The app stores it and shows it in the Morning Brief. Note: this only REMINDS, it does not auto-send.
+
 OUTPUT (JSON only):
 { "reply": "max 3 sentences", "actions": [ { "type": "...", "params": { } } ] }
 
@@ -169,6 +172,7 @@ ACTION TYPES:
 - summarize_activity: { period: "24h" | "7d" | "30d" }
 - find_pattern: { }
 - open_brief: { }
+- create_reminder: { title: "...", recipient?: "...", amount?: "...", frequency: "daily" | "weekly" | "monthly", dayOfWeek?: 0-6, dayOfMonth?: 1-31 }
 - draft_tweet: { text: "..." }
 - none: { }`
 
@@ -481,6 +485,25 @@ function normalizeAction(raw: unknown): GogoAction {
       return { type: 'find_pattern', params: {}, ...done }
     case 'open_brief':
       return { type: 'open_brief', params: {}, ...done }
+    case 'create_reminder': {
+      const dayOfWeek = toFiniteNumber(params.dayOfWeek)
+      const dayOfMonth = toFiniteNumber(params.dayOfMonth)
+      const frequencyRaw = typeof params.frequency === 'string' ? params.frequency.trim().toLowerCase() : 'daily'
+      const frequency = frequencyRaw === 'weekly' || frequencyRaw === 'monthly' ? frequencyRaw : 'daily'
+
+      return {
+        type: 'create_reminder',
+        params: {
+          title: typeof params.title === 'string' && params.title.trim() ? params.title.trim() : 'Reminder',
+          recipient: typeof params.recipient === 'string' && params.recipient.trim() ? params.recipient.trim() : undefined,
+          amount: typeof params.amount === 'string' && params.amount.trim() ? params.amount.trim() : undefined,
+          frequency,
+          dayOfWeek: frequency === 'weekly' && dayOfWeek != null && dayOfWeek >= 0 && dayOfWeek <= 6 ? dayOfWeek : undefined,
+          dayOfMonth: frequency === 'monthly' && dayOfMonth != null && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : undefined,
+        },
+        ...done,
+      }
+    }
     case 'draft_tweet':
       return {
         type: 'draft_tweet',

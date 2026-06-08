@@ -23,6 +23,12 @@ import {
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
 import {
+  addReminder,
+  buildReminderFromAction,
+  getReminderScheduleLabel,
+  type Reminder,
+} from '@/lib/reminders'
+import {
   PENDING_SEND_STORAGE_KEY,
   VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
@@ -109,6 +115,8 @@ function getActionLabel(action: GogoAction): string {
       return 'Find Patterns'
     case 'open_brief':
       return 'Open Brief'
+    case 'create_reminder':
+      return 'Set Reminder'
     case 'draft_tweet':
       return 'Draft Tweet'
     case 'none':
@@ -123,9 +131,19 @@ function getActionLoadingLabel(action: GogoAction): string {
       return 'Summarizing...'
     case 'analyze_address':
       return 'Analyzing...'
+    case 'create_reminder':
+      return 'Saving reminder...'
     default:
       return 'Working...'
   }
+}
+
+function getCompletedActionLabel(action: GogoAction): string {
+  if (action.type === 'create_reminder') {
+    return 'Reminder set ✓'
+  }
+
+  return 'Done ✓'
 }
 
 function getRiskTone(analysis: AddressAnalysis): 'contract' | 'empty' | 'normal' {
@@ -261,6 +279,20 @@ function getMultiStepActionTitle(
       return 'Find patterns'
     case 'open_brief':
       return 'Open brief'
+    case 'create_reminder': {
+      const reminder: Reminder = {
+        id: 'preview',
+        title: action.params.title,
+        recipient: action.params.recipient,
+        amount: action.params.amount,
+        frequency: action.params.frequency,
+        dayOfWeek: action.params.dayOfWeek,
+        dayOfMonth: action.params.dayOfMonth,
+        createdAt: '',
+      }
+
+      return `Reminder: ${action.params.title} (${getReminderScheduleLabel(reminder)})`
+    }
     case 'draft_tweet':
       return 'Tweet draft'
     case 'none':
@@ -761,7 +793,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction, messageKey: string) => {
     if (action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params.address) : null
@@ -778,6 +810,43 @@ export function GogoAI({ onBack }: GogoAIProps) {
         const amount = action.params.amount?.trim() || undefined
         await persistPendingSend(recipient ?? undefined, amount)
         setCurrentView('send')
+        break
+      }
+      case 'create_reminder': {
+        setAnalysisLoadingKey(messageKey)
+
+        try {
+          const reminder = buildReminderFromAction({
+            title: action.params.title,
+            recipient: action.params.recipient,
+            amount: action.params.amount,
+            frequency: action.params.frequency,
+            dayOfWeek: action.params.dayOfWeek,
+            dayOfMonth: action.params.dayOfMonth,
+          })
+
+          await addReminder(reminder)
+          updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
+            ...currentAction,
+            completed: true,
+          }))
+        } catch (error) {
+          console.error('[GogoAI] reminder save failed:', error)
+          const errorMessage = error instanceof Error ? error.message : 'Could not save this reminder right now.'
+          const nextMessages = messagesRef.current.map((message, index) => {
+            if (index !== messageIndex) return message
+            return {
+              ...message,
+              content: errorMessage,
+            }
+          })
+
+          messagesRef.current = nextMessages
+          setMessages(nextMessages)
+          void saveGogoHistory(nextMessages)
+        } finally {
+          setAnalysisLoadingKey(null)
+        }
         break
       }
       case 'view_address':
@@ -936,7 +1005,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const draftTweetAction = action.type === 'draft_tweet' ? action : null
     const isAnalyzeAction = Boolean(analyzeAction)
     const isSummaryAction = Boolean(summaryAction)
-    const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (isAnalyzeAction || isSummaryAction))
+    const isActionLoading = Boolean(
+      action &&
+      analysisLoadingKey === actionKey &&
+      !action.completed &&
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder'),
+    )
     const draftText = draftTweetAction?.params.text ?? ''
     const draftLength = draftText.length
     const draftKey = `${baseKey}-draft-${actionIndex}`
@@ -1154,7 +1228,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 ) : actionCompleted ? (
                   <>
                     <Check size={12} />
-                    Done ✓
+                            {getCompletedActionLabel(action)}
                   </>
                 ) : (
                   'Onayla'
@@ -1323,7 +1397,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null
@@ -1445,7 +1519,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                         ) : actionCompleted ? (
                           <>
                             <Check size={12} />
-                            Done &#10003;
+                            {getCompletedActionLabel(action)}
                           </>
                         ) : (
                           getActionLabel(action)

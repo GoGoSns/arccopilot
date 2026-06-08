@@ -15,9 +15,15 @@ import {
   NOTIF_INCOMING_STORAGE_KEY,
   WALLET_ADDRESS_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import {
+  getDueReminders,
+  getLocalDateKey,
+  getReminderNotificationMessage,
+} from '@/lib/reminders'
 
 const ADDR_BOOK_KEY = 'arccopilot:address_book'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
+const REMINDER_NOTIFIED_PREFIX = 'arccopilot:reminders:last-notified:'
 const PENDING_VIEW_KEY = 'arccopilot:pending_view'
 const EXPLORER_URL = 'https://testnet.arcscan.app'
 const RPC_URL = 'https://rpc.testnet.arc.network'
@@ -169,6 +175,12 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('[ArcCopilot SW] whale-check alarm created (5 min interval)')
 })
 
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create('whale-check', { periodInMinutes: 5 })
+  console.log('[ArcCopilot SW] whale-check alarm ensured on startup')
+  void runRecurringChecks()
+})
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'whale-check') {
     void runRecurringChecks()
@@ -213,6 +225,7 @@ async function runRecurringChecks(): Promise<void> {
   await Promise.allSettled([
     checkWhales(),
     checkBalanceAndIncoming(),
+    checkReminders(),
   ])
 }
 
@@ -388,6 +401,52 @@ async function checkBalanceAndIncoming(): Promise<void> {
     }
   } catch (err) {
     console.error('[ArcCopilot SW] balance/incoming check failed:', err)
+  }
+}
+
+async function checkReminders(): Promise<void> {
+  console.log('[ArcCopilot SW] checking reminders…')
+
+  try {
+    const dueReminders = await getDueReminders()
+    if (dueReminders.length === 0) {
+      return
+    }
+
+    const todayKey = getLocalDateKey()
+    const notifiedKeys = dueReminders.map((reminder) => `${REMINDER_NOTIFIED_PREFIX}${reminder.id}`)
+    const stored = await chromeGet(notifiedKeys)
+    const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
+    const updates: Record<string, unknown> = {}
+    let notifiedCount = 0
+
+    for (const reminder of dueReminders) {
+      const storageKey = `${REMINDER_NOTIFIED_PREFIX}${reminder.id}`
+      if (stored[storageKey] === todayKey) {
+        continue
+      }
+
+      updates[storageKey] = todayKey
+      notifiedCount += 1
+
+      chrome.notifications.create(`reminder-${reminder.id}`, {
+        type: 'basic',
+        iconUrl,
+        title: `Reminder: ${reminder.title}`,
+        message: getReminderNotificationMessage(reminder),
+        priority: 2,
+      })
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await chromeSet(updates)
+    }
+
+    if (notifiedCount > 0) {
+      console.log('[ArcCopilot SW] reminder notification(s) created:', notifiedCount)
+    }
+  } catch (err) {
+    console.error('[ArcCopilot SW] reminder check failed:', err)
   }
 }
 

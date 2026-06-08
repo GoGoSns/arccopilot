@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { EXPLORER_URL } from '@/lib/arc'
@@ -8,11 +8,18 @@ import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } fr
 import {
   DISMISSED_PATTERNS_KEY,
   PENDING_SEND_STORAGE_KEY,
+  REMINDERS,
   TWITTER_SEARCH_QUERY,
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
 import { fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
+import {
+  getDueReminders,
+  getReminderDetails,
+  markReminderTriggered,
+  type Reminder,
+} from '@/lib/reminders'
 
 // â”€â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
@@ -253,6 +260,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [whaleEntries,   setWhaleEntries]   = useState<WhaleEntry[]>([])
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
+  const [dueReminders,   setDueReminders]   = useState<Reminder[]>([])
+  const [remindersLoading, setRemindersLoading] = useState(true)
 
   // -- Twitter State --
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
@@ -378,6 +387,45 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       .finally(() => { setWhaleLoading(false); setWhaleReady(true) })
   }, [whales])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadDueReminders = async () => {
+      setRemindersLoading(true)
+
+      try {
+        const items = await getDueReminders()
+        if (!cancelled) {
+          setDueReminders(items)
+        }
+      } catch (error) {
+        console.warn('[DailyBrief] reminder load failed:', error)
+        if (!cancelled) {
+          setDueReminders([])
+        }
+      } finally {
+        if (!cancelled) {
+          setRemindersLoading(false)
+        }
+      }
+    }
+
+    const onStorageChanged = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[REMINDERS]) {
+        void loadDueReminders()
+      }
+    }
+
+    void loadDueReminders()
+    chrome.storage.onChanged.addListener(onStorageChanged)
+
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(onStorageChanged)
+    }
+  }, [])
+
   // â”€â”€ effect: twitter feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     let cancelled = false
@@ -468,6 +516,22 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }, () => {
       setCurrentView('send')
     })
+  }
+
+  const handleReminderOpenSend = (reminder: Reminder) => {
+    openSendWithPending({
+      recipient: reminder.recipient,
+      amount: reminder.amount,
+    })
+  }
+
+  const handleReminderDone = async (reminder: Reminder) => {
+    try {
+      await markReminderTriggered(reminder.id)
+      setDueReminders((prev) => prev.filter((item) => item.id !== reminder.id))
+    } catch (error) {
+      console.warn('[DailyBrief] reminder done failed:', error)
+    }
   }
 
   const goToWhale = (whale: WhaleEntry) => {
@@ -577,6 +641,60 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="text-[10px] text-arc-text-dim">For You</p>
             </div>
           </div>
+
+          {remindersLoading && dueReminders.length === 0 ? (
+            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+              <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
+              <div className="mt-2 h-2 w-3/4 animate-pulse rounded bg-arc-border/70" />
+              <div className="mt-3 h-8 w-32 animate-pulse rounded-xl bg-arc-border/70" />
+            </div>
+          ) : dueReminders.length > 0 ? (
+            <div className="space-y-3">
+              {dueReminders.map((reminder) => {
+                const hasPrefill = Boolean(reminder.recipient?.trim() || reminder.amount?.trim())
+
+                return (
+                  <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+                        <Bell size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-sm leading-relaxed text-arc-text">
+                            Hatırlatma: {reminder.title}
+                          </p>
+                          <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                            {getReminderDetails(reminder)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {hasPrefill && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="h-8 px-3 text-[10px]"
+                              onClick={() => handleReminderOpenSend(reminder)}
+                            >
+                              Open Send
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-[10px]"
+                            onClick={() => void handleReminderDone(reminder)}
+                          >
+                            Done
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
 
           {recommendations.length === 0 && recommendationsLoading ? (
             <div className="space-y-3">
