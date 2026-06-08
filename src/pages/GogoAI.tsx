@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ExternalLink, Loader2, Send, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, ExternalLink, Loader2, Mic, Send, Sparkles, Trash2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -22,7 +22,11 @@ import {
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
-import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import {
+  PENDING_SEND_STORAGE_KEY,
+  VOICE_INPUT_STORAGE_KEY,
+  VOICE_RESPONSES_STORAGE_KEY,
+} from '@/lib/storageKeys'
 
 interface GogoAIProps {
   onBack: () => void
@@ -36,6 +40,26 @@ const QUICK_SUGGESTIONS = [
 ]
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
+
+type SpeechRecognitionLike = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  onresult: ((event: any) => void) | null
+  onerror: ((event: any) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+
+type SpeechRecognitionConstructorLike = new () => SpeechRecognitionLike
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructorLike
+  webkitSpeechRecognition?: SpeechRecognitionConstructorLike
+}
 
 function isValidAddress(value: string): boolean {
   return ADDRESS_REGEX.test(value.trim())
@@ -51,6 +75,22 @@ function formatTime(timestamp: number): string {
   } catch {
     return ''
   }
+}
+
+function getSpeechRecognitionCtor(): SpeechRecognitionConstructorLike | null {
+  if (typeof window === 'undefined') return null
+  const speechWindow = window as SpeechWindow
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
+}
+
+function getPreferredSpeechLanguage(): string {
+  if (typeof navigator === 'undefined') return 'tr-TR'
+  const lang = navigator.language?.toLowerCase() ?? 'tr-tr'
+  return lang.startsWith('tr') ? 'tr-TR' : 'en-US'
+}
+
+function isSpeechSynthesisAvailable(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
 function getActionLabel(action: GogoAction): string {
@@ -202,12 +242,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [copiedDraftKey, setCopiedDraftKey] = useState<string | null>(null)
   const [analysisLoadingKey, setAnalysisLoadingKey] = useState<string | null>(null)
+  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
+  const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [voiceInputUnavailableReason, setVoiceInputUnavailableReason] = useState<string | null>(null)
+  const [speakingMessageKey, setSpeakingMessageKey] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesRef = useRef<Message[]>([])
   const proactiveGreetingQueuedRef = useRef(false)
   const proactiveGreetingStartedRef = useRef(false)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
   const addressEntries = useMemo(() => Object.values(addressMemories), [addressMemories])
 
@@ -251,6 +297,10 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const hasUserMessages = messages.some((message) => message.role === 'user')
   const hasApiKey = Boolean(apiKey)
   const hasActionLoading = Boolean(analysisLoadingKey)
+  const speechRecognitionSupported = Boolean(getSpeechRecognitionCtor())
+  const speechSynthesisSupported = isSpeechSynthesisAvailable()
+  const voiceInputReady = voiceInputEnabled && speechRecognitionSupported && !voiceInputUnavailableReason
+  const voiceResponsesReady = voiceResponsesEnabled && speechSynthesisSupported
   const isProactiveGreetingPending = Boolean(
     historyLoaded &&
       proactiveGreetingQueuedRef.current &&
@@ -262,6 +312,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
   )
   const isComposerLocked = isLoading || isProactiveGreetingPending || hasActionLoading
   const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
+  const voiceInputTooltip = !voiceInputEnabled
+    ? 'Enable Voice input in Settings'
+    : voiceInputUnavailableReason ?? (speechRecognitionSupported ? 'Voice not available' : 'Voice not available')
+  const voiceResponsesTooltip = !voiceResponsesEnabled
+    ? 'Enable Voice responses in Settings'
+    : 'Voice not available'
 
   const resolveAddress = (value?: string): string | null => {
     const trimmed = value?.trim()
@@ -305,6 +361,45 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     return () => {
       active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return
+
+    let active = true
+
+    chrome.storage.local.get([VOICE_INPUT_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY], (result) => {
+      if (!active) return
+      setVoiceInputEnabled(result[VOICE_INPUT_STORAGE_KEY] === true)
+      setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
+      setVoiceInputUnavailableReason(null)
+    })
+
+    const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName !== 'local') return
+      if (VOICE_INPUT_STORAGE_KEY in changes) {
+        const nextValue = changes[VOICE_INPUT_STORAGE_KEY]?.newValue === true
+        setVoiceInputEnabled(nextValue)
+        setVoiceInputUnavailableReason(null)
+        if (!nextValue) {
+          stopVoiceInput()
+        }
+      }
+      if (VOICE_RESPONSES_STORAGE_KEY in changes) {
+        const nextValue = changes[VOICE_RESPONSES_STORAGE_KEY]?.newValue === true
+        setVoiceResponsesEnabled(nextValue)
+        if (!nextValue) {
+          stopVoiceResponse()
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [])
 
@@ -364,6 +459,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages, isLoading])
 
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort()
+      recognitionRef.current = null
+      if (speechSynthesisSupported) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
   const handleSaveKey = async () => {
     const trimmed = keyInput.trim()
     if (!trimmed) return
@@ -376,6 +481,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const handleClearChat = async () => {
     if (isLoading || analysisLoadingKey) return
 
+    stopVoiceInput()
+    stopVoiceResponse()
     setMessages([])
     messagesRef.current = []
     setUserInput('')
@@ -387,9 +494,132 @@ export function GogoAI({ onBack }: GogoAIProps) {
     requestAnimationFrame(() => inputRef.current?.focus())
   }
 
+  const stopVoiceInput = () => {
+    const recognition = recognitionRef.current
+    if (recognition) {
+      try {
+        recognition.abort()
+      } catch (error) {
+        console.warn('[GogoAI] failed to stop voice input:', error)
+      }
+      recognitionRef.current = null
+    }
+    setIsListening(false)
+  }
+
+  const stopVoiceResponse = () => {
+    if (!speechSynthesisSupported) return
+    window.speechSynthesis.cancel()
+    setSpeakingMessageKey(null)
+  }
+
+  const startVoiceInput = () => {
+    if (!voiceInputReady) {
+      if (!speechRecognitionSupported) {
+        console.warn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
+        setVoiceInputUnavailableReason('Voice not available')
+      }
+      return
+    }
+
+    const RecognitionCtor = getSpeechRecognitionCtor()
+    if (!RecognitionCtor) {
+      console.warn('[GogoAI] voice input unavailable: SpeechRecognition constructor missing')
+      setVoiceInputUnavailableReason('Voice not available')
+      return
+    }
+
+    try {
+      const recognition = new RecognitionCtor()
+      recognitionRef.current = recognition
+      recognition.lang = getPreferredSpeechLanguage()
+      recognition.continuous = false
+      recognition.interimResults = true
+      recognition.maxAlternatives = 1
+      setVoiceInputUnavailableReason(null)
+      setIsListening(true)
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results as ArrayLike<any>)
+          .map((result) => result?.[0]?.transcript ?? '')
+          .join(' ')
+          .trim()
+
+        if (transcript) {
+          setUserInput(transcript)
+          requestAnimationFrame(() => inputRef.current?.focus())
+        }
+      }
+
+      recognition.onerror = (event: any) => {
+        console.warn('[GogoAI] voice input error:', event?.error ?? event)
+        setVoiceInputUnavailableReason('Voice not available')
+        setIsListening(false)
+        recognitionRef.current = null
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+        recognitionRef.current = null
+      }
+
+      recognition.start()
+    } catch (error) {
+      console.warn('[GogoAI] failed to start voice input:', error)
+      setVoiceInputUnavailableReason('Voice not available')
+      setIsListening(false)
+      recognitionRef.current = null
+    }
+  }
+
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      stopVoiceInput()
+      return
+    }
+    startVoiceInput()
+  }
+
+  const speakMessage = (messageKey: string, text: string) => {
+    if (!voiceResponsesReady || !speechSynthesisSupported) {
+      console.warn('[GogoAI] voice responses unavailable in this context')
+      return
+    }
+
+    if (speakingMessageKey === messageKey && window.speechSynthesis.speaking) {
+      stopVoiceResponse()
+      return
+    }
+
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = getPreferredSpeechLanguage()
+    utterance.rate = 1
+    utterance.pitch = 1
+    utterance.onend = () => {
+      setSpeakingMessageKey((current) => (current === messageKey ? null : current))
+    }
+    utterance.onerror = () => {
+      setSpeakingMessageKey((current) => (current === messageKey ? null : current))
+    }
+
+    try {
+      setSpeakingMessageKey(messageKey)
+      window.speechSynthesis.speak(utterance)
+    } catch (error) {
+      console.warn('[GogoAI] failed to speak response:', error)
+      setSpeakingMessageKey(null)
+    }
+  }
+
   const handleSend = async () => {
     const trimmed = userInput.trim()
     if (!trimmed || isComposerLocked || !address) return
+
+    if (isListening) {
+      stopVoiceInput()
+    }
 
     const history = messagesRef.current
     const userMessage: Message = {
@@ -788,6 +1018,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
               const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'
               const actionLoadingLabel = action ? getActionLoadingLabel(action) : 'Working...'
+              const canSpeakMessage = !isUser && !isError && Boolean(message.content.trim())
+              const isSpeakingThisMessage = speakingMessageKey === actionKey
+              const speechButtonLabel = isSpeakingThisMessage && speechSynthesisSupported ? 'Stop' : 'Sesli oku'
 
               return (
                 <div key={`${message.timestamp}-${index}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
@@ -806,6 +1039,25 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <div className={`mt-1 text-[11px] text-arc-text-dim ${isUser ? 'pr-1 text-right' : 'pl-1'}`}>
                     {formatTime(message.timestamp)}
                   </div>
+
+                  {canSpeakMessage && (
+                    <div className={`mt-2 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 px-2 text-[11px] ${
+                          isSpeakingThisMessage ? 'border-arc-gold/40 bg-arc-gold/10 text-arc-gold' : ''
+                        }`}
+                        onClick={() => void speakMessage(actionKey, message.content)}
+                        disabled={!voiceResponsesReady}
+                        title={voiceResponsesTooltip}
+                        aria-pressed={isSpeakingThisMessage}
+                      >
+                        <Volume2 size={12} />
+                        {speechButtonLabel}
+                      </Button>
+                    </div>
+                  )}
 
                   {draftTweet && (
                     <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
@@ -1079,6 +1331,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
       {hasApiKey && (
         <div className="border-t border-arc-border bg-arc-bg px-4 py-4">
+          {isListening && (
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-arc-danger/30 bg-arc-danger/10 px-2.5 py-1 text-[10px] font-medium text-arc-danger animate-pulse">
+              <span className="h-2 w-2 rounded-full bg-arc-danger" />
+              Listening...
+            </div>
+          )}
           <form
             className="relative"
             onSubmit={(event) => {
@@ -1086,15 +1344,32 @@ export function GogoAI({ onBack }: GogoAIProps) {
               void handleSend()
             }}
           >
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Ask Gogo anything..."
-              className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-4 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
-              value={userInput}
-              onChange={(event) => setUserInput(event.target.value)}
-              disabled={isComposerLocked || !address}
-            />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => void toggleVoiceInput()}
+                disabled={isComposerLocked || !address || (!voiceInputReady && !isListening)}
+                className={`absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-lg border p-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isListening
+                    ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
+                    : 'border-arc-border bg-arc-card text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
+                }`}
+                aria-label={isListening ? 'Stop listening' : 'Start voice input'}
+                title={isListening ? 'Stop listening' : voiceInputTooltip}
+              >
+                <Mic size={15} />
+              </button>
+
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Ask Gogo anything..."
+                className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-12 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
+                value={userInput}
+                onChange={(event) => setUserInput(event.target.value)}
+                disabled={isComposerLocked || !address}
+              />
+            </div>
             <button
               type="submit"
               disabled={isComposerLocked || !userInput.trim() || !address}
