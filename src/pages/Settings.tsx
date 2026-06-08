@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Book, ChevronRight, Key, Trash2, Twitter } from 'lucide-react'
+import { ArrowLeft, Bell, Book, ChevronRight, Key, Trash2, Twitter } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { clearTwitterApiKey, getTwitterApiKey, setTwitterApiKey } from '@/lib/twitterApi'
+import { NOTIF_BALANCE_STORAGE_KEY, NOTIF_INCOMING_STORAGE_KEY } from '@/lib/storageKeys'
 
 interface SettingsProps {
   onBack: () => void
@@ -14,6 +15,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [twitterApiKey, setTwitterApiKeyState] = useState<string | null>(null)
   const [isAddingGemini, setIsAddingGemini] = useState(false)
   const [isAddingTwitter, setIsAddingTwitter] = useState(false)
+  const [incomingAlerts, setIncomingAlerts] = useState(true)
+  const [balanceAlerts, setBalanceAlerts] = useState(true)
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
 
@@ -22,7 +25,24 @@ export function Settings({ onBack }: SettingsProps) {
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
     })
+
+    chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
+      setIncomingAlerts(result[NOTIF_INCOMING_STORAGE_KEY] !== false)
+      setBalanceAlerts(result[NOTIF_BALANCE_STORAGE_KEY] !== false)
+    })
   }, [])
+
+  const handleToggleIncomingAlerts = async () => {
+    const nextValue = !incomingAlerts
+    setIncomingAlerts(nextValue)
+    await chrome.storage.local.set({ [NOTIF_INCOMING_STORAGE_KEY]: nextValue })
+  }
+
+  const handleToggleBalanceAlerts = async () => {
+    const nextValue = !balanceAlerts
+    setBalanceAlerts(nextValue)
+    await chrome.storage.local.set({ [NOTIF_BALANCE_STORAGE_KEY]: nextValue })
+  }
 
   const handleClearGeminiKey = async () => {
     await clearApiKey()
@@ -203,6 +223,55 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
             </div>
           )}
+        </div>
+
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+          Notifications
+        </p>
+        <div className="border-b border-arc-border/50">
+          {[
+            {
+              label: 'Incoming USDC alerts',
+              description: 'Notify when USDC arrives in your wallet',
+              enabled: incomingAlerts,
+              onToggle: handleToggleIncomingAlerts,
+            },
+            {
+              label: 'Balance change alerts',
+              description: 'Notify when your balance moves by more than 10%',
+              enabled: balanceAlerts,
+              onToggle: handleToggleBalanceAlerts,
+            },
+          ].map((item, index) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.onToggle}
+              className={`flex w-full items-center justify-between px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group ${index > 0 ? 'border-t border-arc-border/50' : ''}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37] group-hover:bg-[#d4af37]/20 transition-colors">
+                  <Bell size={20} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-arc-text">{item.label}</p>
+                  <p className="text-[10px] text-arc-text-dim">{item.description}</p>
+                </div>
+              </div>
+              <span
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
+                  item.enabled ? 'border-[#d4af37]/50 bg-[#d4af37]' : 'border-arc-border bg-arc-border/60'
+                }`}
+                aria-hidden="true"
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-arc-bg shadow transition-transform ${
+                    item.enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </span>
+            </button>
+          ))}
         </div>
 
         {[

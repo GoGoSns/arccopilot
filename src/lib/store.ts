@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { WALLET_ADDRESS_STORAGE_KEY } from '@/lib/storageKeys'
 
 export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail' | 'daily-brief' | 'gogo-ai'
 
@@ -74,6 +75,22 @@ function normalizeAddressBook(memories: Record<string, AddressMemory>): Record<s
   return normalized
 }
 
+async function syncWalletAddressToChrome(address: string | null): Promise<void> {
+  if (!canUseChromeStorage()) return
+
+  try {
+    if (address && address.trim()) {
+      await chrome.storage.local.set({
+        [WALLET_ADDRESS_STORAGE_KEY]: address.trim().toLowerCase(),
+      })
+    } else {
+      await chrome.storage.local.remove(WALLET_ADDRESS_STORAGE_KEY)
+    }
+  } catch (error) {
+    console.warn('[ArcCopilot] wallet address sync failed:', error)
+  }
+}
+
 async function syncAddressBookToChrome(memories: Record<string, AddressMemory>): Promise<void> {
   if (!canUseChromeStorage()) return
 
@@ -133,6 +150,7 @@ export const useStore = create<AppState>()(
       setWalletAddress: (address) => {
         const isNew = !get().walletAddress && address
         set({ walletAddress: address })
+        void syncWalletAddressToChrome(address)
         if (isNew) set({ accountCreatedAt: Date.now() })
       },
       setBalance:       (balance) => set({ usdcBalance: balance }),
@@ -220,6 +238,12 @@ export const useStore = create<AppState>()(
         return get().addressMemories[address.toLowerCase()] || null
       },
     }),
-    { name: 'arccopilot:state' }
+    {
+      name: 'arccopilot:state',
+      onRehydrateStorage: () => (state, error) => {
+        if (error) return
+        void syncWalletAddressToChrome(state?.walletAddress ?? null)
+      },
+    }
   )
 )
