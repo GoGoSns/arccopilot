@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { EXPLORER_URL } from '@/lib/arc'
+import { formatAddress } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import {
@@ -184,6 +185,13 @@ function formatSpendingAmount(value: number): string {
   }).format(value)
 }
 
+function formatUsdcAmount(amount: string | number | undefined): string {
+  const parsed = typeof amount === 'number' ? amount : Number(amount)
+  if (!Number.isFinite(parsed)) return '0 USDC'
+
+  return `${parsed.toLocaleString('en-US', { maximumFractionDigits: 6 })} USDC`
+}
+
 function getSpendingTone(net: number): 'negative' | 'neutral' | 'positive' {
   if (net < 0) return 'negative'
   if (net > 0) return 'positive'
@@ -258,7 +266,7 @@ function getMultiStepActionTitle(
   switch (action?.type) {
     case 'send': {
       const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
-      const amountLabel = amount ? `${formatUsdcAmount(amount)} USDC` : 'USDC'
+      const amountLabel = amount ? formatUsdcAmount(amount) : 'USDC'
       const recipientValue = typeof params.recipient === 'string' ? params.recipient : undefined
       const recipient = getRecipientDisplayName(recipientValue, resolveAddress, addressMemories)
       return recipientValue
@@ -437,26 +445,30 @@ export function GogoAI({ onBack }: GogoAIProps) {
   useEffect(() => {
     let active = true
 
-    Promise.all([getApiKey(), loadGogoHistory()])
-      .then(([storedKey, history]) => {
+    void (async () => {
+      try {
+        const [storedKey, history] = await Promise.all([getApiKey(), loadGogoHistory()])
         if (!active) return
+
         setLocalApiKey(storedKey)
         setMessages(history)
         messagesRef.current = history
         proactiveGreetingQueuedRef.current = Boolean(storedKey && history.length === 0)
         proactiveGreetingStartedRef.current = false
-        setHistoryLoaded(true)
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('[GogoAI] bootstrap failed:', error)
         if (!active) return
+
         setMessages([])
         messagesRef.current = []
+        proactiveGreetingQueuedRef.current = false
+        proactiveGreetingStartedRef.current = false
+      } finally {
+        if (!active) return
         setHistoryLoaded(true)
-      })
-      .finally(() => {
-        if (active) setIsInitializing(false)
-      })
+        setIsInitializing(false)
+      }
+    })()
 
     return () => {
       active = false
@@ -914,11 +926,14 @@ export function GogoAI({ onBack }: GogoAIProps) {
           updateMessageAction(
             messageIndex,
             actionIndex,
-            (currentAction) => ({
-              ...currentAction,
-              completed: true,
-              analysis,
-            }),
+            (currentAction) =>
+              currentAction.type === 'summarize_activity'
+                ? {
+                    ...currentAction,
+                    completed: true,
+                    analysis,
+                  }
+                : currentAction,
             (message) => ({
               ...message,
               content: analysis.summary,
@@ -952,15 +967,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
           updateMessageAction(
             messageIndex,
             actionIndex,
-            (currentAction) => ({
-              ...currentAction,
-              completed: true,
-              params: {
-                ...currentAction.params,
-                address: resolvedAddress,
-              },
-              analysis,
-            }),
+            (currentAction) =>
+              currentAction.type === 'analyze_address'
+                ? {
+                    ...currentAction,
+                    completed: true,
+                    params: {
+                      ...currentAction.params,
+                      address: resolvedAddress,
+                    },
+                    analysis,
+                  }
+                : currentAction,
             (message) => ({
               ...message,
               content: analysis.summary,
@@ -985,7 +1003,6 @@ export function GogoAI({ onBack }: GogoAIProps) {
         }
         break
       }
-      case 'none':
       default:
         break
     }
@@ -1600,7 +1617,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                               {analysis.hasActivity ? 'Activity detected on Arc Testnet.' : 'No transaction activity found.'}
                             </p>
                             <a
-                              href={`${EXPLORER_URL}/address/${action?.params?.address ?? ''}`}
+                              href={`${EXPLORER_URL}/address/${analyzeAction?.params.address ?? ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-gold hover:underline"

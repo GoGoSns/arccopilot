@@ -835,15 +835,26 @@ function normalizeOptionalResponse(raw: unknown): { reply: string; action?: Gogo
 }
 
 export async function loadGogoHistory(): Promise<Message[]> {
-  const stored = await chromeGet(GOGO_HISTORY)
-  const raw = stored[GOGO_HISTORY]
-  if (!Array.isArray(raw)) return []
+  try {
+    const stored = await chromeGet(GOGO_HISTORY)
+    const raw = stored[GOGO_HISTORY]
+    if (!Array.isArray(raw)) return []
 
-  return trimHistory(
-    raw
-      .map((item) => normalizeMessage(item))
-      .filter((item): item is Message => Boolean(item)),
-  )
+    const messages: Message[] = []
+    for (const item of raw) {
+      try {
+        const message = normalizeMessage(item)
+        if (message) messages.push(message)
+      } catch (error) {
+        console.warn('[gogoAI] skipping invalid history item:', error)
+      }
+    }
+
+    return trimHistory(messages)
+  } catch (error) {
+    console.warn('[gogoAI] failed to load history:', error)
+    return []
+  }
 }
 
 export async function saveGogoHistory(messages: Message[]): Promise<void> {
