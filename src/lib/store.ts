@@ -1,10 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { WALLET_ADDRESS_STORAGE_KEY } from '@/lib/storageKeys'
+import { ADDRESS_BOOK_STORAGE_KEY, WALLET_ADDRESS_STORAGE_KEY } from '@/lib/storageKeys'
+import { debugLog, debugWarn } from '@/lib/debug'
 
 export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail' | 'daily-brief' | 'gogo-ai'
-
-export const ADDRESS_BOOK_STORAGE_KEY = 'arccopilot:address_book'
 
 export interface AddressMemory {
   address: string         // lowercase
@@ -87,7 +86,7 @@ async function syncWalletAddressToChrome(address: string | null): Promise<void> 
       await chrome.storage.local.remove(WALLET_ADDRESS_STORAGE_KEY)
     }
   } catch (error) {
-    console.warn('[ArcCopilot] wallet address sync failed:', error)
+    debugWarn('[ArcCopilot] wallet address sync failed:', error)
   }
 }
 
@@ -99,7 +98,7 @@ async function syncAddressBookToChrome(memories: Record<string, AddressMemory>):
       [ADDRESS_BOOK_STORAGE_KEY]: normalizeAddressBook(memories),
     })
   } catch (error) {
-    console.warn('[ArcCopilot] address book sync failed:', error)
+    debugWarn('[ArcCopilot] address book sync failed:', error)
   }
 }
 
@@ -125,7 +124,7 @@ export const useStore = create<AppState>()(
         const current = get().currentView
         if (current === view) return
 
-        console.log('[Nav] previous:', current, 'next:', view)
+        debugLog('[Nav] previous:', current, 'next:', view)
         set({
           previousView: current,
           currentView: view,
@@ -140,7 +139,7 @@ export const useStore = create<AppState>()(
 
         if (target === currentView) return
         
-        console.log('[Nav] goBack from:', currentView, 'to:', target)
+        debugLog('[Nav] goBack from:', currentView, 'to:', target)
         set({
           currentView: target,
           previousView: target === 'wallet' ? null : 'wallet',

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-
-const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
+import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
 const REFRESH_INTERVAL_MS = 60_000
 
 interface BlockscoutStatsResponse {
@@ -85,7 +84,7 @@ export function useEcosystemStats(): EcosystemStatsState {
     setError('')
 
     try {
-      const response = await fetch(`${BLOCKSCOUT_API_URL}/stats`, {
+      const response = await fetch(`${BLOCKSCOUT_API_BASE}/stats`, {
         headers: { accept: 'application/json' },
       })
 

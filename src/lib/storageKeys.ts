@@ -1,4 +1,6 @@
 export const PENDING_SEND_STORAGE_KEY = 'arccopilot:pending-send'
+export const PENDING_VIEW_STORAGE_KEY = 'arccopilot:pending_view'
+export const ADDRESS_BOOK_STORAGE_KEY = 'arccopilot:address_book'
 export const DISMISSED_PATTERNS_KEY = 'arccopilot:patterns:dismissed'
 export const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 export const TWITTERAPI_KEY = 'arccopilot:twitterapi-key'

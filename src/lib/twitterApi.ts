@@ -1,5 +1,7 @@
 import { TWITTERAPI_KEY, TWITTER_SEARCH_QUERY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
 import { getApiKey as getGeminiApiKey } from '@/lib/gogoAI'
+import { GEMINI_MODEL, TWITTERAPI_BASE } from '@/lib/constants'
+import { debugWarn } from '@/lib/debug'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
 export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
@@ -17,8 +19,6 @@ async function clearTweetsCache(): Promise<void> {
     // Ignore cache cleanup failures. The next fetch will still use the current query.
   }
 }
-
-const GEMINI_MODEL_NAME = 'gemini-2.5-flash'
 
 function extractJsonPayload(text: string): string {
   const trimmed = text.trim()
@@ -151,7 +151,7 @@ export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterT
   const apiKey = await getGeminiApiKey()
   if (!apiKey) return tweets
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const body = {
     systemInstruction: {
       parts: [{
@@ -199,7 +199,7 @@ export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterT
       category: categories[index],
     }))
   } catch (error) {
-    console.warn('[TwitterAPI] categorizeTweets failed:', error)
+    debugWarn('[TwitterAPI] categorizeTweets failed:', error)
     return tweets
   }
 }
@@ -240,7 +240,7 @@ export async function fetchArcTweets(): Promise<TwitterTweet[]> {
   if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
 
   const query = await getSearchQuery()
-  const searchUrl = new URL('https://api.twitterapi.io/twitter/tweet/advanced_search')
+  const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
   searchUrl.searchParams.set('query', query)
   searchUrl.searchParams.set('queryType', 'Latest')
 

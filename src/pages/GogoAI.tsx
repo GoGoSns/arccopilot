@@ -24,6 +24,7 @@ import {
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
+import { debugWarn } from '@/lib/debug'
 import {
   addReminder,
   buildReminderFromAction,
@@ -612,7 +613,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       try {
         recognition.abort()
       } catch (error) {
-        console.warn('[GogoAI] failed to stop voice input:', error)
+        debugWarn('[GogoAI] failed to stop voice input:', error)
       }
       recognitionRef.current = null
     }
@@ -628,7 +629,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const startVoiceInput = () => {
     if (!voiceInputReady) {
       if (!speechRecognitionSupported) {
-        console.warn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
+        debugWarn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
         setVoiceInputUnavailableReason('Voice not available')
       }
       return
@@ -636,7 +637,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     const RecognitionCtor = getSpeechRecognitionCtor()
     if (!RecognitionCtor) {
-      console.warn('[GogoAI] voice input unavailable: SpeechRecognition constructor missing')
+      debugWarn('[GogoAI] voice input unavailable: SpeechRecognition constructor missing')
       setVoiceInputUnavailableReason('Voice not available')
       return
     }
@@ -664,7 +665,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       }
 
       recognition.onerror = (event: any) => {
-        console.warn('[GogoAI] voice input error:', event?.error ?? event)
+        debugWarn('[GogoAI] voice input error:', event?.error ?? event)
         setVoiceInputUnavailableReason('Voice not available')
         setIsListening(false)
         recognitionRef.current = null
@@ -677,7 +678,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
       recognition.start()
     } catch (error) {
-      console.warn('[GogoAI] failed to start voice input:', error)
+      debugWarn('[GogoAI] failed to start voice input:', error)
       setVoiceInputUnavailableReason('Voice not available')
       setIsListening(false)
       recognitionRef.current = null
@@ -694,7 +695,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const speakMessage = (messageKey: string, text: string) => {
     if (!voiceResponsesReady || !speechSynthesisSupported) {
-      console.warn('[GogoAI] voice responses unavailable in this context')
+      debugWarn('[GogoAI] voice responses unavailable in this context')
       return
     }
 
@@ -720,7 +721,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       setSpeakingMessageKey(messageKey)
       window.speechSynthesis.speak(utterance)
     } catch (error) {
-      console.warn('[GogoAI] failed to speak response:', error)
+      debugWarn('[GogoAI] failed to speak response:', error)
       setSpeakingMessageKey(null)
     }
   }

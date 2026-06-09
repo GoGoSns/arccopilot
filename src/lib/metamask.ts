@@ -1,4 +1,9 @@
 /// <reference types="chrome" />
+import {
+  ARC_CHAIN_ID_HEX,
+  ARC_RPC_URL,
+  BLOCKSCOUT_BASE,
+} from '@/lib/constants'
 
 export type MetaMaskErrorInfo = {
   code?: number
@@ -96,14 +101,14 @@ export async function ensureMetaMaskAccounts(tabId: number): Promise<MetaMaskAcc
   return requestMetaMaskAccounts(tabId)
 }
 
-export const ARC_CHAIN_ID = '0x4cef52' // 5042002 decimal
+export const ARC_CHAIN_ID = ARC_CHAIN_ID_HEX
 
 export const ARC_CHAIN_PARAMS = {
   chainId: ARC_CHAIN_ID,
   chainName: 'Arc Testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-  rpcUrls: ['https://rpc.testnet.arc.network'],
-  blockExplorerUrls: ['https://testnet.arcscan.app'],
+  rpcUrls: [ARC_RPC_URL],
+  blockExplorerUrls: [BLOCKSCOUT_BASE],
 }
 
 type ChainParams = typeof ARC_CHAIN_PARAMS

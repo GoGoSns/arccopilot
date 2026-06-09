@@ -2,7 +2,15 @@
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
-import { EXPLORER_URL } from '@/lib/arc'
+import {
+  BLOCKSCOUT_API_BASE,
+  BRIEF_STATS_CACHE_TTL_MS,
+  BRIEF_TRANSFER_CACHE_TTL_MS,
+  BRIEF_TWEETS_CACHE_TTL_MS,
+  BRIEF_WHALE_CACHE_TTL_MS,
+  USDC_CONTRACT,
+} from '@/lib/constants'
+import { debugLog, debugWarn } from '@/lib/debug'
 import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
 import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
 import {
@@ -22,12 +30,7 @@ import {
 } from '@/lib/reminders'
 
 // --- constants ---------------------------------------------------------------
-const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
-const USDC_DECIMALS  = 6
-const TRANSFER_TTL   = 60_000       // 1 min
-const STATS_TTL      = 5 * 60_000   // 5 min
-const WHALE_TTL      = 5 * 60_000   // 5 min
-const TWEETS_TTL     = 60 * 60_000  // 60 min
+const USDC_DECIMALS = 6
 const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -183,7 +186,7 @@ function TweetCategoryBadge({ category }: { category?: TwitterTweet['category'] 
 }
 
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
-  const url = `${EXPLORER_URL}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&limit=20`
+  const url = `${BLOCKSCOUT_API_BASE}/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&limit=20`
 
   try {
     const res = await fetch(url, { headers: { accept: 'application/json' } })
@@ -228,7 +231,7 @@ function hasRecentActivity(transfers: RawTransfer[]): boolean {
 
 async function fetchStats(): Promise<EcosystemStats | null> {
   try {
-    const res = await fetch(`${EXPLORER_URL}/api/v2/stats`, { headers: { accept: 'application/json' } })
+    const res = await fetch(`${BLOCKSCOUT_API_BASE}/stats`, { headers: { accept: 'application/json' } })
     if (!res.ok) return null
     const d = await res.json() as {
       average_block_time?: number
@@ -251,7 +254,7 @@ async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<Whale
   if (cached) return { address: whaleAddr, label, ...cached }
 
   try {
-    const url = `${EXPLORER_URL}/api/v2/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20&limit=5`
+  const url = `${BLOCKSCOUT_API_BASE}/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20&limit=5`
     const res = await fetch(url, { headers: { accept: 'application/json' } })
     if (!res.ok) return null
     const data  = await res.json() as { items?: RawTransfer[] }
@@ -265,7 +268,7 @@ async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<Whale
     const hasRecent = Date.now() - new Date(latest.timestamp).getTime() < 24 * 60 * 60 * 1000
 
     const txData: CachedWhaleTx = { amount, direction, timestamp: latest.timestamp, hasRecent }
-    writeCache(cacheKey, txData, WHALE_TTL)
+    writeCache(cacheKey, txData, BRIEF_WHALE_CACHE_TTL_MS)
     return { address: whaleAddr, label, ...txData }
   } catch { return null }
 }
@@ -363,7 +366,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
     fetchRawTransfers(address)
       .then((items) => {
-        writeCache(cacheKey, items, TRANSFER_TTL)
+        writeCache(cacheKey, items, BRIEF_TRANSFER_CACHE_TTL_MS)
         process(items)
       })
       .catch(() => {
@@ -431,7 +434,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     const cached   = readCache<EcosystemStats>(cacheKey)
     if (cached) { setStats(cached); setStatsLoading(false); return }
     fetchStats()
-      .then((s) => { if (s) { writeCache(cacheKey, s, STATS_TTL); setStats(s) } })
+      .then((s) => { if (s) { writeCache(cacheKey, s, BRIEF_STATS_CACHE_TTL_MS); setStats(s) } })
       .catch(() => {})
       .finally(() => setStatsLoading(false))
   }, [])
@@ -461,7 +464,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           setDueReminders(items)
         }
       } catch (error) {
-        console.warn('[DailyBrief] reminder load failed:', error)
+        debugWarn('[DailyBrief] reminder load failed:', error)
         if (!cancelled) {
           setDueReminders([])
         }
@@ -504,7 +507,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         const items = hasCategorizedTweets ? cached : await categorizeTweets(cached)
         if (cancelled || currentVersion !== requestVersion) return
         if (!hasCategorizedTweets && items.some((tweet) => Boolean(tweet.category))) {
-          writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWEETS_TTL)
+          writeCache(TWITTER_TWEETS_CACHE_KEY, items, BRIEF_TWEETS_CACHE_TTL_MS)
         }
         setTweets(items)
         if (!cancelled && currentVersion === requestVersion) {
@@ -517,7 +520,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         const fetched = await fetchArcTweets()
         const items = await categorizeTweets(fetched)
         if (cancelled || currentVersion !== requestVersion) return
-        writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWEETS_TTL)
+        writeCache(TWITTER_TWEETS_CACHE_KEY, items, BRIEF_TWEETS_CACHE_TTL_MS)
         setTweets(items)
       } catch (err) {
         if (cancelled || currentVersion !== requestVersion) return
@@ -569,7 +572,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
     const activityClause = has24hActivity
       ? 'son 24 saatte aktiviteni kontrol ettim'
-      : 'son 24 saatte aktivite olmadÄ±ÄŸÄ±nÄ± kontrol ettim'
+      : 'son 24 saatte aktivite olmadigini kontrol ettim'
 
     return `Bu sabah ${tweetCount} Arc tweet'i, ${whaleCount} takip edilen whale ve ${activityClause}.`
   })()
@@ -603,7 +606,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       await markReminderTriggered(reminder.id)
       setDueReminders((prev) => prev.filter((item) => item.id !== reminder.id))
     } catch (error) {
-      console.warn('[DailyBrief] reminder done failed:', error)
+      debugWarn('[DailyBrief] reminder done failed:', error)
     }
   }
 
@@ -710,7 +713,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           <div className="flex items-center gap-2">
             <Lightbulb size={14} className="text-arc-gold" />
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/85">Önerilerim</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/85">Recommendations</p>
               <p className="text-[10px] text-arc-text-dim">For You</p>
             </div>
           </div>
@@ -735,7 +738,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="space-y-1">
                           <p className="text-sm leading-relaxed text-arc-text">
-                            HatÄ±rlatma: {reminder.title}
+                            Reminder: {reminder.title}
                           </p>
                           <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
                             {getReminderDetails(reminder)}
@@ -1067,7 +1070,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           <button
             onClick={() => {
               chrome.runtime.sendMessage({ type: 'CHECK_WHALES_NOW' }, (res) => {
-                console.log('[DailyBrief] CHECK_WHALES_NOW response:', res)
+                debugLog('[DailyBrief] CHECK_WHALES_NOW response:', res)
               })
             }}
             className="w-full py-1 text-center text-[10px] text-arc-text-dim/40 transition-colors hover:text-arc-text-dim"

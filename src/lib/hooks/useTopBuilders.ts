@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-
-const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
+import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
 const REFRESH_INTERVAL_MS = 5 * 60_000
 const USDC_DECIMALS = 18
 
@@ -67,7 +66,7 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
     setError('')
 
     try {
-      const response = await fetch(`${BLOCKSCOUT_API_URL}/addresses?sort=transactions_count`, {
+      const response = await fetch(`${BLOCKSCOUT_API_BASE}/addresses?sort=transactions_count`, {
         headers: { accept: 'application/json' },
       })
 

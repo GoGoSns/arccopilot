@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useStore, type View } from '@/lib/store'
-import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import { PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
 import { Welcome } from '@/pages/Welcome'
 import { Wallet } from '@/pages/Wallet'
 import { Send } from '@/pages/Send'
@@ -31,8 +31,13 @@ function isView(value: unknown): value is View {
   return typeof value === 'string' && VALID_VIEWS.includes(value as View)
 }
 
-function isPendingSend(value: unknown): value is { ts: number } {
-  return Boolean(value) && typeof value === 'object' && typeof (value as { ts?: unknown }).ts === 'number'
+function isPendingSend(value: unknown): value is { ts: number; recipient?: string; amount?: string } {
+  if (!value || typeof value !== 'object') return false
+
+  const pending = value as { ts?: unknown; recipient?: unknown; amount?: unknown }
+  return typeof pending.ts === 'number'
+    && (pending.recipient === undefined || typeof pending.recipient === 'string')
+    && (pending.amount === undefined || typeof pending.amount === 'string')
 }
 
 export default function App() {
@@ -45,16 +50,17 @@ export default function App() {
 
   useEffect(() => {
     chrome.storage.local.get(
-      [PENDING_SEND_STORAGE_KEY, 'arccopilot:pending_view'],
+      [PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY],
       (result) => {
-        // Notification click → route to Daily Brief (or other view)
-        const pendingView = result['arccopilot:pending_view']
+        const pendingView = result[PENDING_VIEW_STORAGE_KEY]
         if (isView(pendingView) && isOnboarded) {
           go(pendingView)
-          void chrome.storage.local.remove('arccopilot:pending_view')
+          void chrome.storage.local.remove(PENDING_VIEW_STORAGE_KEY)
           return
+        } else if (pendingView != null && !isView(pendingView)) {
+          void chrome.storage.local.remove(PENDING_VIEW_STORAGE_KEY)
         }
-        // Tip button → route to Send
+
         const pending = result[PENDING_SEND_STORAGE_KEY]
         if (isPendingSend(pending) && Date.now() - pending.ts < 5_000) {
           go('send')
@@ -73,10 +79,10 @@ export default function App() {
   if (view === 'discover') return <Discover onBack={goBack} />
   if (view === 'profile') return <Profile onBack={goBack} />
   if (view === 'settings') return <Settings onBack={goBack} />
-  if (view === 'address-book')   return <AddressBook  onBack={goBack} />
+  if (view === 'address-book') return <AddressBook onBack={goBack} />
   if (view === 'address-detail') return <AddressDetail onBack={goBack} />
-  if (view === 'daily-brief')    return <DailyBrief   onBack={goBack} />
-  if (view === 'gogo-ai')        return <GogoAI       onBack={goBack} />
+  if (view === 'daily-brief') return <DailyBrief onBack={goBack} />
+  if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
 
   return (
     <Wallet

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, Bell, Book, ChevronRight, Key, Mic, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
+import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
+import { debugWarn } from '@/lib/debug'
 import {
   DEFAULT_TWITTER_SEARCH_QUERY,
   clearTwitterApiKey,
@@ -30,8 +32,10 @@ interface SettingsProps {
   onBack: () => void
 }
 
-function readStoredBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === 'boolean' ? value : fallback
+function readStoredBoolean(key: string, value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value
+  void chrome.storage.local.remove(key)
+  return fallback
 }
 
 export function Settings({ onBack }: SettingsProps) {
@@ -58,13 +62,13 @@ export function Settings({ onBack }: SettingsProps) {
     })
 
     chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
-      setIncomingAlerts(readStoredBoolean(result[NOTIF_INCOMING_STORAGE_KEY], true))
-      setBalanceAlerts(readStoredBoolean(result[NOTIF_BALANCE_STORAGE_KEY], true))
+      setIncomingAlerts(readStoredBoolean(NOTIF_INCOMING_STORAGE_KEY, result[NOTIF_INCOMING_STORAGE_KEY], true))
+      setBalanceAlerts(readStoredBoolean(NOTIF_BALANCE_STORAGE_KEY, result[NOTIF_BALANCE_STORAGE_KEY], true))
     })
 
     chrome.storage.local.get([VOICE_INPUT_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY], (result) => {
-      setVoiceInputEnabled(readStoredBoolean(result[VOICE_INPUT_STORAGE_KEY], false))
-      setVoiceResponsesEnabled(readStoredBoolean(result[VOICE_RESPONSES_STORAGE_KEY], false))
+      setVoiceInputEnabled(readStoredBoolean(VOICE_INPUT_STORAGE_KEY, result[VOICE_INPUT_STORAGE_KEY], false))
+      setVoiceResponsesEnabled(readStoredBoolean(VOICE_RESPONSES_STORAGE_KEY, result[VOICE_RESPONSES_STORAGE_KEY], false))
     })
   }, [])
 
@@ -79,7 +83,7 @@ export function Settings({ onBack }: SettingsProps) {
           setReminders(items)
         }
       } catch (error) {
-        console.warn('[Settings] reminders load failed:', error)
+        debugWarn('[Settings] reminders load failed:', error)
         if (active) {
           setReminders([])
         }
@@ -176,7 +180,7 @@ export function Settings({ onBack }: SettingsProps) {
       await removeReminder(id)
       setReminders((current) => current.filter((reminder) => reminder.id !== id))
     } catch (error) {
-      console.warn('[Settings] reminder remove failed:', error)
+      debugWarn('[Settings] reminder remove failed:', error)
     }
   }
 
@@ -509,10 +513,10 @@ export function Settings({ onBack }: SettingsProps) {
         </div>
 
         {[
-          { section: 'Network', items: [{ label: 'Current Network', value: 'Arc Testnet' }, { label: 'RPC URL', value: 'rpc.testnet.arc.network' }] },
+          { section: 'Network', items: [{ label: 'Current Network', value: 'Arc Testnet' }, { label: 'RPC URL', value: ARC_RPC_URL.replace(/^https?:\/\//, '') }] },
           { section: 'Security', items: [{ label: 'Lock Extension', value: '' }, { label: 'Export Private Key', value: '' }] },
           { section: 'Preferences', items: [{ label: 'Theme', value: 'Dark' }, { label: 'Currency', value: 'USD' }] },
-          { section: 'About', items: [{ label: 'Version', value: 'v0.1.0' }, { label: 'Arc Testnet chainId', value: '5042002' }] },
+          { section: 'About', items: [{ label: 'Version', value: 'v0.1.0' }, { label: 'Arc Testnet chainId', value: String(ARC_CHAIN_ID) }] },
         ].map(({ section, items }) => (
           <div key={section}>
             <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">

@@ -9,25 +9,24 @@
 
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import {
+  ADDRESS_BOOK_STORAGE_KEY,
+  PENDING_VIEW_STORAGE_KEY,
   LAST_KNOWN_BALANCE_KEY,
   LAST_SEEN_INCOMING_KEY,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   WALLET_ADDRESS_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import { ARC_RPC_URL, BLOCKSCOUT_BASE, USDC_CONTRACT } from '@/lib/constants'
+import { debugLog, debugWarn } from '@/lib/debug'
 import {
   getDueReminders,
   getLocalDateKey,
   getReminderNotificationMessage,
 } from '@/lib/reminders'
 
-const ADDR_BOOK_KEY = 'arccopilot:address_book'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
 const REMINDER_NOTIFIED_PREFIX = 'arccopilot:reminders:last-notified:'
-const PENDING_VIEW_KEY = 'arccopilot:pending_view'
-const EXPLORER_URL = 'https://testnet.arcscan.app'
-const RPC_URL = 'https://rpc.testnet.arc.network'
-const USDC_CONTRACT = '0x3600000000000000000000000000000000000000'
 const USDC_DECIMALS = 6
 const LAST_KNOWN_BALANCE_WALLET_KEY = 'arccopilot:last-known-balance-wallet'
 const LAST_SEEN_INCOMING_WALLET_KEY = 'arccopilot:last-seen-incoming-wallet'
@@ -132,7 +131,7 @@ async function fetchCurrentUsdcBalance(address: string): Promise<string> {
   const padded = address.slice(2).toLowerCase().padStart(64, '0')
   const data = '0x70a08231' + padded
 
-  const res = await fetch(RPC_URL, {
+  const res = await fetch(ARC_RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -159,7 +158,7 @@ async function fetchCurrentUsdcBalance(address: string): Promise<string> {
 }
 
 async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer | null> {
-  const url = `${EXPLORER_URL}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&token=${USDC_CONTRACT}&limit=20`
+  const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&token=${USDC_CONTRACT}&limit=20`
   const res = await fetch(url, { headers: { accept: 'application/json' } })
   if (!res.ok) return null
 
@@ -193,12 +192,12 @@ function resolveWalletAddress(
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('whale-check', { periodInMinutes: 5 })
-  console.log('[ArcCopilot SW] whale-check alarm created (5 min interval)')
+  debugLog('[ArcCopilot SW] whale-check alarm created (5 min interval)')
 })
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create('whale-check', { periodInMinutes: 5 })
-  console.log('[ArcCopilot SW] whale-check alarm ensured on startup')
+  debugLog('[ArcCopilot SW] whale-check alarm ensured on startup')
   void runRecurringChecks()
 })
 
@@ -208,9 +207,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 })
 
-chrome.notifications.onClicked.addListener((notifId) => {
+  chrome.notifications.onClicked.addListener((notifId) => {
   chrome.notifications.clear(notifId)
-  void chrome.storage.local.set({ [PENDING_VIEW_KEY]: 'daily-brief' })
+  void chrome.storage.local.set({ [PENDING_VIEW_STORAGE_KEY]: 'daily-brief' })
   try {
     void (chrome.action as any).openPopup()
   } catch {}
@@ -234,7 +233,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'CHECK_WHALES_NOW') {
-    console.log('[ArcCopilot SW] manual whale check triggered')
+    debugLog('[ArcCopilot SW] manual whale check triggered')
     checkWhales()
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }))
@@ -251,27 +250,27 @@ async function runRecurringChecks(): Promise<void> {
 }
 
 async function checkWhales(): Promise<void> {
-  console.log('[ArcCopilot SW] checking whales…')
+  debugLog('[ArcCopilot SW] checking whales...')
 
-  const bookResult = await chrome.storage.local.get(ADDR_BOOK_KEY)
-  const rawBook = bookResult[ADDR_BOOK_KEY]
-  const book = normalizeAddressBook(bookResult[ADDR_BOOK_KEY])
+  const bookResult = await chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY)
+  const rawBook = bookResult[ADDRESS_BOOK_STORAGE_KEY]
+  const book = normalizeAddressBook(bookResult[ADDRESS_BOOK_STORAGE_KEY])
 
   if (Object.keys(book).length === 0) {
     if (rawBook != null) {
-      await chrome.storage.local.remove(ADDR_BOOK_KEY)
+      await chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
     }
-    console.log('[ArcCopilot SW] no address book in storage')
+    debugLog('[ArcCopilot SW] no address book in storage')
     return
   }
 
   const whales = Object.values(book).filter((m) => m.tag === 'whale')
   if (whales.length === 0) {
-    console.log('[ArcCopilot SW] no whales tracked')
+    debugLog('[ArcCopilot SW] no whales tracked')
     return
   }
 
-  console.log('[ArcCopilot SW] tracking', whales.length, 'whale(s)')
+  debugLog('[ArcCopilot SW] tracking', whales.length, 'whale(s)')
 
   const lastSeenKeys = whales.map((w) => LAST_SEEN_PREFIX + w.address.toLowerCase())
   const lastSeenResult = await chrome.storage.local.get(lastSeenKeys)
@@ -288,7 +287,7 @@ async function checkWhales(): Promise<void> {
         : undefined
 
       try {
-        const url = `${EXPLORER_URL}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20&limit=5`
+        const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20&limit=5`
         const res = await fetch(url, { headers: { accept: 'application/json' } })
         if (!res.ok) return
 
@@ -306,7 +305,7 @@ async function checkWhales(): Promise<void> {
         await chrome.storage.local.set({ [lastSeenKey]: txHash })
 
         if (!lastSeenHash) {
-          console.log('[ArcCopilot SW] initialized last-seen for', normalized)
+          debugLog('[ArcCopilot SW] initialized last-seen for', normalized)
           return
         }
 
@@ -314,7 +313,7 @@ async function checkWhales(): Promise<void> {
         const amount = formatBalanceSW(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
         const label = whale.label ?? `${whale.address.slice(0, 6)}...${whale.address.slice(-4)}`
 
-        console.log('[ArcCopilot SW] new whale tx:', label, direction, amount, 'USDC')
+        debugLog('[ArcCopilot SW] new whale tx:', label, direction, amount, 'USDC')
 
         chrome.notifications.create(`whale-${normalized}`, {
           type: 'basic',
@@ -326,7 +325,7 @@ async function checkWhales(): Promise<void> {
 
         newActivity = true
       } catch (err) {
-        console.error('[ArcCopilot SW] error checking whale', normalized, err)
+        console.error('[ArcCopilot SW] error checking whale', shortAddress(normalized), err)
       }
     }),
   )
@@ -334,16 +333,16 @@ async function checkWhales(): Promise<void> {
   if (newActivity) {
     chrome.action.setBadgeText({ text: '•' })
     chrome.action.setBadgeBackgroundColor({ color: '#d4af37' })
-    console.log('[ArcCopilot SW] badge set - new whale activity')
+    debugLog('[ArcCopilot SW] badge set - new whale activity')
   }
 }
 
 async function checkBalanceAndIncoming(): Promise<void> {
-  console.log('[ArcCopilot SW] checking balance and incoming transfers…')
+  debugLog('[ArcCopilot SW] checking balance and incoming transfers...')
 
   try {
     const storage = await chromeGet([
-      ADDR_BOOK_KEY,
+      ADDRESS_BOOK_STORAGE_KEY,
       LAST_KNOWN_BALANCE_KEY,
       LAST_KNOWN_BALANCE_WALLET_KEY,
       LAST_SEEN_INCOMING_KEY,
@@ -351,11 +350,11 @@ async function checkBalanceAndIncoming(): Promise<void> {
       WALLET_ADDRESS_STORAGE_KEY,
     ])
 
-    const addressBook = storage[ADDR_BOOK_KEY] as Record<string, AddressMemory> | undefined
+    const addressBook = storage[ADDRESS_BOOK_STORAGE_KEY] as Record<string, AddressMemory> | undefined
     const walletAddress = resolveWalletAddress(storage[WALLET_ADDRESS_STORAGE_KEY], addressBook)
 
     if (!walletAddress) {
-      console.log('[ArcCopilot SW] no wallet address available for balance checks')
+      debugLog('[ArcCopilot SW] no wallet address available for balance checks')
       return
     }
 
@@ -432,7 +431,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
 }
 
 async function checkReminders(): Promise<void> {
-  console.log('[ArcCopilot SW] checking reminders…')
+  debugLog('[ArcCopilot SW] checking reminders...')
 
   try {
     const dueReminders = await getDueReminders()
@@ -470,7 +469,7 @@ async function checkReminders(): Promise<void> {
     }
 
     if (notifiedCount > 0) {
-      console.log('[ArcCopilot SW] reminder notification(s) created:', notifiedCount)
+      debugLog('[ArcCopilot SW] reminder notification(s) created:', notifiedCount)
     }
   } catch (err) {
     console.error('[ArcCopilot SW] reminder check failed:', err)
@@ -483,12 +482,12 @@ async function handleOpenSend(recipient: string): Promise<void> {
 
   try {
     if (typeof (chrome.action as any)?.openPopup !== 'function') {
-      console.warn('[ArcCopilot SW] openPopup unavailable')
+      debugWarn('[ArcCopilot SW] openPopup unavailable')
       return
     }
     await (chrome.action as any).openPopup()
   } catch (err) {
-    console.warn('[ArcCopilot SW] openPopup unavailable:', err)
+    debugWarn('[ArcCopilot SW] openPopup unavailable:', err)
   }
 }
 

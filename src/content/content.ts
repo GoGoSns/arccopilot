@@ -3,6 +3,10 @@
  * Scans supported pages for Ethereum addresses and adds a premium hover tip card.
  */
 
+import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
+import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
+import { debugLog, debugWarn } from '@/lib/debug'
+
 type AdapterName = 'genericAdapter' | 'arcscanAdapter' | 'githubAdapter' | 'twitterAdapter'
 
 type SiteAdapter = {
@@ -39,7 +43,7 @@ type AddressMemory = {
 type AddressBookRecord = Record<string, AddressMemory>
 
 function main(): void {
-  console.log('[ArcCopilot] content script loaded', location.href)
+  debugLog('[ArcCopilot] content script loaded', location.href)
 
   // Standalone addresses only:
   // - 0x + exactly 40 hex chars => match
@@ -47,7 +51,6 @@ function main(): void {
   // - shortened forms like 0x1234...abcd => no match
   const ADDRESS_CANDIDATE_RE = /0x[a-fA-F0-9]{40}/g
   const MARKER_ATTR = 'data-arccopilot'
-  const SAVE_KEY = 'arccopilot:address_book'
   const MAX_ADDRS = 100
   const THROTTLE_MS = 200
   const HIDE_MS = 220
@@ -83,7 +86,7 @@ function main(): void {
     if (cached) return cached
     try {
       const res = await fetch(
-        `https://testnet.arcscan.app/api/v2/addresses/${normalized}`,
+        `${BLOCKSCOUT_API_BASE}/addresses/${normalized}`,
         { headers: { accept: 'application/json' } },
       )
       if (!res.ok) return 'unknown'
@@ -251,7 +254,7 @@ function main(): void {
   }
 
   const activeAdapter = pickAdapter()
-  console.log('[ArcCopilot] adapter active:', activeAdapter.name)
+  debugLog('[ArcCopilot] adapter active:', activeAdapter.name)
 
   function shortenAddress(address: string, chars = 4): string {
     return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
@@ -313,23 +316,23 @@ function main(): void {
       try {
         chrome.runtime.sendMessage({ type: 'OPEN_SEND', recipient: address }, () => {
           if (chrome.runtime.lastError) {
-            console.warn('[ArcCopilot] sendMessage failed:', chrome.runtime.lastError.message)
+            debugWarn('[ArcCopilot] sendMessage failed:', chrome.runtime.lastError.message)
             resolve(false)
             return
           }
 
-          console.log('[ArcCopilot] OPEN_SEND message sent', address)
+          debugLog('[ArcCopilot] OPEN_SEND message sent', address)
           resolve(true)
         })
       } catch (error) {
-        console.warn('[ArcCopilot] sendMessage error:', error)
+        debugWarn('[ArcCopilot] sendMessage error:', error)
         resolve(false)
       }
     })
   }
 
   function normalizeStoredBook(raw: unknown): AddressBookRecord {
-    if (!raw || typeof raw !== 'object') return {}
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
 
     const next: AddressBookRecord = {}
     for (const memory of Object.values(raw as Record<string, Partial<AddressMemory>>)) {
@@ -355,13 +358,17 @@ function main(): void {
     const shortLabel = shortenAddress(address)
 
     try {
-      chrome.storage.local.get(SAVE_KEY, (result) => {
+      chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY, (result) => {
         if (chrome.runtime.lastError) {
-          console.warn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
+          debugWarn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
           return
         }
 
-        const existing = normalizeStoredBook(result[SAVE_KEY])
+        const raw = result[ADDRESS_BOOK_STORAGE_KEY]
+        const existing = normalizeStoredBook(raw)
+        if (raw != null && Object.keys(existing).length === 0) {
+          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+        }
         const current = existing[normalized]
         const next: AddressBookRecord = {
           ...existing,
@@ -377,9 +384,9 @@ function main(): void {
           },
         }
 
-        chrome.storage.local.set({ [SAVE_KEY]: next }, () => {
+        chrome.storage.local.set({ [ADDRESS_BOOK_STORAGE_KEY]: next }, () => {
           if (chrome.runtime.lastError) {
-            console.warn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
+            debugWarn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
             return
           }
 
@@ -387,11 +394,11 @@ function main(): void {
             setSaveButtonState(true)
           }
 
-          console.log('[ArcCopilot] address saved', address)
+          debugLog('[ArcCopilot] address saved', address)
         })
       })
     } catch (error) {
-      console.warn('[ArcCopilot] save failed:', error)
+      debugWarn('[ArcCopilot] save failed:', error)
     }
   }
 
@@ -572,7 +579,7 @@ function main(): void {
       const address = getActiveAddress()
       if (!address) return
 
-      console.log('[ArcCopilot] tip clicked', address)
+      debugLog('[ArcCopilot] tip clicked', address)
       clearHideTimer()
       void sendOpenSend(address).then((sent) => {
         if (sent) {
@@ -596,7 +603,7 @@ function main(): void {
       const address = getActiveAddress()
       if (!address) return
 
-      console.log('[ArcCopilot] save clicked', address)
+      debugLog('[ArcCopilot] save clicked', address)
       saveAddressToBook(address)
     })
 
@@ -695,10 +702,14 @@ function main(): void {
 
     setSaveButtonState(false)
     try {
-      chrome.storage.local.get(SAVE_KEY, (result) => {
+      chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY, (result) => {
         if (chrome.runtime.lastError) return
         const normalized = address.toLowerCase()
-        const book = normalizeStoredBook(result[SAVE_KEY])
+        const raw = result[ADDRESS_BOOK_STORAGE_KEY]
+        const book = normalizeStoredBook(raw)
+        if (raw != null && Object.keys(book).length === 0) {
+          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+        }
         if (currentAddress.toLowerCase() === normalized && saveButtonEl) {
           setSaveButtonState(Boolean(book[normalized]))
         }
@@ -828,7 +839,7 @@ function main(): void {
       try {
         wrapped += wrapTextNode(entry.node, entry.matches).wrapped
       } catch (error) {
-        console.warn('[ArcCopilot] wrap failed:', error)
+        debugWarn('[ArcCopilot] wrap failed:', error)
       }
     }
 
@@ -853,8 +864,8 @@ function main(): void {
       totalWrapped += fallback.wrapped
     }
 
-    console.log('[ArcCopilot] address matches found', totalMatches)
-    console.log('[ArcCopilot] wrapped addresses', totalWrapped)
+    debugLog('[ArcCopilot] address matches found', totalMatches)
+    debugLog('[ArcCopilot] wrapped addresses', totalWrapped)
   }
 
   function scheduleScan(): void {
@@ -869,7 +880,7 @@ function main(): void {
       try {
         scanActivePage()
       } catch (error) {
-        console.warn('[ArcCopilot] scan failed:', error)
+        debugWarn('[ArcCopilot] scan failed:', error)
       }
 
       if (scanQueued) {
@@ -892,7 +903,7 @@ function main(): void {
         }
       }
     } catch (error) {
-      console.warn('[ArcCopilot] observer failed:', error)
+      debugWarn('[ArcCopilot] observer failed:', error)
     }
   })
 
@@ -923,7 +934,7 @@ function main(): void {
 try {
   main()
 } catch (error) {
-  console.warn('[ArcCopilot] content script fatal error:', error)
+  debugWarn('[ArcCopilot] content script fatal error:', error)
 }
 
 export {}

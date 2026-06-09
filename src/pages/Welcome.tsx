@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Settings, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ARC_CHAIN_PARAMS } from '@/lib/metamask'
 import { useStore } from '@/lib/store'
 
 type ConnectResult =
@@ -8,19 +9,19 @@ type ConnectResult =
   | { error: string }
 
 export function Welcome() {
-  const setIsOnboarded   = useStore((s) => s.setIsOnboarded)
-  const setCurrentView   = useStore((s) => s.setCurrentView)
+  const setIsOnboarded = useStore((s) => s.setIsOnboarded)
+  const setCurrentView = useStore((s) => s.setCurrentView)
   const setWalletAddress = useStore((s) => s.setWalletAddress)
 
   const [connecting, setConnecting] = useState(false)
-  const [errorMsg,   setErrorMsg]   = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
 
   const handleMetaMask = async () => {
     setConnecting(true)
     setErrorMsg('')
 
     try {
-      // Need an active regular tab — chrome:// pages block executeScript
+      // Need an active regular tab - chrome:// pages block executeScript
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
 
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
@@ -39,7 +40,7 @@ export function Welcome() {
           if (!eth) return { error: 'MetaMask is not installed or not active on this page.' }
           try {
             const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' })
-            const chainId: string    = await eth.request({ method: 'eth_chainId' })
+            const chainId: string = await eth.request({ method: 'eth_chainId' })
             return { accounts, chainId }
           } catch (e: any) {
             return { error: e?.message ?? 'User rejected connection' }
@@ -54,26 +55,21 @@ export function Welcome() {
 
       const address = payload.accounts[0]
 
-      // Add / switch to Arc Testnet — non-fatal if user rejects
+      // Add / switch to Arc Testnet - non-fatal if user rejects
       try {
-        await chrome.scripting.executeScript({
+        await chrome.scripting.executeScript<[typeof ARC_CHAIN_PARAMS], void>({
           target: { tabId: tab.id },
           world: 'MAIN',
-          func: async () => {
+          args: [ARC_CHAIN_PARAMS],
+          func: async (params: typeof ARC_CHAIN_PARAMS): Promise<void> => {
             await (window as any).ethereum.request({
               method: 'wallet_addEthereumChain',
-              params: [{
-                chainId: '0x4cef52', // 5042002 decimal
-                chainName: 'Arc Testnet',
-                nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-                rpcUrls: ['https://rpc.testnet.arc.network'],
-                blockExplorerUrls: ['https://testnet.arcscan.app'],
-              }],
+              params: [params],
             })
           },
         })
       } catch {
-        // User skipped chain add — continue anyway
+        // User skipped chain add - continue anyway
       }
 
       setWalletAddress(address)
@@ -118,7 +114,7 @@ export function Welcome() {
         </div>
 
         <div className="w-full space-y-3">
-          {/* Create wallet — Phase 3 */}
+          {/* Create wallet - Phase 3 */}
           <div className="relative">
             <Button variant="primary" fullWidth size="lg" disabled>
               Create new wallet
@@ -128,7 +124,7 @@ export function Welcome() {
             </span>
           </div>
 
-          {/* Import wallet — Phase 3 */}
+          {/* Import wallet - Phase 3 */}
           <div className="relative">
             <Button variant="outline" fullWidth size="lg" disabled>
               Import existing wallet
@@ -147,7 +143,7 @@ export function Welcome() {
             disabled={connecting}
           >
             {connecting
-              ? <><Loader2 size={16} className="animate-spin" /> Connecting…</>
+              ? <><Loader2 size={16} className="animate-spin" /> Connecting...</>
               : 'Connect MetaMask'
             }
           </Button>

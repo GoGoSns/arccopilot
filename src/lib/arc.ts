@@ -1,17 +1,24 @@
+import {
+  ARC_CHAIN_ID,
+  ARC_RPC_URL,
+  BLOCKSCOUT_BASE,
+  USDC_CONTRACT,
+} from '@/lib/constants'
+
 export const arcTestnet = {
-  id: 5042002,
+  id: ARC_CHAIN_ID,
   name: 'Arc Testnet',
   network: 'arc-testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://rpc.testnet.arc.network'] },
-    public:  { http: ['https://rpc.testnet.arc.network'] },
+    default: { http: [ARC_RPC_URL] },
+    public:  { http: [ARC_RPC_URL] },
   },
   blockExplorers: {
-    default: { name: 'ArcScan', url: 'https://testnet.arcscan.app' },
+    default: { name: 'ArcScan', url: BLOCKSCOUT_BASE },
   },
   contracts: {
-    usdc: '0x3600000000000000000000000000000000000000' as `0x${string}`,
+    usdc: USDC_CONTRACT,
   },
   testnet: true,
 } as const

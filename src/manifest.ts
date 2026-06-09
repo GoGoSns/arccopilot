@@ -1,10 +1,11 @@
 import { defineManifest } from '@crxjs/vite-plugin'
+import { ARC_RPC_URL, BLOCKSCOUT_BASE, TWITTERAPI_BASE } from './lib/constants'
 
 export default defineManifest({
   manifest_version: 3,
   name: 'ArcCopilot',
   version: '0.1.0',
-  description: 'Your copilot for the Arc economy — wallet, dashboard, social, and AI in one extension',
+  description: 'Your copilot for the Arc economy - wallet, dashboard, social, and AI in one extension',
   action: {
     default_popup: 'src/popup/index.html',
     default_icon: {
@@ -28,7 +29,7 @@ export default defineManifest({
         'https://x.com/*',
         'https://github.com/*',
         'https://www.youtube.com/*',
-        'https://testnet.arcscan.app/*',
+        `${BLOCKSCOUT_BASE}/*`,
         'https://etherscan.io/*',
       ],
       js: ['src/content/content.ts'],
@@ -39,11 +40,11 @@ export default defineManifest({
   permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'sidePanel', 'alarms'],
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
-    'https://rpc.testnet.arc.network/*',
-    'https://testnet.arcscan.app/*',
-    'https://api.twitterapi.io/*',
+    `${ARC_RPC_URL}/*`,
+    `${BLOCKSCOUT_BASE}/*`,
+    `${TWITTERAPI_BASE}/*`,
     'https://*/*',
-    'http://*/*'
+    'http://*/*',
   ],
   icons: {
     '16': 'icons/icon-16.png',

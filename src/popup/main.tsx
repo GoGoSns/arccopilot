@@ -3,7 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import '@/styles/globals.css'
-import { ADDRESS_BOOK_STORAGE_KEY, useStore, type AddressMemory } from '@/lib/store'
+import { useStore, type AddressMemory } from '@/lib/store'
+import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
 
 function normalizeStoredAddressBook(raw: unknown): Record<string, AddressMemory> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}

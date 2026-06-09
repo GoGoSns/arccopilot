@@ -1,11 +1,12 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
-import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
+import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
+import { debugWarn } from '@/lib/debug'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import { GOGO_HISTORY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
-const BLOCKSCOUT_API_URL = `${EXPLORER_URL}/api/v2`
+const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const MAX_HISTORY_MESSAGES = 50
 const GEMINI_HISTORY_MESSAGES = 15
@@ -210,11 +211,15 @@ function readLocalCache<T>(key: string): T | null {
     const raw = localStorage.getItem(key)
     if (!raw) return null
     const parsed = JSON.parse(raw) as CacheEnvelope<T> | null
-    if (!parsed || typeof parsed !== 'object') {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       localStorage.removeItem(key)
       return null
     }
-    if (typeof parsed.ttl === 'number' && typeof parsed.ts === 'number' && Date.now() - parsed.ts > parsed.ttl) {
+    if (typeof parsed.ts !== 'number' || typeof parsed.ttl !== 'number') {
+      localStorage.removeItem(key)
+      return null
+    }
+    if (Date.now() - parsed.ts > parsed.ttl) {
       localStorage.removeItem(key)
       return null
     }
@@ -856,7 +861,7 @@ export async function loadGogoHistory(): Promise<Message[]> {
         const message = normalizeMessage(item)
         if (message) messages.push(message)
       } catch (error) {
-        console.warn('[gogoAI] skipping invalid history item:', error)
+        debugWarn('[gogoAI] skipping invalid history item:', error)
       }
     }
 
@@ -866,7 +871,7 @@ export async function loadGogoHistory(): Promise<Message[]> {
 
     return trimHistory(messages)
   } catch (error) {
-    console.warn('[gogoAI] failed to load history:', error)
+    debugWarn('[gogoAI] failed to load history:', error)
     await chromeRemove(GOGO_HISTORY)
     return []
   }
@@ -965,7 +970,7 @@ async function fetchSpendingTransfers(address: string, cutoffMs: number): Promis
   for (let page = 0; page < 8; page++) {
     const query = new URLSearchParams()
     query.set('type', 'ERC-20')
-    query.set('token', USDC_ADDRESS)
+    query.set('token', USDC_CONTRACT)
     if (nextPageParams?.block_number != null) {
       query.set('block_number', String(nextPageParams.block_number))
     }
@@ -1096,8 +1101,7 @@ export async function getProactiveGreeting(): Promise<{ reply: string; action?: 
   const apiKey = await getApiKey()
   if (!apiKey) throw new Error('NO_API_KEY')
 
-  const modelName = 'gemini-2.5-flash'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const promptContext = buildPromptContext(buildGogoContextFromStore())
 
   const body = {
@@ -1161,8 +1165,7 @@ export async function askGogo(
   const apiKey = await getApiKey()
   if (!apiKey) throw new Error('NO_API_KEY')
 
-  const modelName = 'gemini-2.5-flash'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const promptContext = buildPromptContext(context)
   const recentHistory = history
     .filter((message) => message.role !== 'error')

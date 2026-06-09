@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
+import { EXPLORER_URL } from '@/lib/arc'
+import { BLOCKSCOUT_API_BASE, USDC_CONTRACT } from '@/lib/constants'
 import { timeAgo } from '@/lib/utils'
 import { useStore } from '@/lib/store'
-
-const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
 const POLL_INTERVAL_MS = 30_000
 
 interface BlockscoutAddressRef {
@@ -99,9 +98,9 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
     setError('')
 
     try {
-      const url = new URL(`${BLOCKSCOUT_API_URL}/addresses/${address}/token-transfers`)
+      const url = new URL(`${BLOCKSCOUT_API_BASE}/addresses/${address}/token-transfers`)
       url.searchParams.set('type', 'ERC-20')
-      url.searchParams.set('token', USDC_ADDRESS)
+      url.searchParams.set('token', USDC_CONTRACT)
 
       const response = await fetch(url.toString(), {
         headers: { accept: 'application/json' },

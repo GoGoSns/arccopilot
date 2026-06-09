@@ -46,9 +46,12 @@ type PendingSend = {
 }
 
 function isPendingSend(value: unknown): value is PendingSend {
-  return Boolean(value)
-    && typeof value === 'object'
-    && typeof (value as PendingSend).ts === 'number'
+  if (!value || typeof value !== 'object') return false
+
+  const pending = value as PendingSend & { recipient?: unknown; amount?: unknown; ts?: unknown }
+  return typeof pending.ts === 'number'
+    && (pending.recipient === undefined || typeof pending.recipient === 'string')
+    && (pending.amount === undefined || typeof pending.amount === 'string')
 }
 
 export function Send({ onBack }: SendProps) {

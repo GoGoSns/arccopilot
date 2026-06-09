@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { USDC_ADDRESS } from '@/lib/arc'
+import { USDC_CONTRACT, BLOCKSCOUT_API_BASE } from '@/lib/constants'
 import { useStore } from '@/lib/store'
-
-const BLOCKSCOUT_API_URL = 'https://testnet.arcscan.app/api/v2'
 
 interface BlockscoutAddressRef {
   hash?: string
@@ -63,9 +61,9 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
     setError(null)
 
     try {
-      const url = new URL(`${BLOCKSCOUT_API_URL}/addresses/${userAddress}/token-transfers`)
+      const url = new URL(`${BLOCKSCOUT_API_BASE}/addresses/${userAddress}/token-transfers`)
       url.searchParams.set('type', 'ERC-20')
-      url.searchParams.set('token', USDC_ADDRESS)
+      url.searchParams.set('token', USDC_CONTRACT)
 
       const response = await fetch(url.toString(), {
         headers: { accept: 'application/json' },
