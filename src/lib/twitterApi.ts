@@ -1,7 +1,9 @@
 import { TWITTERAPI_KEY, TWITTER_SEARCH_QUERY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
+import { getApiKey as getGeminiApiKey } from '@/lib/gogoAI'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
 export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
+export type TweetCategory = 'news' | 'opportunity' | 'discussion'
 
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
@@ -14,6 +16,52 @@ async function clearTweetsCache(): Promise<void> {
   } catch {
     // Ignore cache cleanup failures. The next fetch will still use the current query.
   }
+}
+
+const GEMINI_MODEL_NAME = 'gemini-2.5-flash'
+
+function extractJsonPayload(text: string): string {
+  const trimmed = text.trim()
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  return (fenced?.[1] ?? trimmed).trim()
+}
+
+function normalizeTweetCategory(value: unknown): TweetCategory | null {
+  if (typeof value !== 'string') return null
+
+  switch (value.trim().toLowerCase()) {
+    case 'news':
+      return 'news'
+    case 'opportunity':
+      return 'opportunity'
+    case 'discussion':
+      return 'discussion'
+    default:
+      return null
+  }
+}
+
+function buildCategorizationPrompt(tweets: TwitterTweet[]): string {
+  const numberedTweets = tweets
+    .map((tweet, index) => {
+      const text = tweet.text.trim().replace(/\s+/g, ' ')
+      return `${index + 1}. ${text || '[empty tweet]'}`
+    })
+    .join('\n')
+
+  return `Categorize each tweet into one of: news (announcements, updates, launches), opportunity (airdrops, faucets, tasks, rewards, earning), discussion (opinions, questions, general talk). Return ONLY a JSON array of categories in the same order, e.g. ["news","opportunity","discussion"].
+
+Tweets:
+${numberedTweets}`
+}
+
+function normalizeCategorizationResponse(raw: unknown, tweetCount: number): TweetCategory[] | null {
+  if (!Array.isArray(raw) || raw.length !== tweetCount) return null
+
+  const categories = raw.map((item) => normalizeTweetCategory(item))
+  if (categories.some((category) => category == null)) return null
+
+  return categories as TweetCategory[]
 }
 
 type TwitterApiAuthor = {
@@ -50,6 +98,7 @@ export type TwitterTweet = {
   retweets: number
   verified: boolean
   tweetUrl: string
+  category?: TweetCategory
 }
 
 export async function getTwitterApiKey(): Promise<string | null> {
@@ -77,6 +126,65 @@ export async function clearTwitterApiKey(): Promise<void> {
   if (!canUseChromeStorage()) return
 
   await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+}
+
+export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterTweet[]> {
+  if (tweets.length === 0) return tweets
+
+  const apiKey = await getGeminiApiKey()
+  if (!apiKey) return tweets
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent?key=${apiKey}`
+  const body = {
+    systemInstruction: {
+      parts: [{
+        text: 'You categorize Arc tweets. Return only a JSON array of categories.',
+      }],
+    },
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: buildCategorizationPrompt(tweets) }],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0,
+      topP: 0.95,
+    },
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) return tweets
+
+    const data = await res.json() as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>
+        }
+      }>
+    }
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) return tweets
+
+    const payload = extractJsonPayload(text)
+    const categories = normalizeCategorizationResponse(JSON.parse(payload), tweets.length)
+    if (!categories) return tweets
+
+    return tweets.map((tweet, index) => ({
+      ...tweet,
+      category: categories[index],
+    }))
+  } catch (error) {
+    console.warn('[TwitterAPI] categorizeTweets failed:', error)
+    return tweets
+  }
 }
 
 export async function getSearchQuery(): Promise<string> {

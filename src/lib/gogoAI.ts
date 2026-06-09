@@ -10,6 +10,7 @@ const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const MAX_HISTORY_MESSAGES = 50
 const GEMINI_HISTORY_MESSAGES = 15
 const USDC_DECIMALS = 6
+type TweetCategory = 'news' | 'opportunity' | 'discussion'
 
 type AddressBookEntry = {
   label?: string
@@ -43,6 +44,7 @@ type RecentTweetSummary = {
   createdAt: string
   likes: number
   retweets: number
+  category?: TweetCategory
 }
 
 export interface AddressAnalysis {
@@ -145,7 +147,7 @@ PERSONALITY:
 Speak like a smart friend who knows crypto. Match the user's language (Turkish or English based on their input). Concise but warm. Use specific numbers from context, never vague.
 
 CAPABILITIES:
-Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
+Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Recent tweets may include category labels: news, opportunity, or discussion. Use them to spot urgency quickly. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
 The balance is denominated in USDC on Arc Testnet.
 
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
@@ -677,6 +679,7 @@ function getRecentTweets(): RecentTweetSummary[] {
     createdAt: tweet.createdAt,
     likes: tweet.likes ?? 0,
     retweets: tweet.retweets ?? 0,
+    category: tweet.category,
   }))
 }
 

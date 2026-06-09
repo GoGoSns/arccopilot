@@ -13,7 +13,7 @@ import {
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
-import { fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
+import { categorizeTweets, fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
 import {
   getDueReminders,
   getReminderDetails,
@@ -137,6 +137,34 @@ function TweetAvatar({ tweet }: { tweet: TwitterTweet }) {
 }
 
 // â”€â”€â”€ API helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, { label: string; className: string }> = {
+  news: {
+    label: 'News',
+    className: 'border-[#1d9bf0]/35 bg-[#1d9bf0]/12 text-[#8bc7ff]',
+  },
+  opportunity: {
+    label: 'Opportunity',
+    className: 'border-[#d4af37]/45 bg-gradient-to-r from-[#d4af37]/20 to-emerald-400/10 text-[#f5d87d] shadow-[0_0_0_1px_rgba(212,175,55,0.15)]',
+  },
+  discussion: {
+    label: 'Discussion',
+    className: 'border-arc-border/70 bg-arc-border/20 text-arc-text-dim',
+  },
+}
+
+function TweetCategoryBadge({ category }: { category?: TwitterTweet['category'] }) {
+  if (!category) return null
+
+  const badge = TWEET_CATEGORY_BADGES[category]
+  if (!badge) return null
+
+  return (
+    <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${badge.className}`}>
+      {badge.label}
+    </span>
+  )
+}
+
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
   const url = `${EXPLORER_URL}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&limit=20`
 
@@ -438,15 +466,22 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
       const cached = readCache<TwitterTweet[]>(TWITTER_TWEETS_CACHE_KEY)
       if (cached) {
+        const hasCategorizedTweets = cached.every((tweet) => Boolean(tweet.category))
+        const items = hasCategorizedTweets ? cached : await categorizeTweets(cached)
+        if (cancelled || currentVersion !== requestVersion) return
+        if (!hasCategorizedTweets && items.some((tweet) => Boolean(tweet.category))) {
+          writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWEETS_TTL)
+        }
+        setTweets(items)
         if (!cancelled && currentVersion === requestVersion) {
-          setTweets(cached)
           setTweetsLoading(false)
         }
         return
       }
 
       try {
-        const items = await fetchArcTweets()
+        const fetched = await fetchArcTweets()
+        const items = await categorizeTweets(fetched)
         if (cancelled || currentVersion !== requestVersion) return
         writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWEETS_TTL)
         setTweets(items)
@@ -924,6 +959,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       <span className="shrink-0">·</span>
                       <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : 'Unknown time'}</span>
                     </div>
+                    {tweet.category && (
+                      <div className="mt-0.5 flex items-center">
+                        <TweetCategoryBadge category={tweet.category} />
+                      </div>
+                    )}
                     <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
                       {tweet.text}
                     </p>
