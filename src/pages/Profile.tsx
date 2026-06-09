@@ -182,7 +182,6 @@ export function Profile({ onBack }: ProfileProps) {
                     ? 'bg-arc-gold/5 border-arc-gold/30 shadow-lg shadow-arc-gold/5' 
                     : 'opacity-60 bg-arc-card/30'
                 }`}
-                title={!badge.isUnlocked ? `Unlock by: ${badge.criteria}` : undefined}
               >
                 {!badge.isUnlocked && (
                   <div className="absolute inset-0 flex items-center justify-center bg-arc-bg/40 backdrop-blur-[1px] rounded-2xl z-10">

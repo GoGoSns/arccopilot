@@ -39,6 +39,17 @@ type ReceiptResult = {
 
 type TxStatus = 'idle' | 'pending' | 'confirmed'
 type MetaMaskAccessState = 'checking' | 'authorized' | 'unauthorized' | 'missing'
+type PendingSend = {
+  recipient?: string
+  amount?: string
+  ts: number
+}
+
+function isPendingSend(value: unknown): value is PendingSend {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as PendingSend).ts === 'number'
+}
 
 export function Send({ onBack }: SendProps) {
   const walletAddress = useStore((s) => s.walletAddress)
@@ -89,9 +100,9 @@ export function Send({ onBack }: SendProps) {
     chrome.storage.local.get(PENDING_SEND_STORAGE_KEY, (result) => {
       const pending = result[PENDING_SEND_STORAGE_KEY]
       // 30s TTL for inter-page navigation
-      if (pending && Date.now() - pending.ts < 30_000) {
-        if (pending.recipient) setRecipient(pending.recipient)
-        if (pending.amount) setAmount(pending.amount)
+      if (isPendingSend(pending) && Date.now() - pending.ts < 30_000) {
+        if (typeof pending.recipient === 'string') setRecipient(pending.recipient)
+        if (typeof pending.amount === 'string') setAmount(pending.amount)
         setFromUniversalTip(true)
         chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
         if (!pending.amount) {
@@ -99,6 +110,7 @@ export function Send({ onBack }: SendProps) {
         }
       } else {
         setFromUniversalTip(false)
+        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
       }
     })
   }, [])

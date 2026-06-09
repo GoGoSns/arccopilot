@@ -57,7 +57,7 @@ async function runMetaMaskAccountRequest(tabId: number, method: 'eth_accounts' |
     target: { tabId },
     world: 'MAIN',
     args: [method],
-    func: async (requestMethod: string): Promise<MetaMaskAccountResult> => {
+    func: (async (requestMethod: string): Promise<MetaMaskAccountResult> => {
       try {
         const ethereum = (window as any).ethereum
         if (!ethereum) {
@@ -76,7 +76,7 @@ async function runMetaMaskAccountRequest(tabId: number, method: 'eth_accounts' |
           },
         }
       }
-    },
+    }) as unknown as (requestMethod: string) => MetaMaskAccountResult,
   })
 
   return results[0]?.result ?? { error: { message: 'No response from the page.' } }
@@ -116,7 +116,7 @@ export async function switchToArcTestnet(tabId: number): Promise<void> {
       target: { tabId },
       world: 'MAIN',
       args: [ARC_CHAIN_PARAMS],
-      func: async (params: ChainParams): Promise<void> => {
+      func: (async (params: ChainParams): Promise<void> => {
         const eth = (window as any).ethereum
         if (!eth) return
         try {
@@ -128,7 +128,7 @@ export async function switchToArcTestnet(tabId: number): Promise<void> {
           }
           // code 4001 = user rejected switch — non-fatal, let the tx try anyway
         }
-      },
+      }) as unknown as (params: ChainParams) => void,
     })
   } catch {
     // executeScript itself failed (e.g. chrome:// page) — non-fatal
@@ -142,4 +142,3 @@ export function isMetaMaskUnauthorizedResult(result: MetaMaskAccountResult): boo
 export function isMetaMaskRejectedResult(result: MetaMaskAccountResult): boolean {
   return 'error' in result && normalizeMetaMaskError(result.error).code === 4001
 }
-

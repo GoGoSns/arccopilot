@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/lib/store'
 import { formatBalance } from '@/lib/utils'
 
@@ -47,7 +47,7 @@ export function useUSDCBalance() {
   const storedBalance = useStore((s) => s.usdcBalance)
   const persist = useStore((s) => s.setBalance)
 
-  console.log('[useUSDCBalance] called â€” address:', address, '| storedBalance:', storedBalance)
+  console.log('[useUSDCBalance] called - address:', address, '| storedBalance:', storedBalance)
 
   // Seed from persisted store so there's no "0.00 flash" on popup reopen
   const [balance, setBalance] = useState<string>(storedBalance ?? '0.00')
@@ -55,7 +55,7 @@ export function useUSDCBalance() {
 
   const refresh = useCallback(async () => {
     if (!address) {
-      console.log('[useUSDCBalance] no address yet â€” skipping fetch')
+      console.log('[useUSDCBalance] no address yet - skipping fetch')
       setIsLoading(false)
       return
     }
@@ -86,3 +86,4 @@ export function useUSDCBalance() {
 
   return { balance, isLoading, refresh }
 }
+

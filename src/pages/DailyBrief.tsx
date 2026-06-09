@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -21,7 +21,7 @@ import {
   type Reminder,
 } from '@/lib/reminders'
 
-// â”€â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- constants ---------------------------------------------------------------
 const USDC_CONTRACT  = '0x3600000000000000000000000000000000000000'
 const USDC_DECIMALS  = 6
 const TRANSFER_TTL   = 60_000       // 1 min
@@ -31,7 +31,7 @@ const TWEETS_TTL     = 60 * 60_000  // 60 min
 const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-// â”€â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- types -------------------------------------------------------------------
 interface RawTransfer {
   timestamp: string
   total: { value: string }
@@ -74,22 +74,39 @@ interface RecommendationItem {
   onAction: () => void
 }
 
-// â”€â”€â”€ localStorage cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- localStorage cache -------------------------------------------------------
 function readCache<T>(key: string): T | null {
   try {
+    if (typeof localStorage === 'undefined') return null
     const raw = localStorage.getItem(key)
     if (!raw) return null
-    const { data, ts, ttl } = JSON.parse(raw) as { data: T; ts: number; ttl: number }
-    if (Date.now() - ts > ttl) return null
-    return data as T
-  } catch { return null }
+    const parsed = JSON.parse(raw) as { data?: T; ts?: number; ttl?: number } | null
+    if (!parsed || typeof parsed !== 'object') {
+      localStorage.removeItem(key)
+      return null
+    }
+    if (typeof parsed.ts !== 'number' || typeof parsed.ttl !== 'number') {
+      localStorage.removeItem(key)
+      return null
+    }
+    if (Date.now() - parsed.ts > parsed.ttl) {
+      localStorage.removeItem(key)
+      return null
+    }
+    return parsed.data ?? null
+  } catch {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(key)
+    } catch {}
+    return null
+  }
 }
 
 function writeCache<T>(key: string, data: T, ttl: number): void {
   try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now(), ttl })) } catch {}
 }
 
-// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- helpers -----------------------------------------------------------------
 function formatCompact(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`
   if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(1)}M`
@@ -136,7 +153,7 @@ function TweetAvatar({ tweet }: { tweet: TwitterTweet }) {
   )
 }
 
-// â”€â”€â”€ API helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- API helpers -------------------------------------------------------------
 const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, { label: string; className: string }> = {
   news: {
     label: 'News',
@@ -219,9 +236,9 @@ async function fetchStats(): Promise<EcosystemStats | null> {
       total_addresses?:    string
     }
     return {
-      blockTime:      d.average_block_time != null ? `${Math.round(d.average_block_time)}ms` : 'â€”',
-      totalTx:        d.total_transactions ? formatCompact(parseInt(d.total_transactions, 10)) : 'â€”',
-      totalAddresses: d.total_addresses    ? formatCompact(parseInt(d.total_addresses, 10))    : 'â€”',
+      blockTime:      d.average_block_time != null ? `${Math.round(d.average_block_time)}ms` : '-',
+      totalTx:        d.total_transactions ? formatCompact(parseInt(d.total_transactions, 10)) : '-',
+      totalAddresses: d.total_addresses    ? formatCompact(parseInt(d.total_addresses, 10))    : '-',
     }
   } catch { return null }
 }
@@ -253,7 +270,7 @@ async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<Whale
   } catch { return null }
 }
 
-// â”€â”€â”€ component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- component ---------------------------------------------------------------
 interface DailyBriefProps {
   onBack: () => void
 }
@@ -278,7 +295,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     [trackedWhales],
   )
 
-  // â”€â”€ state â”€
+  // -- state -
   const [balanceChange,  setBalanceChange]  = useState<string | null>(null)
   const [changeLoading,  setChangeLoading]  = useState(true)
   const [activity,       setActivity]       = useState<ActivityEntry[] | null>(null)
@@ -309,18 +326,18 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   // Clear badge when this page mounts (user has seen whale activity)
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'CLEAR_BADGE' }, () => {
-      if (chrome.runtime.lastError) { /* ignore â€” popup may have opened before SW ready */ }
+      if (chrome.runtime.lastError) { /* ignore - popup may have opened before SW ready */ }
     })
   }, [])
 
-  // â”€â”€ header â”€
+  // -- header -
   const displayName = profile?.displayName?.trim() || 'GoGo'
   const now         = new Date()
   const hour        = now.getHours()
   const greeting    = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const dateStr     = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-  // â”€â”€ effect: transfers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- effect: transfers -----------------------------------------------------
   useEffect(() => {
     if (!address) {
       setChangeLoading(false)
@@ -356,12 +373,29 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       })
   }, [address])
 
-  // â”€â”€ effect: dismissed patterns â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- effect: dismissed patterns ------------------------------------------
   useEffect(() => {
     chrome.storage.local.get(DISMISSED_PATTERNS_KEY, (res) => {
-      if (res[DISMISSED_PATTERNS_KEY]) {
-        setDismissed(res[DISMISSED_PATTERNS_KEY])
+      const raw = res[DISMISSED_PATTERNS_KEY]
+      if (!Array.isArray(raw)) {
+        setDismissed([])
+        chrome.storage.local.remove(DISMISSED_PATTERNS_KEY)
+        return
       }
+
+      const next = raw.filter((item): item is DismissedPattern => (
+        Boolean(item)
+        && typeof item === 'object'
+        && typeof (item as DismissedPattern).kind === 'string'
+        && typeof (item as DismissedPattern).key === 'string'
+        && typeof (item as DismissedPattern).dismissedAt === 'number'
+      ))
+
+      if (next.length !== raw.length) {
+        chrome.storage.local.set({ [DISMISSED_PATTERNS_KEY]: next })
+      }
+
+      setDismissed(next)
     })
   }, [])
 
@@ -391,7 +425,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     })
   }
 
-  // â”€â”€ effect: stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- effect: stats ---------------------------------------------------------
   useEffect(() => {
     const cacheKey = 'arccopilot:brief:stats'
     const cached   = readCache<EcosystemStats>(cacheKey)
@@ -402,7 +436,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       .finally(() => setStatsLoading(false))
   }, [])
 
-  // â”€â”€ effect: whale movements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- effect: whale movements -----------------------------------------------
   useEffect(() => {
     setWhaleReady(false)
     if (whales.length === 0) { setWhaleEntries([]); setWhaleReady(true); return }
@@ -454,7 +488,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
   }, [])
 
-  // â”€â”€ effect: twitter feed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- effect: twitter feed --------------------------------------------------
   useEffect(() => {
     let cancelled = false
     let requestVersion = 0
@@ -535,12 +569,16 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
     const activityClause = has24hActivity
       ? 'son 24 saatte aktiviteni kontrol ettim'
-      : 'son 24 saatte aktivite olmadığını kontrol ettim'
+      : 'son 24 saatte aktivite olmadÄ±ÄŸÄ±nÄ± kontrol ettim'
 
     return `Bu sabah ${tweetCount} Arc tweet'i, ${whaleCount} takip edilen whale ve ${activityClause}.`
   })()
 
   const recommendations: RecommendationItem[] = []
+  const safeDueReminders = Array.isArray(dueReminders) ? dueReminders : []
+  const safeWhaleEntries = Array.isArray(whaleEntries) ? whaleEntries : []
+  const safeTweets = Array.isArray(tweets) ? tweets : []
+  const safeActivity = Array.isArray(activity) ? activity : []
 
   const openSendWithPending = (pending: { recipient?: string; amount?: string }) => {
     chrome.storage.local.set({
@@ -677,15 +715,15 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           </div>
 
-          {remindersLoading && dueReminders.length === 0 ? (
+          {remindersLoading && safeDueReminders.length === 0 ? (
             <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
               <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
               <div className="mt-2 h-2 w-3/4 animate-pulse rounded bg-arc-border/70" />
               <div className="mt-3 h-8 w-32 animate-pulse rounded-xl bg-arc-border/70" />
             </div>
-          ) : dueReminders.length > 0 ? (
+          ) : safeDueReminders.length > 0 ? (
             <div className="space-y-3">
-              {dueReminders.map((reminder) => {
+              {safeDueReminders.map((reminder) => {
                 const hasPrefill = Boolean(reminder.recipient?.trim() || reminder.amount?.trim())
 
                 return (
@@ -697,7 +735,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="space-y-1">
                           <p className="text-sm leading-relaxed text-arc-text">
-                            Hatırlatma: {reminder.title}
+                            HatÄ±rlatma: {reminder.title}
                           </p>
                           <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
                             {getReminderDetails(reminder)}
@@ -815,11 +853,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 <div key={d} className="h-10 animate-pulse rounded-xl bg-arc-border/70" style={{ animationDelay: `${d}ms` }} />
               ))}
             </div>
-          ) : !activity || activity.length === 0 ? (
+          ) : safeActivity.length === 0 ? (
             <p className="py-2 text-center text-xs text-arc-text-dim">No recent activity</p>
           ) : (
             <div className="space-y-px">
-              {activity.map((tx, i) => {
+              {safeActivity.map((tx, i) => {
                 const mem = getMemory(tx.otherAddress)
                 const label = mem?.label ?? formatAddress(tx.otherAddress, 4)
                 return (
@@ -885,9 +923,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           )}
 
-          {!whaleLoading && whaleReady && whaleEntries.length > 0 && (
+          {!whaleLoading && whaleReady && safeWhaleEntries.length > 0 && (
             <div className="space-y-px">
-              {whaleEntries.map((entry, i) => (
+              {safeWhaleEntries.map((entry, i) => (
                 <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-gold/5' : ''}`}>
                   <Eye size={14} className="shrink-0 text-arc-gold" />
                   <div className="min-w-0 flex-1">
@@ -937,11 +975,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 Update key in Settings
               </button>
             </div>
-          ) : tweets.length === 0 ? (
+          ) : safeTweets.length === 0 ? (
             <p className="py-2 text-center text-xs text-arc-text-dim">No Arc tweets found yet</p>
           ) : (
             <div className="space-y-4">
-              {tweets.slice(0, 3).map((tweet) => (
+              {safeTweets.slice(0, 3).map((tweet) => (
                 <button
                   key={tweet.id}
                   type="button"
@@ -968,7 +1006,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       {tweet.text}
                     </p>
                     <p className="text-[10px] font-medium text-arc-text-dim">
-                      ❤ {tweet.likes} · ↻ {tweet.retweets}
+                      ♥ {tweet.likes} · ↻ {tweet.retweets}
                     </p>
                   </div>
                 </button>
@@ -1016,7 +1054,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           ) : (
             <div className="space-y-1">
               <p className="text-sm leading-relaxed text-arc-text-dim">
-                {rawTransfers.length < 3 ? 'Building patterns from your activity…' : 'No new patterns detected today.'}
+                {rawTransfers.length < 3 ? 'Building patterns from your activity...' : 'No new patterns detected today.'}
               </p>
               {rawTransfers.length < 3 && (
                 <p className="text-[10px] text-arc-text-dim/60">Need at least 3 transactions</p>
@@ -1025,7 +1063,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        {import.meta.env.DEV && (
+        {Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV) && (
           <button
             onClick={() => {
               chrome.runtime.sendMessage({ type: 'CHECK_WHALES_NOW' }, (res) => {
@@ -1041,3 +1079,4 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     </div>
   )
 }
+

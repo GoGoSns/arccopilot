@@ -34,7 +34,7 @@ export function Welcome() {
       const results = await chrome.scripting.executeScript<[], ConnectResult>({
         target: { tabId: tab.id },
         world: 'MAIN',
-        func: async (): Promise<ConnectResult> => {
+        func: (async (): Promise<ConnectResult> => {
           const eth = (window as any).ethereum
           if (!eth) return { error: 'MetaMask is not installed or not active on this page.' }
           try {
@@ -44,7 +44,7 @@ export function Welcome() {
           } catch (e: any) {
             return { error: e?.message ?? 'User rejected connection' }
           }
-        },
+        }) as unknown as () => ConnectResult,
       })
 
       const payload = results[0]?.result

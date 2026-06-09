@@ -1,8 +1,9 @@
-import { Edit2, Plus, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle } from 'lucide-react'
+import { Edit2, Plus, User, Briefcase, AlertTriangle, ShieldCheck, HelpCircle, Eye } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { formatAddress, formatBalance, timeAgo } from '@/lib/utils'
 import { useAddressInsights } from '@/lib/hooks/useAddressInsights'
+import type { AddressMemory } from '@/lib/store'
 
 interface MemoryCardProps {
   address: string
@@ -11,19 +12,21 @@ interface MemoryCardProps {
   onSave?: () => void
 }
 
-const TAG_COLORS = {
+const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
   friend: 'text-green-500 bg-green-500/10',
   work: 'text-blue-500 bg-blue-500/10',
   warning: 'text-red-500 bg-red-500/10',
   self: 'text-arc-gold bg-arc-gold/10',
+  whale: 'text-arc-gold bg-arc-gold/10',
   other: 'text-gray-400 bg-gray-400/10',
 }
 
-const TAG_ICONS = {
+const TAG_ICONS: Record<NonNullable<AddressMemory['tag']>, typeof User> = {
   friend: User,
   work: Briefcase,
   warning: AlertTriangle,
   self: ShieldCheck,
+  whale: Eye,
   other: HelpCircle,
 }
 

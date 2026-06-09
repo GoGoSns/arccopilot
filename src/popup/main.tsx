@@ -5,6 +5,27 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import '@/styles/globals.css'
 import { ADDRESS_BOOK_STORAGE_KEY, useStore, type AddressMemory } from '@/lib/store'
 
+function normalizeStoredAddressBook(raw: unknown): Record<string, AddressMemory> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+
+  const next: Record<string, AddressMemory> = {}
+  for (const memory of Object.values(raw as Record<string, Partial<AddressMemory>>)) {
+    if (!memory?.address) continue
+
+    const address = memory.address.toLowerCase()
+    next[address] = {
+      address,
+      createdAt: typeof memory.createdAt === 'number' ? memory.createdAt : Date.now(),
+      lastUsedAt: typeof memory.lastUsedAt === 'number' ? memory.lastUsedAt : Date.now(),
+      label: memory.label,
+      note: memory.note,
+      tag: memory.tag,
+    }
+  }
+
+  return next
+}
+
 function Root() {
   const updateStreak = useStore((s) => s.updateStreak)
   const mergeAddressMemories = useStore((s) => s.mergeAddressMemories)
@@ -21,8 +42,11 @@ function Root() {
         if (disposed) return
 
         const memories = result[ADDRESS_BOOK_STORAGE_KEY]
-        if (memories && typeof memories === 'object') {
-          mergeAddressMemories(memories as Record<string, AddressMemory>)
+        const normalized = normalizeStoredAddressBook(memories)
+        if (Object.keys(normalized).length > 0) {
+          mergeAddressMemories(normalized)
+        } else if (memories != null) {
+          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
         }
       })
     }
@@ -32,8 +56,13 @@ function Root() {
     const onStorageChanged = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName !== 'local') return
       const change = changes[ADDRESS_BOOK_STORAGE_KEY]
-      if (change?.newValue && typeof change.newValue === 'object') {
-        mergeAddressMemories(change.newValue as Record<string, AddressMemory>)
+      if (change?.newValue) {
+        const normalized = normalizeStoredAddressBook(change.newValue)
+        if (Object.keys(normalized).length > 0) {
+          mergeAddressMemories(normalized)
+        } else {
+          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+        }
       }
     }
 

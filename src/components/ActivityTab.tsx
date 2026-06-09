@@ -3,17 +3,18 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useTxHistory } from '@/lib/hooks/useTxHistory'
 import { formatAddress } from '@/lib/utils'
-import { useStore } from '@/lib/store'
+import { useStore, type AddressMemory } from '@/lib/store'
 
 interface ActivityTabProps {
   address: string | null
 }
 
-const TAG_COLORS = {
+const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
   friend: 'bg-green-500',
   work: 'bg-blue-500',
   warning: 'bg-red-500',
   self: 'bg-arc-gold',
+  whale: 'bg-arc-gold',
   other: 'bg-gray-400',
 }
 

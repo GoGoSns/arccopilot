@@ -43,6 +43,27 @@ interface AddressMemory {
   tag?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeAddressBook(raw: unknown): Record<string, AddressMemory> {
+  if (!isRecord(raw)) return {}
+
+  const next: Record<string, AddressMemory> = {}
+  for (const memory of Object.values(raw as Record<string, Partial<AddressMemory>>)) {
+    if (!memory?.address) continue
+    const address = memory.address.toLowerCase()
+    next[address] = {
+      address,
+      label: typeof memory.label === 'string' ? memory.label : undefined,
+      tag: typeof memory.tag === 'string' ? memory.tag : undefined,
+    }
+  }
+
+  return next
+}
+
 interface RawTransfer {
   timestamp: string
   total: { value: string }
@@ -233,9 +254,13 @@ async function checkWhales(): Promise<void> {
   console.log('[ArcCopilot SW] checking whales…')
 
   const bookResult = await chrome.storage.local.get(ADDR_BOOK_KEY)
-  const book = bookResult[ADDR_BOOK_KEY] as Record<string, AddressMemory> | undefined
+  const rawBook = bookResult[ADDR_BOOK_KEY]
+  const book = normalizeAddressBook(bookResult[ADDR_BOOK_KEY])
 
-  if (!book) {
+  if (Object.keys(book).length === 0) {
+    if (rawBook != null) {
+      await chrome.storage.local.remove(ADDR_BOOK_KEY)
+    }
     console.log('[ArcCopilot SW] no address book in storage')
     return
   }
@@ -258,7 +283,9 @@ async function checkWhales(): Promise<void> {
     whales.map(async (whale) => {
       const normalized = whale.address.toLowerCase()
       const lastSeenKey = LAST_SEEN_PREFIX + normalized
-      const lastSeenHash = lastSeenResult[lastSeenKey] as string | undefined
+      const lastSeenHash = typeof lastSeenResult[lastSeenKey] === 'string'
+        ? (lastSeenResult[lastSeenKey] as string)
+        : undefined
 
       try {
         const url = `${EXPLORER_URL}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20&limit=5`
@@ -285,7 +312,7 @@ async function checkWhales(): Promise<void> {
 
         const direction = latest.to.hash.toLowerCase() === normalized ? 'received' : 'sent'
         const amount = formatBalanceSW(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
-        const label = whale.label ?? `${whale.address.slice(0, 6)}…${whale.address.slice(-4)}`
+        const label = whale.label ?? `${whale.address.slice(0, 6)}...${whale.address.slice(-4)}`
 
         console.log('[ArcCopilot SW] new whale tx:', label, direction, amount, 'USDC')
 

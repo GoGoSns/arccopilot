@@ -64,6 +64,14 @@ function normalizeCategorizationResponse(raw: unknown, tweetCount: number): Twee
   return categories as TweetCategory[]
 }
 
+function safeParseJson(text: string): unknown | null {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
 type TwitterApiAuthor = {
   userName?: string
   name?: string
@@ -105,7 +113,16 @@ export async function getTwitterApiKey(): Promise<string | null> {
   if (!canUseChromeStorage()) return null
 
   const res = await chrome.storage.local.get([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY]) as Record<string, string | undefined>
-  const key = res[TWITTERAPI_KEY] || res[LEGACY_TWITTERAPI_KEY] || null
+  const key = typeof res[TWITTERAPI_KEY] === 'string' && res[TWITTERAPI_KEY].trim()
+    ? res[TWITTERAPI_KEY]
+    : typeof res[LEGACY_TWITTERAPI_KEY] === 'string' && res[LEGACY_TWITTERAPI_KEY].trim()
+      ? res[LEGACY_TWITTERAPI_KEY]
+      : null
+
+  if (!key) {
+    await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+    return null
+  }
 
   if (key && !res[TWITTERAPI_KEY]) {
     await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
@@ -174,7 +191,7 @@ export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterT
     if (!text) return tweets
 
     const payload = extractJsonPayload(text)
-    const categories = normalizeCategorizationResponse(JSON.parse(payload), tweets.length)
+    const categories = normalizeCategorizationResponse(safeParseJson(payload), tweets.length)
     if (!categories) return tweets
 
     return tweets.map((tweet, index) => ({
@@ -192,6 +209,11 @@ export async function getSearchQuery(): Promise<string> {
 
   const res = await chrome.storage.local.get([TWITTER_SEARCH_QUERY]) as Record<string, string | undefined>
   const stored = typeof res[TWITTER_SEARCH_QUERY] === 'string' ? res[TWITTER_SEARCH_QUERY]!.trim() : ''
+
+  if (!stored) {
+    await chrome.storage.local.remove(TWITTER_SEARCH_QUERY)
+    return DEFAULT_TWITTER_SEARCH_QUERY
+  }
 
   return stored || DEFAULT_TWITTER_SEARCH_QUERY
 }

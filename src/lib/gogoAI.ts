@@ -209,13 +209,20 @@ function readLocalCache<T>(key: string): T | null {
     if (typeof localStorage === 'undefined') return null
     const raw = localStorage.getItem(key)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as CacheEnvelope<T>
-    if (!parsed || typeof parsed !== 'object') return null
+    const parsed = JSON.parse(raw) as CacheEnvelope<T> | null
+    if (!parsed || typeof parsed !== 'object') {
+      localStorage.removeItem(key)
+      return null
+    }
     if (typeof parsed.ttl === 'number' && typeof parsed.ts === 'number' && Date.now() - parsed.ts > parsed.ttl) {
+      localStorage.removeItem(key)
       return null
     }
     return (parsed.data ?? null) as T | null
   } catch {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(key)
+    } catch {}
     return null
   }
 }
@@ -838,7 +845,10 @@ export async function loadGogoHistory(): Promise<Message[]> {
   try {
     const stored = await chromeGet(GOGO_HISTORY)
     const raw = stored[GOGO_HISTORY]
-    if (!Array.isArray(raw)) return []
+    if (!Array.isArray(raw)) {
+      await chromeRemove(GOGO_HISTORY)
+      return []
+    }
 
     const messages: Message[] = []
     for (const item of raw) {
@@ -850,9 +860,14 @@ export async function loadGogoHistory(): Promise<Message[]> {
       }
     }
 
+    if (messages.length !== raw.length) {
+      await chromeSet({ [GOGO_HISTORY]: messages })
+    }
+
     return trimHistory(messages)
   } catch (error) {
     console.warn('[gogoAI] failed to load history:', error)
+    await chromeRemove(GOGO_HISTORY)
     return []
   }
 }
@@ -872,7 +887,15 @@ export async function clearGogoHistory(): Promise<void> {
 
 export async function getApiKey(): Promise<string | null> {
   const res = await chromeGet(GEMINI_API_KEY_STORAGE_KEY)
-  return typeof res[GEMINI_API_KEY_STORAGE_KEY] === 'string' ? (res[GEMINI_API_KEY_STORAGE_KEY] as string) : null
+  const key = typeof res[GEMINI_API_KEY_STORAGE_KEY] === 'string' && res[GEMINI_API_KEY_STORAGE_KEY].trim()
+    ? (res[GEMINI_API_KEY_STORAGE_KEY] as string)
+    : null
+
+  if (!key) {
+    await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
+  }
+
+  return key
 }
 
 export async function setApiKey(key: string): Promise<void> {
@@ -979,7 +1002,7 @@ export async function analyzeAddress(address: string): Promise<AddressAnalysis> 
     fetchBlockscoutJson<BlockscoutTransactionsResponse>(`/addresses/${normalized}/transactions?limit=1`),
   ])
 
-  const isContract = addressInfo.is_contract === true || addressInfo.is_contract === 'true'
+  const isContract = toBoolean(addressInfo.is_contract) ?? false
   const txCount = resolveTxCount(addressInfo, txInfo)
   const hasActivity = txCount > 0 || (Array.isArray(txInfo.items) && txInfo.items.length > 0)
 

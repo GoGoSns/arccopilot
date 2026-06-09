@@ -423,14 +423,14 @@ function main(): void {
       transition: 'opacity 0.12s ease, transform 0.12s ease',
       transform: 'translate(-50%, -100%)',
       overflow: 'hidden',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const shell = document.createElement('div')
     Object.assign(shell.style, {
       display: 'flex',
       flexDirection: 'column',
       gap: '10px',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const header = document.createElement('div')
     Object.assign(header.style, {
@@ -438,7 +438,7 @@ function main(): void {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: '10px',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const brand = document.createElement('div')
     Object.assign(brand.style, {
@@ -446,7 +446,7 @@ function main(): void {
       alignItems: 'center',
       gap: '8px',
       minWidth: '0',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const brandDot = document.createElement('span')
     Object.assign(brandDot.style, {
@@ -456,7 +456,7 @@ function main(): void {
       background: 'linear-gradient(180deg, #f2d77b 0%, #d4af37 100%)',
       boxShadow: '0 0 12px rgba(212, 175, 55, 0.55)',
       flexShrink: '0',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const brandLabel = document.createElement('span')
     brandLabel.textContent = 'ArcCopilot'
@@ -466,7 +466,7 @@ function main(): void {
       letterSpacing: '0.14em',
       textTransform: 'uppercase',
       color: '#f6ddb2',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const sourcePill = document.createElement('span')
     sourcePill.textContent = SOURCE_DOMAIN
@@ -484,7 +484,7 @@ function main(): void {
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     brand.append(brandDot, brandLabel)
     header.append(brand, sourcePill)
@@ -500,7 +500,7 @@ function main(): void {
       letterSpacing: '0.01em',
       color: '#fff5cf',
       wordBreak: 'break-all',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     cardDomainEl = document.createElement('div')
     cardDomainEl.textContent = ''
@@ -509,14 +509,14 @@ function main(): void {
       fontSize: '11px',
       lineHeight: '1.4',
       color: '#9aa3bf',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     const actions = document.createElement('div')
     Object.assign(actions.style, {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
       gap: '8px',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
 
     tipButtonEl = document.createElement('button')
     tipButtonEl.type = 'button'
@@ -535,7 +535,7 @@ function main(): void {
       boxShadow: '0 10px 20px rgba(212, 175, 55, 0.18)',
       transition: 'transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease',
       appearance: 'none',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
     tipButtonEl.textContent = 'Tip'
 
     saveButtonEl = document.createElement('button')
@@ -555,7 +555,7 @@ function main(): void {
       boxShadow: '0 10px 20px rgba(0, 0, 0, 0.16)',
       transition: 'transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease',
       appearance: 'none',
-    } as CSSStyleDeclaration)
+    } as unknown as CSSStyleDeclaration)
     saveButtonEl.textContent = 'Save'
 
     tipButtonEl.addEventListener('mouseenter', () => {
@@ -752,7 +752,7 @@ function main(): void {
         cursor: 'pointer',
         padding: '0 2px',
         borderRadius: '2px',
-      } as CSSStyleDeclaration)
+      } as unknown as CSSStyleDeclaration)
 
       span.addEventListener('mouseenter', () => {
         overAddress = true

@@ -13,6 +13,28 @@ import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
 import { GogoAI } from '@/pages/GogoAI'
 
+const VALID_VIEWS: View[] = [
+  'welcome',
+  'wallet',
+  'send',
+  'receive',
+  'discover',
+  'profile',
+  'settings',
+  'address-book',
+  'address-detail',
+  'daily-brief',
+  'gogo-ai',
+]
+
+function isView(value: unknown): value is View {
+  return typeof value === 'string' && VALID_VIEWS.includes(value as View)
+}
+
+function isPendingSend(value: unknown): value is { ts: number } {
+  return Boolean(value) && typeof value === 'object' && typeof (value as { ts?: unknown }).ts === 'number'
+}
+
 export default function App() {
   const isOnboarded = useStore((s) => s.isOnboarded)
   const currentView = useStore((s) => s.currentView)
@@ -26,16 +48,18 @@ export default function App() {
       [PENDING_SEND_STORAGE_KEY, 'arccopilot:pending_view'],
       (result) => {
         // Notification click → route to Daily Brief (or other view)
-        const pendingView = result['arccopilot:pending_view'] as string | undefined
-        if (pendingView && isOnboarded) {
-          go(pendingView as View)
+        const pendingView = result['arccopilot:pending_view']
+        if (isView(pendingView) && isOnboarded) {
+          go(pendingView)
           void chrome.storage.local.remove('arccopilot:pending_view')
           return
         }
         // Tip button → route to Send
         const pending = result[PENDING_SEND_STORAGE_KEY]
-        if (pending && Date.now() - pending.ts < 5_000) {
+        if (isPendingSend(pending) && Date.now() - pending.ts < 5_000) {
           go('send')
+        } else {
+          void chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
         }
       },
     )

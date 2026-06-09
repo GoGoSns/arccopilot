@@ -30,6 +30,10 @@ interface SettingsProps {
   onBack: () => void
 }
 
+function readStoredBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback
+}
+
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
   const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
@@ -47,20 +51,20 @@ export function Settings({ onBack }: SettingsProps) {
   const [remindersLoading, setRemindersLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery()]).then(([geminiKey, twitterKey, searchQuery]) => {
+    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery()]).then(([geminiKey, twitterKey, searchQuery]) => {
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
       setTwitterSearchQueryState(searchQuery)
     })
 
     chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
-      setIncomingAlerts(result[NOTIF_INCOMING_STORAGE_KEY] !== false)
-      setBalanceAlerts(result[NOTIF_BALANCE_STORAGE_KEY] !== false)
+      setIncomingAlerts(readStoredBoolean(result[NOTIF_INCOMING_STORAGE_KEY], true))
+      setBalanceAlerts(readStoredBoolean(result[NOTIF_BALANCE_STORAGE_KEY], true))
     })
 
     chrome.storage.local.get([VOICE_INPUT_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY], (result) => {
-      setVoiceInputEnabled(result[VOICE_INPUT_STORAGE_KEY] === true)
-      setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
+      setVoiceInputEnabled(readStoredBoolean(result[VOICE_INPUT_STORAGE_KEY], false))
+      setVoiceResponsesEnabled(readStoredBoolean(result[VOICE_RESPONSES_STORAGE_KEY], false))
     })
   }, [])
 

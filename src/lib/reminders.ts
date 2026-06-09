@@ -139,12 +139,21 @@ export async function getReminders(): Promise<Reminder[]> {
   const stored = await chromeGet(REMINDERS)
   const raw = stored[REMINDERS]
 
-  if (!Array.isArray(raw)) return []
+  if (!Array.isArray(raw)) {
+    await chromeRemove(REMINDERS)
+    return []
+  }
 
-  return raw
+  const reminders = raw
     .map((item) => normalizeReminder(item))
     .filter((item): item is Reminder => Boolean(item))
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+
+  if (reminders.length !== raw.length) {
+    await saveReminders(reminders)
+  }
+
+  return reminders
 }
 
 export async function addReminder(reminder: Reminder): Promise<void> {

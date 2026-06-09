@@ -69,7 +69,7 @@ function isDismissed(p: Pattern, dismissed: DismissedPattern[]): boolean {
 
 function detectRecurringRecipient(
   outgoing: BlockscoutTransfer[],
-  labels: Record<string, { label: string }>,
+  labels: Record<string, { label?: string }>,
 ): Pattern[] {
   const since = Date.now() - 30 * 24 * 60 * 60 * 1000
   const recent = outgoing.filter((tx) => new Date(tx.timestamp).getTime() > since)
@@ -85,7 +85,7 @@ function detectRecurringRecipient(
   const results: Pattern[] = []
   for (const [addr, { count, lastAmount }] of counts) {
     if (count < 3) continue
-    const label = labels[addr]?.label ?? shortAddr(addr)
+    const label = labels[addr]?.label?.trim() || shortAddr(addr)
     results.push({
       kind: 'recurring-recipient',
       address: addr,
@@ -170,7 +170,7 @@ function detectAmountCluster(outgoing: BlockscoutTransfer[]): Pattern[] {
 export function detectPatterns(
   transfers: BlockscoutTransfer[],
   ownAddress: string,
-  addressLabels: Record<string, { label: string }>,
+  addressLabels: Record<string, { label?: string }>,
   dismissed: DismissedPattern[] = [],
 ): Pattern[] {
   if (transfers.length < 3) return []
