@@ -36,7 +36,7 @@ export default defineManifest({
     },
   ],
   options_page: 'src/options/index.html',
-  permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'sidePanel', 'alarms', 'audioCapture'],
+  permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'sidePanel', 'alarms'],
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
     'https://rpc.testnet.arc.network/*',

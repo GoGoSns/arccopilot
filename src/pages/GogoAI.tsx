@@ -15,6 +15,7 @@ import {
   getProactiveGreeting,
   loadGogoHistory,
   saveGogoHistory,
+  sanitizeActions,
   setApiKey as saveGeminiApiKey,
   type AddressAnalysis,
   type GogoAction,
@@ -99,8 +100,8 @@ function isSpeechSynthesisAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
-function getActionLabel(action: GogoAction): string {
-  switch (action.type) {
+function getActionLabel(action?: GogoAction | null): string {
+  switch (action?.type) {
     case 'send':
       return 'Open Send'
     case 'view_address':
@@ -125,8 +126,8 @@ function getActionLabel(action: GogoAction): string {
   }
 }
 
-function getActionLoadingLabel(action: GogoAction): string {
-  switch (action.type) {
+function getActionLoadingLabel(action?: GogoAction | null): string {
+  switch (action?.type) {
     case 'summarize_activity':
       return 'Summarizing...'
     case 'analyze_address':
@@ -138,8 +139,8 @@ function getActionLoadingLabel(action: GogoAction): string {
   }
 }
 
-function getCompletedActionLabel(action: GogoAction): string {
-  if (action.type === 'create_reminder') {
+function getCompletedActionLabel(action?: GogoAction | null): string {
+  if (action?.type === 'create_reminder') {
     return 'Reminder set ✓'
   }
 
@@ -226,15 +227,9 @@ function getRiskLabel(tone: 'contract' | 'empty' | 'normal'): string {
 }
 
 function getMessageActions(message: Message): GogoAction[] {
-  if (Array.isArray(message.actions) && message.actions.length > 0) {
-    return message.actions
-  }
-
-  if (message.action && message.action.type !== 'none') {
-    return [message.action]
-  }
-
-  return []
+  const actions = sanitizeActions(message.actions)
+  if (actions.length > 0) return actions
+  return sanitizeActions(message.action ? [message.action] : [])
 }
 
 function getRecipientDisplayName(
@@ -254,44 +249,54 @@ function getRecipientDisplayName(
 }
 
 function getMultiStepActionTitle(
-  action: GogoAction,
+  action: GogoAction | null | undefined,
   resolveAddress: (value?: string) => string | null,
   addressMemories: Record<string, { label?: string }>,
 ): string {
-  switch (action.type) {
+  const params = (action?.params ?? {}) as Record<string, unknown>
+
+  switch (action?.type) {
     case 'send': {
-      const amount = action.params.amount?.trim()
+      const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
       const amountLabel = amount ? `${formatUsdcAmount(amount)} USDC` : 'USDC'
-      const recipient = getRecipientDisplayName(action.params.recipient, resolveAddress, addressMemories)
-      return action.params.recipient
+      const recipientValue = typeof params.recipient === 'string' ? params.recipient : undefined
+      const recipient = getRecipientDisplayName(recipientValue, resolveAddress, addressMemories)
+      return recipientValue
         ? `Send ${amountLabel} to ${recipient}`
         : `Send ${amountLabel}`
     }
     case 'view_address':
-      return `View address ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+      return `View address ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'track_whale':
-      return `Track whale ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+      return `Track whale ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'analyze_address':
-      return `Analyze address ${getRecipientDisplayName(action.params.address, resolveAddress, addressMemories)}`
+      return `Analyze address ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'summarize_activity':
-      return `Summarize ${action.params.period} activity`
+      return `Summarize ${typeof params.period === 'string' ? params.period : '24h'} activity`
     case 'find_pattern':
       return 'Find patterns'
     case 'open_brief':
       return 'Open brief'
     case 'create_reminder': {
+      const title = typeof params.title === 'string' && params.title.trim()
+        ? params.title.trim()
+        : 'Reminder'
       const reminder: Reminder = {
         id: 'preview',
-        title: action.params.title,
-        recipient: action.params.recipient,
-        amount: action.params.amount,
-        frequency: action.params.frequency,
-        dayOfWeek: action.params.dayOfWeek,
-        dayOfMonth: action.params.dayOfMonth,
+        title,
+        recipient: typeof params.recipient === 'string' ? params.recipient : undefined,
+        amount: typeof params.amount === 'string' ? params.amount : undefined,
+        frequency: params.frequency === 'weekly'
+          ? 'weekly'
+          : params.frequency === 'monthly'
+            ? 'monthly'
+            : 'daily',
+        dayOfWeek: typeof params.dayOfWeek === 'number' ? params.dayOfWeek : undefined,
+        dayOfMonth: typeof params.dayOfMonth === 'number' ? params.dayOfMonth : undefined,
         createdAt: '',
       }
 
-      return `Reminder: ${action.params.title} (${getReminderScheduleLabel(reminder)})`
+      return `Reminder: ${title} (${getReminderScheduleLabel(reminder)})`
     }
     case 'draft_tweet':
       return 'Tweet draft'
@@ -520,6 +525,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
         const assistantMessage: Message = {
           role: 'assistant',
           content: response.reply,
+          actions: response.action ? [response.action] : [],
           action: response.action,
           timestamp: Date.now(),
         }
@@ -719,6 +725,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const userMessage: Message = {
       role: 'user',
       content: trimmed,
+      actions: [],
       timestamp: Date.now(),
     }
 
@@ -734,8 +741,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.reply,
-        actions: response.actions,
-        action: response.actions[0],
+        actions: response.actions ?? [],
+        action: response.actions?.[0],
         timestamp: Date.now(),
       }
 
@@ -748,6 +755,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       const errorBubble: Message = {
         role: 'error',
         content: errorMessage,
+        actions: [],
         timestamp: Date.now(),
       }
 
@@ -791,12 +799,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
     return nextMessages
   }
 
-  const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction, messageKey: string) => {
-    if (action.completed) return
+  const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
+    if (!action || action.type === 'none' || action.completed) return
     if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
-    const resolvedAddress = requiresAddress ? resolveAddress(action.params.address) : null
+    const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
     if (requiresAddress && !resolvedAddress) return
 
     switch (action.type) {
@@ -806,8 +814,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
           completed: true,
         }))
 
-        const recipient = resolveAddress(action.params.recipient)
-        const amount = action.params.amount?.trim() || undefined
+        const recipient = resolveAddress(action.params?.recipient)
+        const amount = typeof action.params?.amount === 'string' ? action.params.amount.trim() || undefined : undefined
         await persistPendingSend(recipient ?? undefined, amount)
         setCurrentView('send')
         break
@@ -816,13 +824,19 @@ export function GogoAI({ onBack }: GogoAIProps) {
         setAnalysisLoadingKey(messageKey)
 
         try {
+          const reminderFrequency: 'daily' | 'weekly' | 'monthly' = action.params?.frequency === 'weekly'
+            ? 'weekly'
+            : action.params?.frequency === 'monthly'
+              ? 'monthly'
+              : 'daily'
+
           const reminder = buildReminderFromAction({
-            title: action.params.title,
-            recipient: action.params.recipient,
-            amount: action.params.amount,
-            frequency: action.params.frequency,
-            dayOfWeek: action.params.dayOfWeek,
-            dayOfMonth: action.params.dayOfMonth,
+            title: action.params?.title ?? '',
+            recipient: action.params?.recipient,
+            amount: action.params?.amount,
+            frequency: reminderFrequency,
+            dayOfWeek: action.params?.dayOfWeek,
+            dayOfMonth: action.params?.dayOfMonth,
           })
 
           await addReminder(reminder)
@@ -879,7 +893,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           break
         }
 
-        if (action.type === 'summarize_activity' || action.type === 'find_pattern' || action.type === 'open_brief') {
+        if (action.type === 'find_pattern' || action.type === 'open_brief') {
           setCurrentView('daily-brief')
           break
         }
@@ -891,7 +905,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
         setAnalysisLoadingKey(messageKey)
 
         try {
-          const analysis = await analyzeSpending(action.params.period)
+          const period = action.params?.period === '7d'
+            ? '7d'
+            : action.params?.period === '30d'
+              ? '30d'
+              : '24h'
+          const analysis = await analyzeSpending(period)
           updateMessageAction(
             messageIndex,
             actionIndex,
@@ -993,11 +1012,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const renderActionStep = (
     message: Message,
     messageIndex: number,
-    action: GogoAction,
+    action: GogoAction | null | undefined,
     actionIndex: number,
     baseKey: string,
     isUser: boolean,
   ) => {
+    if (!action || action.type === 'none') return null
+
     const actionKey = `${baseKey}-step-${actionIndex}`
     const actionCompleted = Boolean(action.completed)
     const analyzeAction = action.type === 'analyze_address' ? action : null
@@ -1011,7 +1032,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       !action.completed &&
       (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder'),
     )
-    const draftText = draftTweetAction?.params.text ?? ''
+    const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
     const draftKey = `${baseKey}-draft-${actionIndex}`
     const analysis = analyzeAction?.analysis ?? null
@@ -1453,7 +1474,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   {hasMultipleActions ? (
                     <div className={`mt-3 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
                       <div className="space-y-3">
-                        {messageActions.map((stepAction, actionIndex) =>
+                        {messageActions?.map((stepAction, actionIndex) =>
                           renderActionStep(message, index, stepAction, actionIndex, draftKey, isUser),
                         )}
                       </div>
@@ -1579,7 +1600,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                               {analysis.hasActivity ? 'Activity detected on Arc Testnet.' : 'No transaction activity found.'}
                             </p>
                             <a
-                              href={`${EXPLORER_URL}/address/${action.params.address}`}
+                              href={`${EXPLORER_URL}/address/${action?.params?.address ?? ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-gold hover:underline"

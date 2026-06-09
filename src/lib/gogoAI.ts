@@ -10,6 +10,7 @@ const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const MAX_HISTORY_MESSAGES = 50
 const GEMINI_HISTORY_MESSAGES = 15
 const USDC_DECIMALS = 6
+const PARSE_ERROR_MESSAGE = 'Tekrar dener misin?'
 type TweetCategory = 'news' | 'opportunity' | 'discussion'
 
 type AddressBookEntry = {
@@ -130,7 +131,7 @@ export interface GogoResponse {
 export interface Message {
   role: 'user' | 'assistant' | 'error'
   content: string
-  actions?: GogoAction[]
+  actions: GogoAction[]
   action?: GogoAction
   timestamp: number
 }
@@ -228,22 +229,155 @@ function normalizeAddress(address?: string): string {
   return (address ?? '').trim().toLowerCase()
 }
 
-function normalizeActionList(raw: unknown): GogoAction[] {
-  if (!isRecord(raw)) return []
-
-  const rawActions = Array.isArray(raw.actions)
-    ? raw.actions
-    : raw.action
-      ? [raw.action]
-      : []
-
-  return rawActions
-    .map((item) => normalizeAction(item))
-    .filter((action) => action.type !== 'none')
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isSupportedActionType(value: unknown): value is GogoAction['type'] {
+  return value === 'send'
+    || value === 'view_address'
+    || value === 'track_whale'
+    || value === 'analyze_address'
+    || value === 'summarize_activity'
+    || value === 'find_pattern'
+    || value === 'open_brief'
+    || value === 'create_reminder'
+    || value === 'draft_tweet'
+    || value === 'none'
+}
+
+function extractRawActions(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (!isRecord(raw)) return []
+
+  if (Array.isArray(raw.actions) && raw.actions.length > 0) return raw.actions
+  if ('action' in raw && raw.action != null) return [raw.action]
+  if (Array.isArray(raw.actions)) return raw.actions
+
+  return []
+}
+
+function normalizeAction(raw: unknown): GogoAction | null {
+  if (!isRecord(raw) || !isSupportedActionType(raw.type)) return null
+
+  const params = isRecord(raw.params) ? raw.params : {}
+
+  switch (raw.type) {
+    case 'send': {
+      const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : ''
+      const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
+      if (!recipient && !amount) return null
+
+      return {
+        type: 'send',
+        params: {
+          recipient: recipient || undefined,
+          amount: amount || undefined,
+        },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'view_address': {
+      const address = typeof params.address === 'string' ? params.address.trim() : ''
+      if (!address) return null
+
+      return {
+        type: 'view_address',
+        params: { address },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'track_whale': {
+      const address = typeof params.address === 'string' ? params.address.trim() : ''
+      if (!address) return null
+
+      return {
+        type: 'track_whale',
+        params: { address },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'analyze_address': {
+      const address = typeof params.address === 'string' ? params.address.trim() : ''
+      if (!address) return null
+
+      return {
+        type: 'analyze_address',
+        params: { address },
+        completed: Boolean(raw.completed),
+        analysis: normalizeAddressAnalysis(raw.analysis) ?? undefined,
+      }
+    }
+    case 'summarize_activity': {
+      const periodRaw = typeof params.period === 'string' ? params.period.trim() : ''
+      const period = periodRaw === '7d' || periodRaw === '30d' ? periodRaw : '24h'
+
+      return {
+        type: 'summarize_activity',
+        params: { period },
+        completed: Boolean(raw.completed),
+        analysis: normalizeSpendingAnalysis(raw.analysis, period) ?? undefined,
+      }
+    }
+    case 'find_pattern':
+      return {
+        type: 'find_pattern',
+        params: {},
+        completed: Boolean(raw.completed),
+      }
+    case 'open_brief':
+      return {
+        type: 'open_brief',
+        params: {},
+        completed: Boolean(raw.completed),
+      }
+    case 'create_reminder': {
+      const title = typeof params.title === 'string' ? params.title.trim() : ''
+      const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : ''
+      const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
+      const frequencyRaw = typeof params.frequency === 'string' ? params.frequency.trim().toLowerCase() : ''
+      const frequency: 'daily' | 'weekly' | 'monthly' = frequencyRaw === 'weekly' || frequencyRaw === 'monthly'
+        ? frequencyRaw
+        : frequencyRaw === 'daily'
+          ? 'daily'
+          : 'daily'
+      const dayOfWeek = toFiniteNumber(params.dayOfWeek)
+      const dayOfMonth = toFiniteNumber(params.dayOfMonth)
+      if (!title) return null
+
+      return {
+        type: 'create_reminder',
+        params: {
+          title,
+          recipient: recipient || undefined,
+          amount: amount || undefined,
+          frequency,
+          dayOfWeek: frequency === 'weekly' && dayOfWeek != null && dayOfWeek >= 0 && dayOfWeek <= 6 ? dayOfWeek : undefined,
+          dayOfMonth: frequency === 'monthly' && dayOfMonth != null && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : undefined,
+        },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'draft_tweet': {
+      const text = typeof params.text === 'string' ? params.text.trim() : ''
+      if (!text) return null
+
+      return {
+        type: 'draft_tweet',
+        params: { text },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'none':
+    default:
+      return null
+  }
+}
+
+export function sanitizeActions(raw: unknown): GogoAction[] {
+  return extractRawActions(raw)
+    .map((item) => normalizeAction(item))
+    .filter((action): action is GogoAction => Boolean(action))
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -436,88 +570,6 @@ function normalizeSpendingAnalysis(raw: unknown, period: '24h' | '7d' | '30d' = 
   }
 }
 
-function normalizeAction(raw: unknown): GogoAction {
-  if (!isRecord(raw)) return { type: 'none', params: {} }
-
-  const type = String(raw.type ?? 'none')
-  const params = isRecord(raw.params) ? raw.params : {}
-
-  const completed = Boolean(raw.completed)
-  const done = completed ? { completed: true as const } : {}
-
-  switch (type) {
-    case 'send':
-      return {
-        type: 'send',
-        params: {
-          recipient: typeof params.recipient === 'string' ? params.recipient : undefined,
-          amount: typeof params.amount === 'string' ? params.amount : undefined,
-        },
-        ...done,
-      }
-    case 'view_address':
-      return {
-        type: 'view_address',
-        params: { address: typeof params.address === 'string' ? params.address : '' },
-        ...done,
-      }
-    case 'track_whale':
-      return {
-        type: 'track_whale',
-        params: { address: typeof params.address === 'string' ? params.address : '' },
-        ...done,
-      }
-    case 'analyze_address':
-      return {
-        type: 'analyze_address',
-        params: { address: typeof params.address === 'string' ? params.address : '' },
-        analysis: normalizeAddressAnalysis(raw.analysis) ?? undefined,
-        ...done,
-      }
-    case 'summarize_activity': {
-      const period = params.period === '7d' || params.period === '30d' ? params.period : '24h'
-      return {
-        type: 'summarize_activity',
-        params: { period },
-        analysis: normalizeSpendingAnalysis(raw.analysis, period) ?? undefined,
-        ...done,
-      }
-    }
-    case 'find_pattern':
-      return { type: 'find_pattern', params: {}, ...done }
-    case 'open_brief':
-      return { type: 'open_brief', params: {}, ...done }
-    case 'create_reminder': {
-      const dayOfWeek = toFiniteNumber(params.dayOfWeek)
-      const dayOfMonth = toFiniteNumber(params.dayOfMonth)
-      const frequencyRaw = typeof params.frequency === 'string' ? params.frequency.trim().toLowerCase() : 'daily'
-      const frequency = frequencyRaw === 'weekly' || frequencyRaw === 'monthly' ? frequencyRaw : 'daily'
-
-      return {
-        type: 'create_reminder',
-        params: {
-          title: typeof params.title === 'string' && params.title.trim() ? params.title.trim() : 'Reminder',
-          recipient: typeof params.recipient === 'string' && params.recipient.trim() ? params.recipient.trim() : undefined,
-          amount: typeof params.amount === 'string' && params.amount.trim() ? params.amount.trim() : undefined,
-          frequency,
-          dayOfWeek: frequency === 'weekly' && dayOfWeek != null && dayOfWeek >= 0 && dayOfWeek <= 6 ? dayOfWeek : undefined,
-          dayOfMonth: frequency === 'monthly' && dayOfMonth != null && dayOfMonth >= 1 && dayOfMonth <= 31 ? dayOfMonth : undefined,
-        },
-        ...done,
-      }
-    }
-    case 'draft_tweet':
-      return {
-        type: 'draft_tweet',
-        params: { text: typeof params.text === 'string' ? params.text : '' },
-        ...done,
-      }
-    case 'none':
-    default:
-      return { type: 'none', params: {}, ...done }
-  }
-}
-
 function buildGogoContextFromStore(): GogoContext {
   const state = useStore.getState()
   const addressBook = Object.fromEntries(
@@ -568,12 +620,12 @@ function normalizeMessage(raw: unknown): Message | null {
   if (!content) return null
 
   const timestamp = typeof raw.timestamp === 'number' ? raw.timestamp : Date.now()
-  const actions = normalizeActionList(raw)
+  const actions = sanitizeActions(raw)
 
   return {
     role,
     content,
-    actions: actions.length > 0 ? actions : undefined,
+    actions,
     action: actions[0],
     timestamp,
   }
@@ -584,7 +636,7 @@ function trimHistory(messages: Message[]): Message[] {
 }
 
 function serializeHistoryMessage(message: Message): string {
-  const actions = message.actions?.length
+  const actions = message.actions.length > 0
     ? message.actions
     : message.action && message.action.type !== 'none'
       ? [message.action]
@@ -752,11 +804,19 @@ function extractJsonPayload(text: string): string {
   return (fenced?.[1] ?? trimmed).trim()
 }
 
-function normalizeResponse(raw: unknown): GogoResponse {
-  if (!isRecord(raw)) throw new Error('PARSE_ERROR')
+function parseGeminiJson(text: string): unknown | null {
+  try {
+    return JSON.parse(extractJsonPayload(text))
+  } catch {
+    return null
+  }
+}
+
+function normalizeResponse(raw: unknown): GogoResponse | null {
+  if (!isRecord(raw)) return null
   const reply = typeof raw.reply === 'string' ? raw.reply.trim() : ''
-  if (!reply) throw new Error('PARSE_ERROR')
-  const actions = normalizeActionList(raw)
+  if (!reply) return null
+  const actions = sanitizeActions(raw)
 
   return {
     reply,
@@ -765,11 +825,13 @@ function normalizeResponse(raw: unknown): GogoResponse {
   }
 }
 
-function normalizeOptionalResponse(raw: unknown): { reply: string; action?: GogoAction } {
+function normalizeOptionalResponse(raw: unknown): { reply: string; action?: GogoAction } | null {
   const response = normalizeResponse(raw)
-  return response.action.type === 'none'
-    ? { reply: response.reply }
-    : { reply: response.reply, action: response.action }
+  if (!response) return null
+
+  return response.action
+    ? { reply: response.reply, action: response.action }
+    : { reply: response.reply }
 }
 
 export async function loadGogoHistory(): Promise<Message[]> {
@@ -1043,8 +1105,13 @@ export async function getProactiveGreeting(): Promise<{ reply: string; action?: 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) throw new Error('PARSE_ERROR')
 
-    const payload = extractJsonPayload(text)
-    return normalizeOptionalResponse(JSON.parse(payload))
+    const payload = parseGeminiJson(text)
+    if (!payload) throw new Error(PARSE_ERROR_MESSAGE)
+
+    const response = normalizeOptionalResponse(payload)
+    if (!response) throw new Error(PARSE_ERROR_MESSAGE)
+
+    return response
   } catch (err: unknown) {
     console.error('[GogoAI] Greeting failed:', err)
     if (err instanceof Error) throw err
@@ -1109,8 +1176,13 @@ export async function askGogo(
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) throw new Error('PARSE_ERROR')
 
-    const payload = extractJsonPayload(text)
-    return normalizeResponse(JSON.parse(payload))
+    const payload = parseGeminiJson(text)
+    if (!payload) throw new Error(PARSE_ERROR_MESSAGE)
+
+    const response = normalizeResponse(payload)
+    if (!response) throw new Error(PARSE_ERROR_MESSAGE)
+
+    return response
   } catch (err: unknown) {
     console.error('[GogoAI] Caught:', err)
     if (err instanceof Error) throw err

@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import '@/styles/globals.css'
 import { ADDRESS_BOOK_STORAGE_KEY, useStore, type AddressMemory } from '@/lib/store'
 
@@ -49,6 +50,8 @@ function Root() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Root />
+    <ErrorBoundary>
+      <Root />
+    </ErrorBoundary>
   </React.StrictMode>
 )
