@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ExternalLink, Loader2, Mic, Send, Sparkles, Trash2, Volume2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
+import { ArrowLeft, Check, ExternalLink, Image as ImageIcon, Loader2, Mic, Send, Sparkles, Trash2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -22,9 +22,12 @@ import {
   type AddressAnalysis,
   type GogoAction,
   type GogoContext,
+  type GogoImageResult,
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
+import { readAddressFromImage } from '@/lib/imageReader'
+import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import {
   addReminder,
@@ -342,6 +345,33 @@ function buildAddressValidationWarning(): string {
   return t('gogo.invalidAddress')
 }
 
+function getImageSourceLabel(source: ReadAddressFromImageResult['source']): string {
+  switch (source) {
+    case 'qr':
+      return t('gogo.imageSourceQr')
+    case 'vision':
+      return t('gogo.imageSourceVision')
+    case 'none':
+    default:
+      return t('gogo.imageSourceVision')
+  }
+}
+
+function buildImageReadMessage(result: ReadAddressFromImageResult): string {
+  if (result.address) {
+    return formatText('gogo.imageFound', {
+      address: formatAddress(result.address, 4),
+      source: getImageSourceLabel(result.source),
+    })
+  }
+
+  if (result.source === 'none') {
+    return t('gogo.imageNeedsGemini')
+  }
+
+  return t('gogo.imageNotFound')
+}
+
 export function GogoAI({ onBack }: GogoAIProps) {
   const address = useStore((s) => s.walletAddress)
   const addressMemories = useStore((s) => s.addressMemories)
@@ -365,13 +395,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const [isListening, setIsListening] = useState(false)
   const [voiceInputUnavailableReason, setVoiceInputUnavailableReason] = useState<string | null>(null)
   const [speakingMessageKey, setSpeakingMessageKey] = useState<string | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [isReadingImage, setIsReadingImage] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const messagesRef = useRef<Message[]>([])
   const proactiveGreetingQueuedRef = useRef(false)
   const proactiveGreetingStartedRef = useRef(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const imagePreviewUrlRef = useRef<string | null>(null)
+  const imageReadRequestRef = useRef(0)
 
   const addressEntries = useMemo(() => Object.values(addressMemories), [addressMemories])
 
@@ -436,6 +471,29 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const voiceResponsesTooltip = !voiceResponsesEnabled
     ? 'Enable Voice responses in Settings'
     : 'Voice not available'
+  const imagePreviewNode = (isReadingImage || imagePreviewUrl) ? (
+    <div className="mb-3 flex items-center gap-3 rounded-xl border border-arc-border bg-arc-card/60 p-3">
+      {imagePreviewUrl ? (
+        <img
+          src={imagePreviewUrl}
+          alt={t('gogo.imagePreviewAlt')}
+          className="h-12 w-12 shrink-0 rounded-lg border border-arc-border object-cover"
+        />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-arc-border bg-arc-bg">
+          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-arc-text">{t('gogo.imageReading')}</p>
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.1s]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold" />
+        </div>
+      </div>
+    </div>
+  ) : null
 
   const resolveAddress = (value?: string): string | null => {
     const trimmed = value?.trim()
@@ -592,6 +650,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      imageReadRequestRef.current += 1
+      if (imagePreviewUrlRef.current) {
+        URL.revokeObjectURL(imagePreviewUrlRef.current)
+        imagePreviewUrlRef.current = null
+      }
+    }
+  }, [])
+
   const handleSaveKey = async () => {
     const trimmed = keyInput.trim()
     if (!trimmed) return
@@ -606,6 +674,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     stopVoiceInput()
     stopVoiceResponse()
+    imageReadRequestRef.current += 1
+    setIsReadingImage(false)
+    clearImagePreview()
     setMessages([])
     messagesRef.current = []
     setUserInput('')
@@ -701,6 +772,333 @@ export function GogoAI({ onBack }: GogoAIProps) {
       return
     }
     startVoiceInput()
+  }
+
+  const clearImagePreview = () => {
+    if (imagePreviewUrlRef.current) {
+      URL.revokeObjectURL(imagePreviewUrlRef.current)
+      imagePreviewUrlRef.current = null
+    }
+    setImagePreviewUrl(null)
+  }
+
+  const showImagePreview = (blob: Blob) => {
+    clearImagePreview()
+    const nextPreviewUrl = URL.createObjectURL(blob)
+    imagePreviewUrlRef.current = nextPreviewUrl
+    setImagePreviewUrl(nextPreviewUrl)
+  }
+
+  const appendMessage = (message: Message) => {
+    const nextMessages = [...messagesRef.current, message]
+    messagesRef.current = nextMessages
+    setMessages(nextMessages)
+    void saveGogoHistory(nextMessages)
+  }
+
+  const updateMessageByIndex = (
+    messageIndex: number,
+    updater: (message: Message) => Message,
+  ): Message[] => {
+    const nextMessages = messagesRef.current.map((message, index) => (
+      index === messageIndex ? updater(message) : message
+    ))
+
+    messagesRef.current = nextMessages
+    setMessages(nextMessages)
+    void saveGogoHistory(nextMessages)
+    return nextMessages
+  }
+
+  const handleImageResult = async (blob: Blob) => {
+    const requestId = ++imageReadRequestRef.current
+    setIsReadingImage(true)
+    showImagePreview(blob)
+
+    try {
+      const result = await readAddressFromImage(blob)
+      if (requestId !== imageReadRequestRef.current) return
+
+      const content = buildImageReadMessage(result)
+      const imageResult: GogoImageResult | undefined = result.address
+        ? {
+            address: result.address,
+            source: result.source === 'vision' ? 'vision' : 'qr',
+            raw: result.raw,
+          }
+        : undefined
+
+      appendMessage({
+        role: 'assistant',
+        content,
+        actions: [],
+        timestamp: Date.now(),
+        imageResult,
+      })
+    } catch (error) {
+      debugWarn('[GogoAI] image read failed:', error)
+      if (requestId !== imageReadRequestRef.current) return
+
+      appendMessage({
+        role: 'assistant',
+        content: t('gogo.imageNotFound'),
+        actions: [],
+        timestamp: Date.now(),
+      })
+    } finally {
+      if (requestId === imageReadRequestRef.current) {
+        setIsReadingImage(false)
+        clearImagePreview()
+      }
+    }
+  }
+
+  const handleImageInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    void handleImageResult(file)
+  }
+
+  const handleImagePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    const items = Array.from(event.clipboardData.items ?? [])
+    const imageItem = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    const file = imageItem?.getAsFile() ?? null
+    if (!file) return
+
+    event.preventDefault()
+    void handleImageResult(file)
+  }
+
+  const openImagePicker = () => {
+    imageInputRef.current?.click()
+  }
+
+  const handleImageSend = async (messageIndex: number, address: string) => {
+    await persistPendingSend(address)
+    updateMessageByIndex(messageIndex, (message) => ({
+      ...message,
+      imageResult: message.imageResult
+        ? {
+            ...message.imageResult,
+            sendCompleted: true,
+          }
+        : message.imageResult,
+    }))
+    setCurrentView('send')
+  }
+
+  const handleImageAnalyze = async (messageIndex: number, address: string, messageKey: string) => {
+    const currentMessage = messagesRef.current[messageIndex]
+    if (currentMessage?.imageResult?.analysis) return
+
+    setAnalysisLoadingKey(messageKey)
+    updateMessageByIndex(messageIndex, (message) => ({
+      ...message,
+      imageResult: message.imageResult
+        ? {
+            ...message.imageResult,
+            analysisError: null,
+          }
+        : message.imageResult,
+    }))
+
+    try {
+      const analysis = await analyzeAddress(address)
+      updateMessageByIndex(messageIndex, (message) => ({
+        ...message,
+        imageResult: message.imageResult
+          ? {
+              ...message.imageResult,
+              analysis,
+              analysisError: null,
+            }
+          : message.imageResult,
+      }))
+    } catch (error) {
+      console.error('[GogoAI] image address analysis failed:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Could not analyze this address right now.'
+      updateMessageByIndex(messageIndex, (message) => ({
+        ...message,
+        imageResult: message.imageResult
+          ? {
+              ...message.imageResult,
+              analysisError: errorMessage,
+            }
+          : message.imageResult,
+      }))
+    } finally {
+      setAnalysisLoadingKey(null)
+    }
+  }
+
+  const handleImageSave = async (messageIndex: number, address: string) => {
+    const existing = addressMemories[address]
+    const defaultLabel = formatAddress(address, 4)
+    const promptLabel = window.prompt(t('gogo.imageAddressBookPrompt'), existing?.label?.trim() || defaultLabel)
+    const nextLabel = promptLabel?.trim() || defaultLabel
+
+    if (existing) {
+      updateAddressMemory(address, {
+        label: nextLabel,
+        tag: existing.tag ?? 'other',
+        lastUsedAt: Date.now(),
+      })
+    } else {
+      addAddressMemory(address, {
+        label: nextLabel,
+        tag: 'other',
+      })
+    }
+
+    setSelectedAddress(address)
+    setCurrentView('address-detail')
+    updateMessageByIndex(messageIndex, (message) => ({
+      ...message,
+      imageResult: message.imageResult
+        ? {
+            ...message.imageResult,
+            savedCompleted: true,
+          }
+        : message.imageResult,
+    }))
+  }
+
+  const renderImageResultCard = (
+    message: Message,
+    messageIndex: number,
+    messageKey: string,
+    isUser: boolean,
+  ) => {
+    const imageResult = message.imageResult
+    if (!imageResult) return null
+
+    const analysis = imageResult.analysis ?? null
+    const riskTone = analysis ? getRiskTone(analysis) : null
+    const riskStyles = riskTone ? getRiskStyles(riskTone) : null
+    const riskLabel = riskTone ? getRiskLabel(riskTone) : ''
+    const isAnalysisLoading = analysisLoadingKey === messageKey && !analysis
+    const sendCompleted = Boolean(imageResult.sendCompleted)
+    const savedCompleted = Boolean(imageResult.savedCompleted)
+    const actionButtonClass = 'h-8 px-3 text-[11px]'
+
+    return (
+      <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+        <Card className="border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                {t('gogo.imageResultTitle')}
+              </p>
+              <h4 className="mt-1 text-base font-semibold text-arc-text">
+                {formatAddress(imageResult.address, 4)}
+              </h4>
+            </div>
+            <span className="rounded-full border border-arc-gold/30 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold">
+              {imageResult.source === 'qr' ? t('gogo.imageSourceQr') : t('gogo.imageSourceVision')}
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className={actionButtonClass}
+              onClick={() => void handleImageSend(messageIndex, imageResult.address)}
+              disabled={sendCompleted}
+            >
+              {sendCompleted ? <Check size={12} /> : null}
+              {sendCompleted ? t('gogo.done') : t('gogo.imageActionSend')}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className={actionButtonClass}
+              onClick={() => void handleImageAnalyze(messageIndex, imageResult.address, messageKey)}
+              disabled={isAnalysisLoading || Boolean(analysis)}
+            >
+              {isAnalysisLoading ? <Loader2 size={12} className="animate-spin" /> : analysis ? <Check size={12} /> : null}
+              {isAnalysisLoading ? t('gogo.working') : analysis ? t('gogo.done') : t('gogo.imageActionRisk')}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className={actionButtonClass}
+              onClick={() => void handleImageSave(messageIndex, imageResult.address)}
+              disabled={savedCompleted}
+            >
+              {savedCompleted ? <Check size={12} /> : null}
+              {savedCompleted ? t('gogo.done') : t('gogo.imageActionAddressBook')}
+            </Button>
+          </div>
+
+          {imageResult.analysisError && (
+            <p className="mt-3 text-xs text-arc-danger">{imageResult.analysisError}</p>
+          )}
+
+          {isAnalysisLoading ? (
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-arc-border bg-arc-bg/80 p-3">
+              <Loader2 size={18} className="animate-spin text-arc-gold" />
+              <div>
+                <p className="text-sm font-medium text-arc-text">{t('gogo.checkingAddress')}</p>
+                <p className="text-xs text-arc-text-dim">{t('gogo.fetchingAddressHistory')}</p>
+              </div>
+            </div>
+          ) : analysis && riskStyles ? (
+            <Card className={`mt-3 border p-4 shadow-lg shadow-black/10 ${riskStyles.card}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                    {t('gogo.addressRiskAnalysis')}
+                  </p>
+                  <h4 className={`mt-1 text-base font-semibold ${riskStyles.accent}`}>
+                    {riskLabel}
+                  </h4>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${riskStyles.badge}`}>
+                  ArcScan
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.contract')}</p>
+                  <p className="mt-1 text-sm font-medium text-arc-text">
+                    {analysis.isContract ? 'Yes' : 'No'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.transactions')}</p>
+                  <p className="mt-1 text-sm font-medium text-arc-text">{analysis.txCount}</p>
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.summary')}</p>
+                <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-[11px] text-arc-text-dim">
+                  {analysis.hasActivity ? t('gogo.activityDetected') : t('gogo.noTransactionActivity')}
+                </p>
+                <a
+                  href={`${EXPLORER_URL}/address/${imageResult.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-gold hover:underline"
+                >
+                  {t('gogo.viewOnArcScan')}
+                  <ExternalLink size={10} />
+                </a>
+              </div>
+            </Card>
+          ) : null}
+        </Card>
+      </div>
+    )
   }
 
   const speakMessage = (messageKey: string, text: string) => {
@@ -1347,6 +1745,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   return (
     <div className="flex h-full flex-col bg-arc-bg">
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageInputChange}
+      />
       <div className="flex items-center justify-between gap-3 border-b border-arc-border px-4 py-3">
         <div className="flex items-center gap-3">
           <button
@@ -1457,6 +1862,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <Button variant="primary" fullWidth onClick={() => void handleSaveKey()}>
                   Save API Key
                 </Button>
+                {imagePreviewNode}
+                <Button
+                  variant="outline"
+                  fullWidth
+                  size="sm"
+                  onClick={openImagePicker}
+                  disabled={isReadingImage}
+                  title={t('gogo.imageButtonTooltip')}
+                >
+                  <ImageIcon size={14} />
+                  {t('gogo.readImage')}
+                </Button>
                 <a
                   href="https://aistudio.google.com/apikey"
                   target="_blank"
@@ -1542,6 +1959,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       </Button>
                     </div>
                   )}
+
+                  {renderImageResultCard(message, index, actionKey, isUser)}
 
                   {hasMultipleActions ? (
                     <div className={`mt-3 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
@@ -1833,6 +2252,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               Listening...
             </div>
           )}
+          {imagePreviewNode}
           <form
             className="relative"
             onSubmit={(event) => {
@@ -1841,28 +2261,41 @@ export function GogoAI({ onBack }: GogoAIProps) {
             }}
           >
             <div className="relative">
-              <button
-                type="button"
-                onClick={() => void toggleVoiceInput()}
-                disabled={isComposerLocked || !address || (!voiceInputReady && !isListening)}
-                className={`absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-lg border p-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                  isListening
-                    ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
-                    : 'border-arc-border bg-arc-card text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
-                }`}
-                aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-                title={isListening ? 'Stop listening' : voiceInputTooltip}
-              >
-                <Mic size={15} />
-              </button>
+              <div className="absolute left-2 top-1/2 z-10 flex -translate-y-1/2 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openImagePicker}
+                  disabled={isReadingImage}
+                  className="rounded-lg border border-arc-border bg-arc-card p-2 text-arc-text-dim transition-all hover:border-arc-gold/30 hover:text-arc-text disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={t('gogo.imageButtonTooltip')}
+                  title={t('gogo.imageButtonTooltip')}
+                >
+                  <ImageIcon size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleVoiceInput()}
+                  disabled={isComposerLocked || !address || (!voiceInputReady && !isListening)}
+                  className={`rounded-lg border p-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isListening
+                      ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
+                      : 'border-arc-border bg-arc-card text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
+                  }`}
+                  aria-label={isListening ? 'Stop listening' : 'Start voice input'}
+                  title={isListening ? 'Stop listening' : voiceInputTooltip}
+                >
+                  <Mic size={15} />
+                </button>
+              </div>
 
               <input
                 ref={inputRef}
                 type="text"
                 placeholder="Ask Gogo anything..."
-                className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-12 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
+                className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-24 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
                 value={userInput}
                 onChange={(event) => setUserInput(event.target.value)}
+                onPaste={handleImagePaste}
                 disabled={isComposerLocked || !address}
               />
             </div>
@@ -1900,6 +2333,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
               />
               <Button variant="primary" fullWidth onClick={() => void handleSaveKey()}>
                 Save API Key
+              </Button>
+              {imagePreviewNode}
+              <Button
+                variant="outline"
+                fullWidth
+                size="sm"
+                onClick={openImagePicker}
+                disabled={isReadingImage}
+                title={t('gogo.imageButtonTooltip')}
+              >
+                <ImageIcon size={14} />
+                {t('gogo.readImage')}
               </Button>
               <a
                 href="https://aistudio.google.com/apikey"

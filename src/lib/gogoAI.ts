@@ -61,6 +61,16 @@ export interface AddressAnalysis {
   summary: string
 }
 
+export interface GogoImageResult {
+  address: string
+  source: 'qr' | 'vision'
+  raw: string | null
+  analysis?: AddressAnalysis | null
+  analysisError?: string | null
+  sendCompleted?: boolean
+  savedCompleted?: boolean
+}
+
 export interface SpendingAnalysis {
   totalSent: number
   totalReceived: number
@@ -141,6 +151,7 @@ export interface Message {
   actions: GogoAction[]
   action?: GogoAction
   timestamp: number
+  imageResult?: GogoImageResult
 }
 
 interface CacheEnvelope<T> {
@@ -629,6 +640,39 @@ function getTimeOfDayLabel(): 'morning' | 'afternoon' | 'evening' | 'night' {
   return 'night'
 }
 
+function normalizeImageResult(raw: unknown): GogoImageResult | null {
+  if (!isRecord(raw)) return null
+
+  const address = typeof raw.address === 'string' ? normalizeAddress(raw.address) : ''
+  const source = raw.source === 'qr' || raw.source === 'vision' ? raw.source : null
+  if (!address || !source) return null
+
+  const result: GogoImageResult = {
+    address,
+    source,
+    raw: typeof raw.raw === 'string' ? raw.raw : null,
+  }
+
+  const analysis = normalizeAddressAnalysis(raw.analysis)
+  if (analysis) {
+    result.analysis = analysis
+  }
+
+  if (typeof raw.analysisError === 'string' && raw.analysisError.trim()) {
+    result.analysisError = raw.analysisError.trim()
+  }
+
+  if (typeof raw.sendCompleted === 'boolean') {
+    result.sendCompleted = raw.sendCompleted
+  }
+
+  if (typeof raw.savedCompleted === 'boolean') {
+    result.savedCompleted = raw.savedCompleted
+  }
+
+  return result
+}
+
 function normalizeMessage(raw: unknown): Message | null {
   if (!isRecord(raw)) return null
   const role = raw.role === 'model' ? 'assistant' : raw.role
@@ -639,6 +683,7 @@ function normalizeMessage(raw: unknown): Message | null {
 
   const timestamp = typeof raw.timestamp === 'number' ? raw.timestamp : Date.now()
   const actions = sanitizeActions(raw)
+  const imageResult = normalizeImageResult(raw.imageResult)
 
   return {
     role,
@@ -646,6 +691,7 @@ function normalizeMessage(raw: unknown): Message | null {
     actions,
     action: actions[0],
     timestamp,
+    imageResult: imageResult ?? undefined,
   }
 }
 
