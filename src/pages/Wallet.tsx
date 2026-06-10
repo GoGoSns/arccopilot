@@ -64,8 +64,8 @@ function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
                   {token.isUsdc ? '$' : token.symbol.slice(0, 1) || token.name.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-arc-text">{token.symbol}</p>
-                  <p className="truncate text-xs text-arc-text-dim">{token.name}</p>
+                  <p className="truncate text-sm font-medium text-arc-text">{token.name}</p>
+                  <p className="truncate text-xs text-arc-text-dim">{token.symbol}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-mono text-sm font-medium text-arc-text">{token.balance}</p>

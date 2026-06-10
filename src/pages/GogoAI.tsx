@@ -67,12 +67,19 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: SpeechRecognitionConstructorLike
 }
 
-const QUICK_SUGGESTIONS = [
-  'Check my balance',
-  'Show last 24h activity',
-  'Find whale moves',
-  'Analyze this address',
+const QUICK_SUGGESTION_KEYS = [
+  'gogo.quickSuggestionBalance',
+  'gogo.quickSuggestionSummary',
+  'gogo.quickSuggestionPatterns',
+  'gogo.quickSuggestionAddress',
 ] as const
+
+function getQuickSuggestions(): Array<{ key: string; label: string }> {
+  return QUICK_SUGGESTION_KEYS.map((key) => ({
+    key,
+    label: t(key),
+  }))
+}
 
 function formatTime(timestamp: number): string {
   try {
@@ -499,11 +506,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const isComposerLocked = isLoading || isProactiveGreetingPending || hasActionLoading
   const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
   const voiceInputTooltip = !voiceInputEnabled
-    ? 'Enable Voice input in Settings'
-    : voiceInputUnavailableReason ?? (speechRecognitionSupported ? 'Voice not available' : 'Voice not available')
+    ? t('gogo.voiceInputSettings')
+    : voiceInputUnavailableReason ?? t('gogo.voiceNotAvailable')
   const voiceResponsesTooltip = !voiceResponsesEnabled
-    ? 'Enable Voice responses in Settings'
-    : 'Voice not available'
+    ? t('gogo.voiceResponsesSettings')
+    : t('gogo.voiceNotAvailable')
   const imagePreviewNode = (isReadingImage || imagePreviewUrl) ? (
     <div className="mb-3 flex items-center gap-3 rounded-xl border border-arc-border bg-arc-card/60 p-3">
       {imagePreviewUrl ? (
@@ -744,7 +751,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     if (!voiceInputReady) {
       if (!speechRecognitionSupported) {
         debugWarn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
-        setVoiceInputUnavailableReason('Voice not available')
+        setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
       }
       return
     }
@@ -752,7 +759,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const RecognitionCtor = getSpeechRecognitionCtor()
     if (!RecognitionCtor) {
       debugWarn('[GogoAI] voice input unavailable: SpeechRecognition constructor missing')
-      setVoiceInputUnavailableReason('Voice not available')
+      setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
       return
     }
 
@@ -780,7 +787,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
       recognition.onerror = (event: any) => {
         debugWarn('[GogoAI] voice input error:', event?.error ?? event)
-        setVoiceInputUnavailableReason('Voice not available')
+        setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
         setIsListening(false)
         recognitionRef.current = null
       }
@@ -793,7 +800,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       recognition.start()
     } catch (error) {
       debugWarn('[GogoAI] failed to start voice input:', error)
-      setVoiceInputUnavailableReason('Voice not available')
+      setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
       setIsListening(false)
       recognitionRef.current = null
     }
@@ -1211,7 +1218,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       setMessages(finalMessages)
       void saveGogoHistory(finalMessages)
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Couldn't reach Gogo. Try again."
+      const errorMessage = err instanceof Error ? err.message : t('gogo.couldNotReach')
       const errorBubble: Message = {
         role: 'error',
         content: errorMessage,
@@ -1352,7 +1359,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           }))
         } catch (error) {
           console.error('[GogoAI] reminder save failed:', error)
-          const errorMessage = error instanceof Error ? error.message : 'Could not save this reminder right now.'
+          const errorMessage = error instanceof Error ? error.message : t('gogo.couldNotSaveReminder')
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {
@@ -1435,7 +1442,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           )
         } catch (error) {
           console.error('[GogoAI] spending analysis failed:', error)
-          const errorMessage = error instanceof Error ? error.message : 'Could not summarize spending right now.'
+          const errorMessage = error instanceof Error ? error.message : t('gogo.couldNotSummarizeSpending')
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {
@@ -1782,7 +1789,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       <div className="flex h-full items-center justify-center bg-arc-bg">
         <div className="flex items-center gap-3 text-arc-text-dim">
           <Loader2 size={18} className="animate-spin text-arc-gold" />
-          <span className="text-sm">Loading Gogo...</span>
+          <span className="text-sm">{t('gogo.loading')}</span>
         </div>
       </div>
     )
@@ -1802,15 +1809,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <button
             onClick={onBack}
             className="rounded-lg p-1.5 text-arc-text-dim transition-colors hover:text-arc-text"
-            aria-label="Back"
+            aria-label={t('gogo.back')}
           >
             <ArrowLeft size={18} />
           </button>
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-arc-gold" />
             <div className="flex flex-col">
-              <h2 className="text-base font-semibold text-arc-text">Gogo AI</h2>
-              <p className="text-[11px] text-arc-text-dim">Context-aware assistant</p>
+              <h2 className="text-base font-semibold text-arc-text">{t('gogo.title')}</h2>
+              <p className="text-[11px] text-arc-text-dim">{t('gogo.subtitle')}</p>
             </div>
           </div>
         </div>
@@ -1823,7 +1830,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           disabled={isLoading || hasActionLoading || messages.length === 0}
         >
           <Trash2 size={14} />
-          Clear chat
+          {t('gogo.clearChat')}
         </Button>
       </div>
 
@@ -1836,8 +1843,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <Sparkles size={22} className="text-arc-gold" />
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-arc-text">Gogo is preparing your brief.</p>
-                  <p className="text-sm text-arc-text-dim">I&apos;m checking your balance, activity, whales and patterns.</p>
+                  <p className="text-lg font-semibold text-arc-text">{t('gogo.preparingBriefTitle')}</p>
+                  <p className="text-sm text-arc-text-dim">{t('gogo.preparingBriefBody')}</p>
                 </div>
               </div>
 
@@ -1860,25 +1867,25 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <Sparkles size={22} className="text-arc-gold" />
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-arc-text">Hi, I'm Gogo.</p>
-                  <p className="text-sm text-arc-text-dim">I checked your wallet context, recent activity, whales and patterns.</p>
+                  <p className="text-lg font-semibold text-arc-text">{t('gogo.introTitle')}</p>
+                  <p className="text-sm text-arc-text-dim">{t('gogo.introBody')}</p>
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                {QUICK_SUGGESTIONS.map((suggestion) => (
+                {getQuickSuggestions().map((suggestion) => (
                   <button
-                    key={suggestion}
-                    onClick={() => handleQuickSuggestion(suggestion)}
+                    key={suggestion.key}
+                    onClick={() => handleQuickSuggestion(suggestion.label)}
                     className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text"
                   >
-                    {suggestion}
+                    {suggestion.label}
                   </button>
                 ))}
               </div>
 
               <p className="mt-4 text-xs text-arc-text-dim">
-                Try asking about your balance, last 24h, whales, patterns or an address.
+                {t('gogo.tryAsking')}
               </p>
             </Card>
           </div>
@@ -1892,20 +1899,20 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <Sparkles size={22} className="text-arc-gold" />
                 </div>
                 <div>
-                  <p className="text-lg font-semibold text-arc-text">Hi, I'm Gogo.</p>
-                  <p className="text-sm text-arc-text-dim">Your chat history is stored locally. Add a Gemini key to keep going.</p>
+                  <p className="text-lg font-semibold text-arc-text">{t('gogo.noKeyTitle')}</p>
+                  <p className="text-sm text-arc-text-dim">{t('gogo.noKeyBody')}</p>
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
                 <Input
-                  placeholder="Enter Gemini API Key"
+                  placeholder={t('gogo.enterGeminiKey')}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   type="password"
                 />
                 <Button variant="primary" fullWidth onClick={() => void handleSaveKey()}>
-                  Save API Key
+                  {t('gogo.saveApiKey')}
                 </Button>
                 {imagePreviewNode}
                 <Button
@@ -1925,7 +1932,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs text-arc-gold hover:underline"
                 >
-                  Get a free key from Google AI Studio
+                  {t('gogo.getFreeKey')}
                   <ExternalLink size={10} />
                 </a>
               </div>
@@ -2248,16 +2255,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
             {showStarterSuggestions && (
               <Card className="border border-arc-border/80 bg-arc-card/80 p-4">
                 <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
-                  Quick suggestions
+                  {t('gogo.quickSuggestions')}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {QUICK_SUGGESTIONS.map((suggestion) => (
+                  {getQuickSuggestions().map((suggestion) => (
                     <button
-                      key={suggestion}
-                      onClick={() => handleQuickSuggestion(suggestion)}
+                      key={suggestion.key}
+                      onClick={() => handleQuickSuggestion(suggestion.label)}
                       className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text"
                     >
-                      {suggestion}
+                      {suggestion.label}
                     </button>
                   ))}
                 </div>
@@ -2274,20 +2281,20 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <Sparkles size={18} className="text-arc-gold" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-arc-text">Add your Gemini key to continue chatting.</p>
-                  <p className="text-xs text-arc-text-dim">Your history is still here. Nothing was lost.</p>
+                  <p className="text-sm font-medium text-arc-text">{t('gogo.addGeminiKey')}</p>
+                  <p className="text-xs text-arc-text-dim">{t('gogo.historyStillHere')}</p>
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
                 <Input
-                  placeholder="Enter Gemini API Key"
+                  placeholder={t('gogo.enterGeminiKey')}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   type="password"
                 />
                 <Button variant="primary" fullWidth onClick={() => void handleSaveKey()}>
-                  Save API Key
+                  {t('gogo.saveApiKey')}
                 </Button>
               </div>
             </Card>
@@ -2300,7 +2307,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           {isListening && (
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-arc-danger/30 bg-arc-danger/10 px-2.5 py-1 text-[10px] font-medium text-arc-danger animate-pulse">
               <span className="h-2 w-2 rounded-full bg-arc-danger" />
-              Listening...
+              {t('gogo.listening')}
             </div>
           )}
           {imagePreviewNode}
@@ -2332,8 +2339,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
                       : 'border-arc-border bg-arc-card text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
                   }`}
-                  aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-                  title={isListening ? 'Stop listening' : voiceInputTooltip}
+                  aria-label={isListening ? t('gogo.stopListening') : t('gogo.startListening')}
+                  title={isListening ? t('gogo.stopListening') : voiceInputTooltip}
                 >
                   <Mic size={15} />
                 </button>
@@ -2342,7 +2349,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Ask Gogo anything..."
+                placeholder={t('gogo.askAnything')}
                 className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-24 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
                 value={userInput}
                 onChange={(event) => setUserInput(event.target.value)}
@@ -2354,7 +2361,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               type="submit"
               disabled={isComposerLocked || !userInput.trim() || !address}
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-arc-gold p-2 text-arc-bg transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Send"
+              aria-label={t('gogo.send')}
             >
               <Send size={16} />
             </button>
@@ -2370,20 +2377,20 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <Sparkles size={18} className="text-arc-gold" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-arc-text">Set a Gemini API key to keep chatting.</p>
-                <p className="text-xs text-arc-text-dim">Your conversation is saved locally up to 50 messages.</p>
+                <p className="text-sm font-medium text-arc-text">{t('gogo.setGeminiKey')}</p>
+                <p className="text-xs text-arc-text-dim">{t('gogo.conversationSaved')}</p>
               </div>
             </div>
 
             <div className="mt-4 space-y-3">
               <Input
-                placeholder="Enter Gemini API Key"
+                placeholder={t('gogo.enterGeminiKey')}
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 type="password"
               />
               <Button variant="primary" fullWidth onClick={() => void handleSaveKey()}>
-                Save API Key
+                {t('gogo.saveApiKey')}
               </Button>
               {imagePreviewNode}
               <Button
@@ -2403,7 +2410,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs text-arc-gold hover:underline"
               >
-                Get a free key from Google AI Studio
+                {t('gogo.getFreeKey')}
                 <ExternalLink size={10} />
               </a>
             </div>
