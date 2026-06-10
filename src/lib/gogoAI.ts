@@ -2,6 +2,7 @@ import { formatAddress, formatBalance } from '@/lib/utils'
 import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 import { getLocalePromptLanguage, getLocaleSync } from '@/lib/i18n'
+import { PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import {
   GOGO_HISTORY,
@@ -34,6 +35,12 @@ type AddressBookSummary = {
 type WhaleSummary = {
   address: string
   label?: string
+}
+
+type PortfolioSummary = {
+  symbol: string
+  name: string
+  balance: string
 }
 
 type RecentTransferSummary = {
@@ -132,6 +139,7 @@ type PromptContext = {
   }
   addressBook: AddressBookSummary[]
   whales: WhaleSummary[]
+  portfolio: PortfolioSummary[]
   recentTransfers: RecentTransferSummary[]
   detectedPatterns: string[]
   recentTweets: RecentTweetSummary[]
@@ -143,6 +151,7 @@ export interface GogoContext {
   balance: string
   addressBook: Record<string, AddressBookEntry>
   whales: WhaleSummary[]
+  portfolio: PortfolioSummary[]
 }
 
 export type GogoAction =
@@ -187,6 +196,7 @@ CAPABILITIES:
 Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Recent tweets may include category labels: news, opportunity, or discussion. Use them to spot urgency quickly. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
 Recent official Arc/Circle updates are also included separately as officialTweets. Use them when the latest announcement matters.
 The balance is denominated in USDC on Arc Testnet.
+The wallet context may also include a portfolio list with token symbols, names, and balances. Use that list directly when the user asks which tokens they hold or asks about their portfolio.
 
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
 
@@ -273,7 +283,7 @@ function shortAddr(address: string): string {
   return formatAddress(address, 4)
 }
 
-function normalizeAddress(address?: string): string {
+function normalizeAddress(address?: string | null): string {
   return (address ?? '').trim().toLowerCase()
 }
 
@@ -668,6 +678,7 @@ function buildGogoContextFromStore(): GogoContext {
     balance: state.usdcBalance ?? '0.00',
     addressBook,
     whales,
+    portfolio: getFreshPortfolioSummaries(),
   }
 }
 
@@ -878,6 +889,24 @@ function getDetectedPatterns(
   return patterns.map(formatPatternSummary)
 }
 
+function getFreshPortfolioSummaries(): PortfolioSummary[] {
+  const state = useStore.getState()
+  const normalizedWallet = normalizeAddress(state.walletAddress)
+  const normalizedPortfolio = normalizeAddress(state.portfolioAddress)
+
+  if (!normalizedWallet || normalizedWallet !== normalizedPortfolio) return []
+  if (!state.portfolioUpdatedAt) return []
+  if (Date.now() - state.portfolioUpdatedAt > PORTFOLIO_CACHE_TTL_MS) return []
+
+  return state.portfolioTokens
+    .slice(0, 20)
+    .map((token) => ({
+      symbol: token.symbol,
+      name: token.name,
+      balance: token.balance,
+    }))
+}
+
 function buildPromptContext(base: GogoContext): PromptContext {
   return {
     wallet: {
@@ -887,6 +916,7 @@ function buildPromptContext(base: GogoContext): PromptContext {
     },
     addressBook: getAddressBookSummaries(base.addressBook),
     whales: getWhaleSummaries(base.whales, base.addressBook),
+    portfolio: base.portfolio,
     recentTransfers: getRecentTransfers(base.walletAddress, base.addressBook),
     detectedPatterns: getDetectedPatterns(base.walletAddress, base.addressBook),
     recentTweets: getRecentTweets(),

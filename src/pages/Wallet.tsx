@@ -9,11 +9,79 @@ import { TokenList } from '@/components/TokenList'
 import { ActivityTab } from '@/components/ActivityTab'
 import { DiscoverTab } from '@/components/DiscoverTab'
 import { BottomStatus } from '@/components/BottomStatus'
-import { useStore } from '@/lib/store'
+import { Card } from '@/components/ui/Card'
+import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
+import { usePortfolioBalances } from '@/lib/portfolio'
 import { copyToClipboard, formatAddress } from '@/lib/utils'
 
 type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
+
+interface PortfolioSectionProps {
+  tokens: PortfolioTokenBalance[]
+  isLoading: boolean
+}
+
+function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
+  const showSkeleton = isLoading && tokens.length === 0
+  const showRefreshing = isLoading && tokens.length > 0
+  const hasUsdcOnly = tokens.length === 1 && tokens[0].isUsdc
+
+  return (
+    <Card className="mx-4 mt-3 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-arc-border/80 px-4 py-3">
+        <h2 className="text-sm font-semibold text-arc-text">{t('portfolio.title')}</h2>
+        {showRefreshing ? (
+          <span className="text-xs text-arc-gold">{t('portfolio.loading')}</span>
+        ) : null}
+      </div>
+
+      <div className="px-4 py-2">
+        {showSkeleton ? (
+          <div className="space-y-3 py-1">
+            <div className="flex items-center gap-3 animate-pulse">
+              <div className="h-9 w-9 rounded-full bg-arc-bg/60" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3.5 w-24 rounded bg-arc-bg/60" />
+                <div className="h-2.5 w-32 rounded bg-arc-bg/50" />
+              </div>
+              <div className="h-3.5 w-16 rounded bg-arc-bg/60" />
+            </div>
+            <div className="flex items-center gap-3 animate-pulse">
+              <div className="h-9 w-9 rounded-full bg-arc-bg/60" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-3.5 w-20 rounded bg-arc-bg/60" />
+                <div className="h-2.5 w-28 rounded bg-arc-bg/50" />
+              </div>
+              <div className="h-3.5 w-16 rounded bg-arc-bg/60" />
+            </div>
+          </div>
+        ) : tokens.length > 0 ? (
+          <div className="divide-y divide-arc-border/60">
+            {tokens.map((token) => (
+              <div key={`${token.address}-${token.symbol}`} className="flex items-center gap-3 py-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-arc-gold/25 bg-arc-gold/10 text-sm font-semibold text-arc-gold">
+                  {token.isUsdc ? '$' : token.symbol.slice(0, 1) || token.name.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-arc-text">{token.symbol}</p>
+                  <p className="truncate text-xs text-arc-text-dim">{token.name}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono text-sm font-medium text-arc-text">{token.balance}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {!isLoading && hasUsdcOnly ? (
+          <p className="pb-2 text-xs text-arc-text-dim">{t('portfolio.otherTokensNote')}</p>
+        ) : null}
+      </div>
+    </Card>
+  )
+}
 
 interface WalletProps {
   onSend: () => void
@@ -32,6 +100,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   const streak = useStore((s) => s.streak)
   const setCurrentView = useStore((s) => s.setCurrentView)
   const { balance, isLoading } = useUSDCBalance()
+  const { tokens: portfolioTokens, isLoading: isPortfolioLoading } = usePortfolioBalances(address)
 
   const level = Math.max(1, Math.floor(xp / 100))
 
@@ -81,6 +150,8 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
         isLoading={isLoading}
         changePercent={2.4}
       />
+
+      <PortfolioSection tokens={portfolioTokens} isLoading={isPortfolioLoading} />
 
       <ActionButtons onSend={onSend} onReceive={onReceive} onScan={() => {}} onBuy={() => {}} />
 

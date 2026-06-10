@@ -97,6 +97,10 @@ const EN = {
   'wallet.nftsEmpty': 'No NFTs yet',
   'wallet.addressMissing': 'No address available',
 
+  'portfolio.title': 'Portfolio',
+  'portfolio.loading': 'Loading portfolio...',
+  'portfolio.otherTokensNote': 'Other tokens will appear here',
+
   'actions.send': 'Send',
   'actions.receive': 'Receive',
   'actions.scan': 'Scan',
@@ -591,6 +595,10 @@ const TR = {
   'wallet.copied': 'Kopyalandı!',
   'wallet.nftsEmpty': 'Henüz NFT yok',
   'wallet.addressMissing': 'Adres yok',
+
+  'portfolio.title': 'Portföy',
+  'portfolio.loading': 'Portföy yükleniyor...',
+  'portfolio.otherTokensNote': 'Diğer tokenlar burada görünecek',
 
   'actions.send': 'Gönder',
   'actions.receive': 'Al',

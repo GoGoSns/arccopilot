@@ -14,6 +14,15 @@ export interface AddressMemory {
   lastUsedAt: number
 }
 
+export interface PortfolioTokenBalance {
+  address: string
+  symbol: string
+  name: string
+  decimals: number
+  balance: string
+  isUsdc: boolean
+}
+
 export interface UserProfile {
   displayName?: string
   bio?: string
@@ -25,6 +34,9 @@ interface AppState {
   previousView: View | null
   walletAddress: string | null
   usdcBalance: string
+  portfolioAddress: string | null
+  portfolioTokens: PortfolioTokenBalance[]
+  portfolioUpdatedAt: number | null
   selectedAddress: string | null // For address-detail view
   
   // Profile & Gamification
@@ -41,6 +53,7 @@ interface AppState {
   goBack: () => void
   setWalletAddress: (address: string | null) => void
   setBalance: (balance: string) => void
+  setPortfolioTokens: (address: string | null, tokens: PortfolioTokenBalance[], updatedAt?: number) => void
   setSelectedAddress: (address: string | null) => void
   
   setProfile: (profile: Partial<UserProfile>) => void
@@ -110,6 +123,9 @@ export const useStore = create<AppState>()(
       previousView: null,
       walletAddress: null,
       usdcBalance: '0.00',
+      portfolioAddress: null,
+      portfolioTokens: [],
+      portfolioUpdatedAt: null,
       selectedAddress: null,
       addressMemories: {},
       
@@ -153,6 +169,11 @@ export const useStore = create<AppState>()(
         if (isNew) set({ accountCreatedAt: Date.now() })
       },
       setBalance:       (balance) => set({ usdcBalance: balance }),
+      setPortfolioTokens: (address, tokens, updatedAt = Date.now()) => set({
+        portfolioAddress: address ? address.trim().toLowerCase() : null,
+        portfolioTokens: tokens,
+        portfolioUpdatedAt: updatedAt,
+      }),
       setSelectedAddress: (address) => set({ selectedAddress: address }),
 
       setProfile: (data) => set((s) => ({ profile: { ...s.profile, ...data } })),

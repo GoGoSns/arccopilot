@@ -8,6 +8,7 @@ import { formatText, getLocaleSync, t } from '@/lib/i18n'
 import { formatAddress, openSafeUrl } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
+import { usePortfolioBalances, PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import {
   askGogo,
   analyzeAddress,
@@ -390,6 +391,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const addAddressMemory = useStore((s) => s.addAddressMemory)
   const updateAddressMemory = useStore((s) => s.updateAddressMemory)
   const { balance, isLoading: balanceLoading } = useUSDCBalance()
+  usePortfolioBalances(address)
 
   const [apiKey, setLocalApiKey] = useState<string | null>(null)
   const [keyInput, setKeyInput] = useState('')
@@ -446,14 +448,35 @@ export function GogoAI({ onBack }: GogoAIProps) {
     [addressEntries],
   )
 
+  const portfolioTokens = useStore((state) => state.portfolioTokens)
+  const portfolioAddress = useStore((state) => state.portfolioAddress)
+  const portfolioUpdatedAt = useStore((state) => state.portfolioUpdatedAt)
+
+  const portfolio = useMemo(
+    () => {
+      const normalizedAddress = address?.trim().toLowerCase() ?? ''
+      if (!normalizedAddress) return []
+      if (portfolioAddress !== normalizedAddress) return []
+      if (!portfolioUpdatedAt || Date.now() - portfolioUpdatedAt > PORTFOLIO_CACHE_TTL_MS) return []
+
+      return portfolioTokens.slice(0, 20).map((token) => ({
+        symbol: token.symbol,
+        name: token.name,
+        balance: token.balance,
+      }))
+    },
+    [address, portfolioAddress, portfolioTokens, portfolioUpdatedAt],
+  )
+
   const gogoContext = useMemo<GogoContext>(
     () => ({
       walletAddress: address ?? '',
       balance,
       addressBook: addressBookContext,
       whales: whaleSummaries,
+      portfolio,
     }),
-    [address, balance, addressBookContext, whaleSummaries],
+    [address, balance, addressBookContext, whaleSummaries, portfolio],
   )
 
   const hasMessages = messages.length > 0
