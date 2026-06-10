@@ -56,8 +56,10 @@ type RecentTweetSummary = {
 
 export interface AddressAnalysis {
   isContract: boolean
-  txCount: number
-  hasActivity: boolean
+  txCount: number | null
+  hasActivity: boolean | null
+  isKnownNewAddress?: boolean
+  activityPartial?: boolean
   summary: string
 }
 
@@ -99,11 +101,27 @@ type BlockscoutAddressInfo = {
   transactions_count?: number | string
 }
 
+type BlockscoutAddressCounters = {
+  transactions_count?: number | string
+  tx_count?: number | string
+  count?: number | string
+}
+
 type BlockscoutTransactionsResponse = {
   items?: unknown[]
   count?: number | string
   total_count?: number | string
   tx_count?: number | string
+}
+
+type BlockscoutFetchResult<T> = {
+  ok: true
+  status: number
+  data: T
+} | {
+  ok: false
+  status: number
+  data: null
 }
 
 type PromptContext = {
@@ -510,6 +528,27 @@ function buildAddressRiskSummary(isContract: boolean, txCount: number, hasActivi
   return `This is a normal wallet with ${txCount} transactions.`
 }
 
+function buildAddressRiskSummaryV2(
+  isContract: boolean,
+  txCount: number | null,
+  hasActivity: boolean | null,
+  isKnownNewAddress: boolean,
+): string {
+  const language = getLikelyLanguage()
+
+  if (language === 'Turkish') {
+    if (isContract) return 'Bu bir kontrat adresi. Tip/transfer yaparsan fonların kaybolabilir.'
+    if (isKnownNewAddress || hasActivity === false) return 'Bu adres hiç kullanılmamış, yeni veya boş olabilir.'
+    if (txCount == null) return 'Bu adres normal bir cüzdan gibi görünüyor.'
+    return `Normal bir cüzdan, ${txCount} işlem yapmış.`
+  }
+
+  if (isContract) return 'This is a contract address. If you tip or transfer to it, funds can be lost.'
+  if (isKnownNewAddress || hasActivity === false) return 'This address has never been used, so it may be new or empty.'
+  if (txCount == null) return 'This looks like a normal wallet.'
+  return `This is a normal wallet with ${txCount} transactions.`
+}
+
 function buildSpendingSummary(
   period: '24h' | '7d' | '30d',
   totalSentUnits: bigint,
@@ -548,16 +587,20 @@ function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
   if (!isRecord(raw)) return null
 
   const isContract = toBoolean(raw.isContract ?? raw.is_contract) ?? false
-  const txCount = toFiniteNumber(raw.txCount ?? raw.tx_count ?? raw.transactions_count) ?? 0
-  const hasActivity = typeof raw.hasActivity === 'boolean' ? raw.hasActivity : txCount > 0
+  const txCount = toFiniteNumber(raw.txCount ?? raw.tx_count ?? raw.transactions_count)
+  const hasActivity = typeof raw.hasActivity === 'boolean' ? raw.hasActivity : (txCount == null ? null : txCount > 0)
+  const isKnownNewAddress = typeof raw.isKnownNewAddress === 'boolean' ? raw.isKnownNewAddress : false
+  const activityPartial = typeof raw.activityPartial === 'boolean' ? raw.activityPartial : false
   const summary = typeof raw.summary === 'string' && raw.summary.trim()
     ? raw.summary.trim()
-    : buildAddressRiskSummary(isContract, txCount, hasActivity)
+    : buildAddressRiskSummaryV2(isContract, txCount, hasActivity, isKnownNewAddress)
 
   return {
     isContract,
     txCount,
     hasActivity,
+    isKnownNewAddress,
+    activityPartial,
     summary,
   }
 }
@@ -984,13 +1027,51 @@ export async function clearApiKey(): Promise<void> {
   await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
 }
 
+async function fetchBlockscoutJsonResult<T>(path: string): Promise<BlockscoutFetchResult<T>> {
+  try {
+    const res = await fetch(`${BLOCKSCOUT_API_URL}${path}`, {
+      headers: { accept: 'application/json' },
+    })
+
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        data: null,
+      }
+    }
+
+    try {
+      return {
+        ok: true,
+        status: res.status,
+        data: (await res.json()) as T,
+      }
+    } catch (error) {
+      debugWarn('[GogoAI] Blockscout JSON parse failed:', error)
+      return {
+        ok: false,
+        status: res.status,
+        data: null,
+      }
+    }
+  } catch (error) {
+    debugWarn('[GogoAI] Blockscout request failed:', error)
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+    }
+  }
+}
+
 async function fetchBlockscoutJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BLOCKSCOUT_API_URL}${path}`, {
     headers: { accept: 'application/json' },
   })
 
   if (!res.ok) {
-    throw new Error(`Blockscout error ${res.status}`)
+    throw new Error("Couldn't load activity")
   }
 
   return (await res.json()) as T
@@ -1004,6 +1085,15 @@ function resolveTxCount(addressInfo: BlockscoutAddressInfo, txInfo: BlockscoutTr
     ?? toFiniteNumber(addressInfo.tx_count)
     ?? toFiniteNumber(addressInfo.transactions_count)
     ?? (Array.isArray(txInfo.items) ? txInfo.items.length : 0)
+  )
+}
+
+function resolveCounterTxCount(counters: BlockscoutAddressCounters | null | undefined): number | null {
+  if (!counters) return null
+  return (
+    toFiniteNumber(counters.transactions_count)
+    ?? toFiniteNumber(counters.tx_count)
+    ?? toFiniteNumber(counters.count)
   )
 }
 
@@ -1051,7 +1141,10 @@ async function fetchSpendingTransfers(address: string, cutoffMs: number): Promis
       query.set('index', String(nextPageParams.index))
     }
 
-    const pageData = await fetchBlockscoutJson<BlockscoutTransferPage>(`/addresses/${normalized}/token-transfers?${query.toString()}`)
+    const pageResult = await fetchBlockscoutJsonResult<BlockscoutTransferPage>(`/addresses/${normalized}/token-transfers?${query.toString()}`)
+    if (!pageResult.ok || !pageResult.data) break
+
+    const pageData = pageResult.data
     const items = Array.isArray(pageData.items) ? pageData.items : []
     transfers.push(...items)
 
@@ -1075,20 +1168,32 @@ export async function analyzeAddress(address: string): Promise<AddressAnalysis> 
   const normalized = normalizeAddress(address)
   if (!normalized) throw new Error('ADDRESS_REQUIRED')
 
-  const [addressInfo, txInfo] = await Promise.all([
-    fetchBlockscoutJson<BlockscoutAddressInfo>(`/addresses/${normalized}`),
-    fetchBlockscoutJson<BlockscoutTransactionsResponse>(`/addresses/${normalized}/transactions?limit=1`),
+  const [addressResult, countersResult] = await Promise.all([
+    fetchBlockscoutJsonResult<BlockscoutAddressInfo>(`/addresses/${normalized}`),
+    fetchBlockscoutJsonResult<BlockscoutAddressCounters>(`/addresses/${normalized}/counters`),
   ])
 
-  const isContract = toBoolean(addressInfo.is_contract) ?? false
-  const txCount = resolveTxCount(addressInfo, txInfo)
-  const hasActivity = txCount > 0 || (Array.isArray(txInfo.items) && txInfo.items.length > 0)
+  const addressInfo = addressResult.ok ? addressResult.data : null
+  const isKnownNewAddress = addressResult.status === 404 || countersResult.status === 404
+  const isContract = addressInfo ? (toBoolean(addressInfo.is_contract) ?? false) : false
+  const txCount = countersResult.status === 404 ? 0 : resolveCounterTxCount(countersResult.ok ? countersResult.data : null)
+  const hasActivity = countersResult.status === 404
+    ? false
+    : txCount == null
+      ? null
+      : txCount > 0
+  const activityPartial = (
+    (addressResult.status !== 404 && !addressResult.ok)
+    || (countersResult.status !== 404 && !countersResult.ok)
+  )
 
   return {
     isContract,
     txCount,
     hasActivity,
-    summary: buildAddressRiskSummary(isContract, txCount, hasActivity),
+    isKnownNewAddress,
+    activityPartial,
+    summary: buildAddressRiskSummaryV2(isContract, txCount, hasActivity, isKnownNewAddress),
   }
 }
 

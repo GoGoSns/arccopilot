@@ -158,7 +158,7 @@ async function fetchCurrentUsdcBalance(address: string): Promise<string> {
 }
 
 async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer | null> {
-  const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&token=${USDC_CONTRACT}&limit=20`
+  const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&token=${USDC_CONTRACT}`
   const res = await fetch(url, { headers: { accept: 'application/json' } })
   if (!res.ok) return null
 
@@ -287,7 +287,7 @@ async function checkWhales(): Promise<void> {
         : undefined
 
       try {
-        const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20&limit=5`
+        const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20`
         const res = await fetch(url, { headers: { accept: 'application/json' } })
         if (!res.ok) return
 

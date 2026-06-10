@@ -241,7 +241,7 @@ function getSummaryTimeLabel(): string {
 }
 
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
-  const url = `${BLOCKSCOUT_API_BASE}/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&limit=20`
+  const url = `${BLOCKSCOUT_API_BASE}/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20`
 
   try {
     const res = await fetch(url, { headers: { accept: 'application/json' } })
@@ -309,7 +309,7 @@ async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<Whale
   if (cached) return { address: whaleAddr, label, ...cached }
 
   try {
-  const url = `${BLOCKSCOUT_API_BASE}/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20&limit=5`
+    const url = `${BLOCKSCOUT_API_BASE}/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20`
     const res = await fetch(url, { headers: { accept: 'application/json' } })
     if (!res.ok) return null
     const data  = await res.json() as { items?: RawTransfer[] }

@@ -70,7 +70,16 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        if (requestId === requestIdRef.current) {
+          setInsights({
+            totalTx: 0,
+            totalVolume: 0n,
+            firstTx: 0,
+            lastTx: 0,
+            direction: 'balanced',
+          })
+        }
+        return
       }
 
       const json = (await response.json()) as BlockscoutTokenTransferResponse
@@ -132,9 +141,16 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
           direction
         })
       }
-    } catch (err: any) {
+    } catch {
       if (requestId === requestIdRef.current) {
-        setError(err.message || 'Failed to fetch insights')
+        setInsights({
+          totalTx: 0,
+          totalVolume: 0n,
+          firstTx: 0,
+          lastTx: 0,
+          direction: 'balanced',
+        })
+        setError(null)
       }
     } finally {
       if (requestId === requestIdRef.current) {

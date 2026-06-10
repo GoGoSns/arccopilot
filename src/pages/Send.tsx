@@ -242,7 +242,10 @@ export function Send({ onBack }: SendProps) {
         })
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
+          if (contractLookupTokenRef.current === lookupToken) {
+            setRecipientContractStatus('unknown')
+          }
+          return
         }
 
         const data = await response.json() as {

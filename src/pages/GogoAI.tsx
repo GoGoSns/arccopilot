@@ -148,8 +148,18 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
 
 function getRiskTone(analysis: AddressAnalysis): 'contract' | 'empty' | 'normal' {
   if (analysis.isContract) return 'contract'
-  if (!analysis.hasActivity) return 'empty'
+  if (analysis.isKnownNewAddress || analysis.hasActivity === false) return 'empty'
   return 'normal'
+}
+
+function formatAddressTxCount(txCount: number | null | undefined): string {
+  return txCount == null ? t('common.unknown') : String(txCount)
+}
+
+function getAddressActivityStatusLabel(analysis: AddressAnalysis): string {
+  if (analysis.hasActivity === true) return t('gogo.activityDetected')
+  if (analysis.hasActivity === false) return t('gogo.noTransactionActivity')
+  return t('common.unknown')
 }
 
 function getRiskStyles(tone: 'contract' | 'empty' | 'normal') {
@@ -917,7 +927,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       }))
     } catch (error) {
       console.error('[GogoAI] image address analysis failed:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Could not analyze this address right now.'
+      const errorMessage = t('gogo.partialActivityData')
       updateMessageByIndex(messageIndex, (message) => ({
         ...message,
         imageResult: message.imageResult
@@ -1071,7 +1081,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 </div>
                 <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
                   <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.transactions')}</p>
-                  <p className="mt-1 text-sm font-medium text-arc-text">{analysis.txCount}</p>
+                  <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
                 </div>
               </div>
 
@@ -1080,9 +1090,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
               </div>
 
+              {analysis.activityPartial && (
+                <p className="mt-2 text-xs text-amber-200">
+                  {t('gogo.partialActivityData')}
+                </p>
+              )}
+
               <div className="mt-3 flex items-center justify-between gap-3">
                 <p className="text-[11px] text-arc-text-dim">
-                  {analysis.hasActivity ? t('gogo.activityDetected') : t('gogo.noTransactionActivity')}
+                  {getAddressActivityStatusLabel(analysis)}
                 </p>
                 <a
                   href={`${EXPLORER_URL}/address/${imageResult.address}`}
@@ -1441,7 +1457,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           )
         } catch (error) {
           console.error('[GogoAI] address analysis failed:', error)
-          const errorMessage = error instanceof Error ? error.message : 'Could not analyze this address right now.'
+          const errorMessage = t('gogo.partialActivityData')
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {
@@ -1616,7 +1632,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       </div>
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
                         <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Transactions</p>
-                        <p className="mt-1 text-sm font-medium text-arc-text">{analysis.txCount}</p>
+                        <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
                       </div>
                     </div>
 
@@ -1624,6 +1640,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
                       <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
                     </div>
+
+                    {analysis.activityPartial && (
+                      <p className="mt-2 text-xs text-amber-200">
+                        {t('gogo.partialActivityData')}
+                      </p>
+                    )}
                   </>
                 ) : null}
               </Card>
@@ -2077,7 +2099,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             </div>
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
                               <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Transactions</p>
-                              <p className="mt-1 text-sm font-medium text-arc-text">{analysis.txCount}</p>
+                              <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
                             </div>
                           </div>
 
@@ -2086,9 +2108,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
                           </div>
 
+                          {analysis.activityPartial && (
+                            <p className="mt-2 text-xs text-amber-200">
+                              {t('gogo.partialActivityData')}
+                            </p>
+                          )}
+
                           <div className="mt-3 flex items-center justify-between gap-3">
                             <p className="text-[11px] text-arc-text-dim">
-                              {analysis.hasActivity ? 'Activity detected on Arc Testnet.' : 'No transaction activity found.'}
+                              {getAddressActivityStatusLabel(analysis)}
                             </p>
                             <a
                               href={`${EXPLORER_URL}/address/${analyzeAction?.params.address ?? ''}`}

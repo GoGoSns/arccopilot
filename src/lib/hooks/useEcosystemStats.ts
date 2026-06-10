@@ -21,8 +21,6 @@ export interface EcosystemStatsState {
 }
 
 function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
   return "Couldn't load ecosystem stats"
 }
 
@@ -89,7 +87,13 @@ export function useEcosystemStats(): EcosystemStatsState {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        if (requestId !== requestIdRef.current) return
+        hasLoadedRef.current = true
+        setVolume24h('$0')
+        setActiveWallets('0')
+        setTotalTxs('0')
+        setAverageBlockTimeLabel('0ms')
+        return
       }
 
       const json = (await response.json()) as BlockscoutStatsResponse
@@ -106,14 +110,13 @@ export function useEcosystemStats(): EcosystemStatsState {
       setActiveWallets(nextActiveWallets)
       setTotalTxs(nextTotalTxs)
       setAverageBlockTimeLabel(nextAverageBlockTimeLabel)
-    } catch (error) {
+    } catch {
       if (requestId !== requestIdRef.current) return
-
-      if (!hasLoadedRef.current) {
-        setError(normalizeError(error))
-      } else {
-        console.error('[useEcosystemStats] refresh failed:', error)
-      }
+      hasLoadedRef.current = true
+      setVolume24h('$0')
+      setActiveWallets('0')
+      setTotalTxs('0')
+      setAverageBlockTimeLabel('0ms')
     } finally {
       if (requestId === requestIdRef.current && shouldShowLoading) {
         setIsLoading(false)

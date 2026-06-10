@@ -63,9 +63,7 @@ function formatUnits(value: bigint, decimals: number): string {
   return `${whole.toString()}.${fractionStr}`
 }
 
-function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
+function normalizeError(_error: unknown): string {
   return "Couldn't load activity"
 }
 
@@ -107,7 +105,12 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        if (requestIdRef.current !== requestId) return
+        if (transactionsRef.current.length === 0) {
+          setTransactions([])
+          transactionsRef.current = []
+        }
+        return
       }
 
       const json = (await response.json()) as BlockscoutTokenTransferResponse
@@ -157,14 +160,11 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
 
       transactionsRef.current = nextTransactions
       setTransactions(nextTransactions)
-    } catch (err) {
+    } catch {
       if (requestIdRef.current !== requestId) return
       if (transactionsRef.current.length === 0) {
         setTransactions([])
         transactionsRef.current = []
-        setError(normalizeError(err))
-      } else {
-        console.error('[useTxHistory] refresh failed:', err)
       }
     } finally {
       if (requestIdRef.current === requestId && shouldShowLoading) {

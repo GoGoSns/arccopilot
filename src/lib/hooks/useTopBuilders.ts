@@ -29,8 +29,6 @@ interface UseTopBuildersResult {
 }
 
 function normalizeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
   return 'Couldn\'t load builders'
 }
 
@@ -71,7 +69,10 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        if (requestId !== requestIdRef.current) return
+        hasLoadedRef.current = true
+        setBuilders([])
+        return
       }
 
       const json = (await response.json()) as BlockscoutAddressesResponse
@@ -102,14 +103,10 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
 
       hasLoadedRef.current = true
       setBuilders(nextBuilders)
-    } catch (error) {
+    } catch {
       if (requestId !== requestIdRef.current) return
-
-      if (!hasLoadedRef.current) {
-        setError(normalizeError(error))
-      } else {
-        console.error('[useTopBuilders] refresh failed:', error)
-      }
+      hasLoadedRef.current = true
+      setBuilders([])
     } finally {
       if (requestId === requestIdRef.current && shouldShowLoading) {
         setIsLoading(false)
