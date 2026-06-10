@@ -26,7 +26,7 @@ export function Profile({ onBack }: ProfileProps) {
   const profile = useStore((s) => s.profile)
   const setProfile = useStore((s) => s.setProfile)
   const accountCreatedAt = useStore((s) => s.accountCreatedAt)
-  const { totalTx, totalVolume } = useAddressInsights(walletAddress)
+  const { totalTx, totalVolume, dataComplete } = useAddressInsights(walletAddress)
 
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(profile.displayName || '')
@@ -61,12 +61,12 @@ export function Profile({ onBack }: ProfileProps) {
   const badges = useMemo((): Badge[] => {
     const daysOld = Math.floor((Date.now() - accountCreatedAt) / (1000 * 60 * 60 * 24))
     return [
-      { id: 'pioneer', label: t('profile.txPioneer'), criteria: t('profile.txPioneerCriteria'), isUnlocked: totalTx >= 1 },
-      { id: 'whale', label: t('profile.usdcWhale'), criteria: t('profile.usdcWhaleCriteria'), isUnlocked: Number(totalVolume / 1000000n) >= 100 },
+      { id: 'pioneer', label: t('profile.txPioneer'), criteria: t('profile.txPioneerCriteria'), isUnlocked: dataComplete && (totalTx ?? 0) >= 1 },
+      { id: 'whale', label: t('profile.usdcWhale'), criteria: t('profile.usdcWhaleCriteria'), isUnlocked: dataComplete && totalVolume != null && Number(totalVolume / 1000000n) >= 100 },
       { id: 'warrior', label: t('profile.weekWarrior'), criteria: t('profile.weekWarriorCriteria'), isUnlocked: streak >= 7 },
       { id: 'early', label: t('profile.earlyAdopter'), criteria: t('profile.earlyAdopterCriteria'), isUnlocked: daysOld > 30 },
     ]
-  }, [totalTx, totalVolume, streak, accountCreatedAt])
+  }, [totalTx, totalVolume, dataComplete, streak, accountCreatedAt])
 
   const displayName = profile.displayName || (walletAddress ? formatAddress(walletAddress) : t('common.unknown'))
   const initial = displayName[0].toUpperCase()

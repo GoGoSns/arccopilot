@@ -15,6 +15,7 @@ export interface EcosystemStatsState {
   activeWallets: string
   totalTxs: string
   averageBlockTimeLabel: string
+  dataComplete: boolean
   isLoading: boolean
   error: string
   refresh: () => Promise<void>
@@ -61,10 +62,11 @@ function formatBlockTimeLabel(raw: number): string {
 }
 
 export function useEcosystemStats(): EcosystemStatsState {
-  const [volume24h, setVolume24h] = useState('$0')
-  const [activeWallets, setActiveWallets] = useState('0')
-  const [totalTxs, setTotalTxs] = useState('0')
-  const [averageBlockTimeLabel, setAverageBlockTimeLabel] = useState('0ms')
+  const [volume24h, setVolume24h] = useState('')
+  const [activeWallets, setActiveWallets] = useState('')
+  const [totalTxs, setTotalTxs] = useState('')
+  const [averageBlockTimeLabel, setAverageBlockTimeLabel] = useState('')
+  const [dataComplete, setDataComplete] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -89,10 +91,11 @@ export function useEcosystemStats(): EcosystemStatsState {
       if (!response.ok) {
         if (requestId !== requestIdRef.current) return
         hasLoadedRef.current = true
-        setVolume24h('$0')
-        setActiveWallets('0')
-        setTotalTxs('0')
-        setAverageBlockTimeLabel('0ms')
+        setDataComplete(false)
+        setVolume24h('')
+        setActiveWallets('')
+        setTotalTxs('')
+        setAverageBlockTimeLabel('')
         return
       }
 
@@ -106,6 +109,7 @@ export function useEcosystemStats(): EcosystemStatsState {
       if (requestId !== requestIdRef.current) return
 
       hasLoadedRef.current = true
+      setDataComplete(true)
       setVolume24h(nextVolume24h)
       setActiveWallets(nextActiveWallets)
       setTotalTxs(nextTotalTxs)
@@ -113,10 +117,11 @@ export function useEcosystemStats(): EcosystemStatsState {
     } catch {
       if (requestId !== requestIdRef.current) return
       hasLoadedRef.current = true
-      setVolume24h('$0')
-      setActiveWallets('0')
-      setTotalTxs('0')
-      setAverageBlockTimeLabel('0ms')
+      setDataComplete(false)
+      setVolume24h('')
+      setActiveWallets('')
+      setTotalTxs('')
+      setAverageBlockTimeLabel('')
     } finally {
       if (requestId === requestIdRef.current && shouldShowLoading) {
         setIsLoading(false)
@@ -142,6 +147,7 @@ export function useEcosystemStats(): EcosystemStatsState {
     activeWallets,
     totalTxs,
     averageBlockTimeLabel,
+    dataComplete,
     isLoading,
     error,
     refresh,

@@ -30,7 +30,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
 
   const memory = selectedAddress ? getAddressMemory(selectedAddress) : null
-  const { totalTx, totalVolume, firstTx, lastTx, direction, isLoading } = useAddressInsights(selectedAddress)
+  const { totalTx, totalVolume, firstTx, lastTx, direction, dataComplete, isLoading } = useAddressInsights(selectedAddress)
 
   const [isEditing, setIsEditing] = useState(false)
   const [editLabel, setEditLabel] = useState(memory?.label || '')
@@ -242,7 +242,9 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                 <Card className="p-3 flex flex-col items-center justify-center text-center space-y-1">
                   <Clock className="text-arc-gold mb-1" size={20} />
                   <p className="text-[10px] uppercase text-arc-text-dim">{t('addressDetail.transactions')}</p>
-                  <p className="text-lg font-bold text-arc-text">{isLoading ? t('common.loadingDots') : totalTx}</p>
+                  <p className="text-lg font-bold text-arc-text">
+                    {isLoading ? t('common.loadingDots') : dataComplete ? totalTx ?? 0 : '—'}
+                  </p>
                 </Card>
                 <Card className="p-3 flex flex-col items-center justify-center text-center space-y-1">
                   <div className="h-5 w-5 rounded-full bg-arc-success/20 flex items-center justify-center mb-1">
@@ -250,7 +252,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                   </div>
                   <p className="text-[10px] uppercase text-arc-text-dim">{t('addressDetail.volume')}</p>
                   <p className="text-lg font-bold text-arc-text">
-                    {isLoading ? t('common.loadingDots') : `$${formatBalance(totalVolume, 6)}`}
+                    {isLoading ? t('common.loadingDots') : dataComplete && totalVolume != null ? `$${formatBalance(totalVolume, 6)}` : '—'}
                   </p>
                 </Card>
               </div>
@@ -262,7 +264,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                     {t('addressDetail.firstInteraction')}
                   </div>
                   <span className="text-arc-text font-medium">
-                    {isLoading ? t('common.loadingDots') : firstTx ? timeAgo(firstTx) : t('addressDetail.never')}
+                    {isLoading ? t('common.loadingDots') : dataComplete ? (firstTx ? timeAgo(firstTx) : t('addressDetail.never')) : t('common.unknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
@@ -271,7 +273,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                     {t('addressDetail.lastInteraction')}
                   </div>
                   <span className="text-arc-text font-medium">
-                    {isLoading ? t('common.loadingDots') : lastTx ? timeAgo(lastTx) : t('addressDetail.never')}
+                    {isLoading ? t('common.loadingDots') : dataComplete ? (lastTx ? timeAgo(lastTx) : t('addressDetail.never')) : t('common.unknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs pt-2 border-t border-arc-border/50">
@@ -286,7 +288,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                     direction === 'mostly-received' ? 'text-arc-success' :
                     'text-arc-gold'
                   }`}>
-                    {isLoading ? t('common.loadingDots') : direction.replace('-', ' ')}
+                    {isLoading ? t('common.loadingDots') : dataComplete && direction ? direction.replace('-', ' ') : t('common.unknown')}
                   </span>
                 </div>
               </Card>

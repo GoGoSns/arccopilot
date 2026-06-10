@@ -154,29 +154,39 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
   return t('gogo.done')
 }
 
-function getRiskTone(analysis: AddressAnalysis): 'contract' | 'empty' | 'normal' {
+function getRiskTone(analysis: AddressAnalysis): 'contract' | 'unknown' | 'empty' | 'normal' {
   if (analysis.isContract) return 'contract'
+  if (!analysis.dataComplete) return 'unknown'
   if (analysis.isKnownNewAddress || analysis.hasActivity === false) return 'empty'
   return 'normal'
 }
 
 function formatAddressTxCount(txCount: number | null | undefined): string {
-  return txCount == null ? t('common.unknown') : String(txCount)
+  return txCount == null ? '—' : String(txCount)
 }
 
 function getAddressActivityStatusLabel(analysis: AddressAnalysis): string {
-  if (analysis.hasActivity === true) return t('gogo.activityDetected')
-  if (analysis.hasActivity === false) return t('gogo.noTransactionActivity')
-  return t('common.unknown')
+  if (analysis.isContract) return t('gogo.contract')
+  if (!analysis.dataComplete) return t('gogo.dataUnavailable')
+  if (analysis.isKnownNewAddress || analysis.hasActivity === false || analysis.txCount === 0) {
+    return t('gogo.addressRiskNewOrEmpty')
+  }
+  return t('gogo.activityDetected')
 }
 
-function getRiskStyles(tone: 'contract' | 'empty' | 'normal') {
+function getRiskStyles(tone: 'contract' | 'unknown' | 'empty' | 'normal') {
   switch (tone) {
     case 'contract':
       return {
         card: 'border-arc-danger/30 bg-arc-danger/10',
         badge: 'border-arc-danger/30 bg-arc-danger/20 text-arc-danger',
         accent: 'text-arc-danger',
+      }
+    case 'unknown':
+      return {
+        card: 'border-amber-400/20 bg-arc-card/90',
+        badge: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
+        accent: 'text-amber-200',
       }
     case 'empty':
       return {
@@ -238,15 +248,19 @@ function getSpendingStyles(tone: 'negative' | 'neutral' | 'positive') {
   }
 }
 
-function getRiskLabel(tone: 'contract' | 'empty' | 'normal'): string {
+function getRiskLabel(analysis: AddressAnalysis): string {
+  const tone = getRiskTone(analysis)
+
   switch (tone) {
     case 'contract':
       return t('gogo.highRisk')
+    case 'unknown':
+      return t('gogo.dataUnavailable')
     case 'empty':
-      return t('gogo.mediumRisk')
+      return t('gogo.addressRiskNewOrEmpty')
     case 'normal':
     default:
-      return t('gogo.lowRisk')
+      return formatText('gogo.normalWalletWithTransactions', { count: analysis.txCount ?? 0 })
   }
 }
 
@@ -1016,7 +1030,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const analysis = imageResult.analysis ?? null
     const riskTone = analysis ? getRiskTone(analysis) : null
     const riskStyles = riskTone ? getRiskStyles(riskTone) : null
-    const riskLabel = riskTone ? getRiskLabel(riskTone) : ''
+    const riskLabel = analysis ? getRiskLabel(analysis) : ''
     const isAnalysisLoading = analysisLoadingKey === messageKey && !analysis
     const sendCompleted = Boolean(imageResult.sendCompleted)
     const savedCompleted = Boolean(imageResult.savedCompleted)
@@ -1555,7 +1569,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const spendingAnalysis: SpendingAnalysis | null = summaryAction?.analysis ?? null
     const riskTone = analysis ? getRiskTone(analysis) : null
     const riskStyles = riskTone ? getRiskStyles(riskTone) : null
-    const riskLabel = riskTone ? getRiskLabel(riskTone) : ''
+    const riskLabel = analysis ? getRiskLabel(analysis) : ''
     const spendingTone = spendingAnalysis ? getSpendingTone(spendingAnalysis.net) : null
     const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
     const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'
@@ -1966,7 +1980,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const spendingAnalysis: SpendingAnalysis | null = summaryAction?.analysis ?? null
               const riskTone = analysis ? getRiskTone(analysis) : null
               const riskStyles = riskTone ? getRiskStyles(riskTone) : null
-              const riskLabel = riskTone ? getRiskLabel(riskTone) : ''
+              const riskLabel = analysis ? getRiskLabel(analysis) : ''
               const spendingTone = spendingAnalysis ? getSpendingTone(spendingAnalysis.net) : null
               const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
               const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'

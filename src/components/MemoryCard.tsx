@@ -34,7 +34,7 @@ const TAG_ICONS: Record<NonNullable<AddressMemory['tag']>, typeof User> = {
 export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps) {
   const getAddressMemory = useStore((s) => s.getAddressMemory)
   const memory = getAddressMemory(address)
-  const { totalTx, totalVolume, lastTx, isLoading } = useAddressInsights(address)
+  const { totalTx, totalVolume, lastTx, dataComplete, isLoading } = useAddressInsights(address)
 
   const TagIcon = memory?.tag ? TAG_ICONS[memory.tag] : HelpCircle
   const tagColor = memory?.tag ? TAG_COLORS[memory.tag] : ''
@@ -54,7 +54,9 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
               <p className="text-[10px] text-arc-text-dim">
                 {isLoading
                   ? t('memory.loadingInsights')
-                  : `${totalTx} ${t('memory.transactions').toLowerCase()} · ${t('memory.lastInteraction')} ${lastTx ? timeAgo(lastTx) : t('memory.never')}`}
+                  : dataComplete
+                    ? `${totalTx ?? 0} ${t('memory.transactions').toLowerCase()} · ${t('memory.lastInteraction')} ${lastTx ? timeAgo(lastTx) : t('memory.never')}`
+                    : `${t('common.unknown')} · ${t('memory.lastInteraction')} ${t('common.unknown')}`}
               </p>
             </div>
           </div>
@@ -108,12 +110,12 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-arc-border bg-arc-bg/50 p-2 text-center">
           <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('memory.transactions')}</p>
-          <p className="text-sm font-bold text-arc-text">{isLoading ? t('common.loadingDots') : totalTx}</p>
+          <p className="text-sm font-bold text-arc-text">{isLoading ? t('common.loadingDots') : dataComplete ? totalTx ?? 0 : '—'}</p>
         </div>
         <div className="rounded-xl border border-arc-border bg-arc-bg/50 p-2 text-center">
           <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('memory.volume')}</p>
           <p className="text-sm font-bold text-arc-text">
-            {isLoading ? t('common.loadingDots') : `$${formatBalance(totalVolume, 6)}`}
+            {isLoading ? t('common.loadingDots') : dataComplete && totalVolume != null ? `$${formatBalance(totalVolume, 6)}` : '—'}
           </p>
         </div>
       </div>
@@ -129,7 +131,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
 
       <div className="flex items-center justify-between text-[10px] text-arc-text-dim">
         <span>{t('memory.added')} {memory ? new Date(memory.createdAt).toLocaleDateString() : t('memory.never')}</span>
-        <span>{t('memory.lastInteraction')} {lastTx ? timeAgo(lastTx) : t('memory.never')}</span>
+        <span>{t('memory.lastInteraction')} {dataComplete ? (lastTx ? timeAgo(lastTx) : t('memory.never')) : t('common.unknown')}</span>
       </div>
     </Card>
   )

@@ -1,7 +1,7 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
 import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
-import { getLocalePromptLanguage, getLocaleSync } from '@/lib/i18n'
+import { formatText, getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
 import { PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import {
@@ -65,6 +65,7 @@ export interface AddressAnalysis {
   isContract: boolean
   txCount: number | null
   hasActivity: boolean | null
+  dataComplete: boolean
   isKnownNewAddress?: boolean
   activityPartial?: boolean
   summary: string
@@ -525,38 +526,20 @@ function formatUsdcAmount(value: bigint): string {
 }
 
 function buildAddressRiskSummary(isContract: boolean, txCount: number, hasActivity: boolean): string {
-  const language = getLikelyLanguage()
-
-  if (language === 'Turkish') {
-    if (isContract) return 'Bu bir kontrat adresi. Tip/transfer yaparsan fonların kaybolabilir.'
-    if (!hasActivity) return 'Bu adres hiç kullanılmamış, yeni veya boş olabilir.'
-    return `Normal bir cüzdan, ${txCount} işlem yapmış.`
-  }
-
-  if (isContract) return 'This is a contract address. If you tip or transfer to it, funds can be lost.'
-  if (!hasActivity) return 'This address has never been used, so it may be new or empty.'
-  return `This is a normal wallet with ${txCount} transactions.`
+  if (isContract) return t('gogo.addressRiskContract')
+  if (!hasActivity) return t('gogo.addressRiskNewOrEmpty')
+  return formatText('gogo.addressRiskNormal', { count: txCount })
 }
 
 function buildAddressRiskSummaryV2(
   isContract: boolean,
   txCount: number | null,
-  hasActivity: boolean | null,
-  isKnownNewAddress: boolean,
+  dataComplete: boolean,
 ): string {
-  const language = getLikelyLanguage()
-
-  if (language === 'Turkish') {
-    if (isContract) return 'Bu bir kontrat adresi. Tip/transfer yaparsan fonların kaybolabilir.'
-    if (isKnownNewAddress || hasActivity === false) return 'Bu adres hiç kullanılmamış, yeni veya boş olabilir.'
-    if (txCount == null) return 'Bu adres normal bir cüzdan gibi görünüyor.'
-    return `Normal bir cüzdan, ${txCount} işlem yapmış.`
-  }
-
-  if (isContract) return 'This is a contract address. If you tip or transfer to it, funds can be lost.'
-  if (isKnownNewAddress || hasActivity === false) return 'This address has never been used, so it may be new or empty.'
-  if (txCount == null) return 'This looks like a normal wallet.'
-  return `This is a normal wallet with ${txCount} transactions.`
+  if (isContract) return t('gogo.addressRiskContract')
+  if (!dataComplete || txCount == null) return t('gogo.addressRiskUnknownSummary')
+  if (txCount === 0) return t('gogo.addressRiskNewOrEmpty')
+  return formatText('gogo.addressRiskNormal', { count: txCount })
 }
 
 function buildSpendingSummary(
@@ -598,17 +581,27 @@ function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
 
   const isContract = toBoolean(raw.isContract ?? raw.is_contract) ?? false
   const txCount = toFiniteNumber(raw.txCount ?? raw.tx_count ?? raw.transactions_count)
-  const hasActivity = typeof raw.hasActivity === 'boolean' ? raw.hasActivity : (txCount == null ? null : txCount > 0)
+  const dataComplete = typeof raw.dataComplete === 'boolean'
+    ? raw.dataComplete
+    : typeof raw.activityPartial === 'boolean'
+      ? !raw.activityPartial
+      : true
+  const hasActivity = typeof raw.hasActivity === 'boolean'
+    ? raw.hasActivity
+    : dataComplete
+      ? (txCount == null ? null : txCount > 0)
+      : null
   const isKnownNewAddress = typeof raw.isKnownNewAddress === 'boolean' ? raw.isKnownNewAddress : false
   const activityPartial = typeof raw.activityPartial === 'boolean' ? raw.activityPartial : false
-  const summary = typeof raw.summary === 'string' && raw.summary.trim()
+  const summary = dataComplete && typeof raw.summary === 'string' && raw.summary.trim()
     ? raw.summary.trim()
-    : buildAddressRiskSummaryV2(isContract, txCount, hasActivity, isKnownNewAddress)
+    : buildAddressRiskSummaryV2(isContract, txCount, dataComplete)
 
   return {
     isContract,
     txCount,
     hasActivity,
+    dataComplete,
     isKnownNewAddress,
     activityPartial,
     summary,
@@ -1204,26 +1197,51 @@ export async function analyzeAddress(address: string): Promise<AddressAnalysis> 
   ])
 
   const addressInfo = addressResult.ok ? addressResult.data : null
-  const isKnownNewAddress = addressResult.status === 404 || countersResult.status === 404
-  const isContract = addressInfo ? (toBoolean(addressInfo.is_contract) ?? false) : false
-  const txCount = countersResult.status === 404 ? 0 : resolveCounterTxCount(countersResult.ok ? countersResult.data : null)
-  const hasActivity = countersResult.status === 404
-    ? false
-    : txCount == null
-      ? null
-      : txCount > 0
-  const activityPartial = (
-    (addressResult.status !== 404 && !addressResult.ok)
-    || (countersResult.status !== 404 && !countersResult.ok)
-  )
+  const addressMissing = addressResult.status === 404
+  const addressFailed = !addressMissing && !addressResult.ok
+  const countersMissing = countersResult.status === 404
+  const countersFailed = !countersMissing && !countersResult.ok
+
+  let isKnownNewAddress = false
+  let isContract = false
+  let txCount: number | null = null
+  let hasActivity: boolean | null = null
+  let dataComplete = false
+  let activityPartial = false
+
+  if (addressMissing) {
+    isKnownNewAddress = true
+    isContract = false
+    txCount = 0
+    hasActivity = false
+    dataComplete = true
+  } else if (!addressFailed && addressInfo) {
+    isContract = toBoolean(addressInfo.is_contract) ?? false
+
+    if (!countersMissing && !countersFailed && countersResult.ok) {
+      const nextTxCount = resolveCounterTxCount(countersResult.data)
+      if (nextTxCount == null) {
+        dataComplete = false
+      } else {
+        txCount = nextTxCount
+        hasActivity = nextTxCount > 0
+        dataComplete = true
+      }
+    }
+
+    activityPartial = !dataComplete && (addressResult.ok || countersResult.ok)
+  } else {
+    activityPartial = addressResult.ok || countersResult.ok
+  }
 
   return {
     isContract,
     txCount,
     hasActivity,
+    dataComplete,
     isKnownNewAddress,
     activityPartial,
-    summary: buildAddressRiskSummaryV2(isContract, txCount, hasActivity, isKnownNewAddress),
+    summary: buildAddressRiskSummaryV2(isContract, txCount, dataComplete),
   }
 }
 

@@ -22,11 +22,12 @@ interface BlockscoutTokenTransferResponse {
 }
 
 export interface AddressInsights {
-  totalTx: number
-  totalVolume: bigint
-  firstTx: number
-  lastTx: number
-  direction: 'mostly-sent' | 'mostly-received' | 'balanced'
+  totalTx: number | null
+  totalVolume: bigint | null
+  firstTx: number | null
+  lastTx: number | null
+  direction: 'mostly-sent' | 'mostly-received' | 'balanced' | null
+  dataComplete: boolean
   isLoading: boolean
   error: string | null
 }
@@ -34,11 +35,12 @@ export interface AddressInsights {
 export function useAddressInsights(targetAddress: string | null | undefined): AddressInsights {
   const userAddress = useStore((s) => s.walletAddress)
   const [insights, setInsights] = useState<Omit<AddressInsights, 'isLoading' | 'error'>>({
-    totalTx: 0,
-    totalVolume: 0n,
-    firstTx: 0,
-    lastTx: 0,
-    direction: 'balanced'
+    totalTx: null,
+    totalVolume: null,
+    firstTx: null,
+    lastTx: null,
+    direction: null,
+    dataComplete: false,
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,11 +50,12 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
     const requestId = ++requestIdRef.current
     if (!userAddress || !targetAddress) {
       setInsights({
-        totalTx: 0,
-        totalVolume: 0n,
-        firstTx: 0,
-        lastTx: 0,
-        direction: 'balanced'
+        totalTx: null,
+        totalVolume: null,
+        firstTx: null,
+        lastTx: null,
+        direction: null,
+        dataComplete: false,
       })
       return
     }
@@ -72,11 +75,12 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
       if (!response.ok) {
         if (requestId === requestIdRef.current) {
           setInsights({
-            totalTx: 0,
-            totalVolume: 0n,
-            firstTx: 0,
-            lastTx: 0,
-            direction: 'balanced',
+            totalTx: null,
+            totalVolume: null,
+            firstTx: null,
+            lastTx: null,
+            direction: null,
+            dataComplete: false,
           })
         }
         return
@@ -101,7 +105,8 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
             totalVolume: 0n,
             firstTx: 0,
             lastTx: 0,
-            direction: 'balanced'
+            direction: 'balanced',
+            dataComplete: true,
           })
         }
         return
@@ -136,19 +141,21 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
         setInsights({
           totalTx: relevantTransfers.length,
           totalVolume,
-          firstTx: firstTx === Infinity ? 0 : firstTx,
-          lastTx: lastTx === -Infinity ? 0 : lastTx,
-          direction
+          firstTx: firstTx === Infinity ? null : firstTx,
+          lastTx: lastTx === -Infinity ? null : lastTx,
+          direction,
+          dataComplete: true,
         })
       }
     } catch {
       if (requestId === requestIdRef.current) {
         setInsights({
-          totalTx: 0,
-          totalVolume: 0n,
-          firstTx: 0,
-          lastTx: 0,
-          direction: 'balanced',
+          totalTx: null,
+          totalVolume: null,
+          firstTx: null,
+          lastTx: null,
+          direction: null,
+          dataComplete: false,
         })
         setError(null)
       }

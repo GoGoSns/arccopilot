@@ -52,7 +52,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
             <p className="text-[10px] text-arc-text-dim">{t('discover.liveSnapshot')}</p>
           </div>
           <p className="text-[10px] text-arc-text-dim">
-            {t('discover.avgBlockTime')} {stats.isLoading ? '—' : stats.averageBlockTimeLabel}
+            {t('discover.avgBlockTime')} {stats.isLoading ? '—' : stats.dataComplete ? stats.averageBlockTimeLabel : t('common.unknown')}
           </p>
         </div>
 
@@ -69,15 +69,15 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
           <div className="grid grid-cols-3 gap-2">
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('discover.liveSnapshot')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.volume24h}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.volume24h : t('common.unknown')}</p>
             </Card>
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('discover.mostActiveAddresses')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.activeWallets}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.activeWallets : t('common.unknown')}</p>
             </Card>
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('dailyBrief.totalTx')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.totalTxs}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.totalTxs : t('common.unknown')}</p>
             </Card>
           </div>
         )}
