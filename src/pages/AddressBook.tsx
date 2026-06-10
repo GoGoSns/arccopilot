@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { useStore, type AddressMemory } from '@/lib/store'
 import { MemoryCard } from '@/components/MemoryCard'
 import { t } from '@/lib/i18n'
+import { isValidAddress } from '@/lib/validation'
 
 interface AddressBookProps {
   onBack: () => void
@@ -47,16 +48,19 @@ export function AddressBook({ onBack }: AddressBookProps) {
 
   const handleAdd = () => {
     setAddError('')
-    if (!newAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+    const trimmedAddress = newAddress.trim()
+
+    if (!isValidAddress(trimmedAddress)) {
       setAddError(t('addressBook.invalidAddress'))
       return
     }
-    if (addressMemories[newAddress.toLowerCase()]) {
+
+    if (addressMemories[trimmedAddress.toLowerCase()]) {
       setAddError(t('addressBook.alreadyInBook'))
       return
     }
 
-    addAddressMemory(newAddress, {
+    addAddressMemory(trimmedAddress, {
       label: newLabel || undefined,
       tag: newTag,
       note: newNote || undefined,

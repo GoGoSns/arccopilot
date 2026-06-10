@@ -16,9 +16,10 @@ import {
   type MetaMaskAccountResult,
 } from '@/lib/metamask'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
-import { formatAddress, shortenTxHash } from '@/lib/utils'
+import { formatAddress, openSafeUrl, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { MemoryCard } from '@/components/MemoryCard'
+import { isValidAddress, isValidAmount } from '@/lib/validation'
 
 interface SendProps {
   onBack: () => void
@@ -83,11 +84,19 @@ export function Send({ onBack }: SendProps) {
   const [showSuggestions, setShowSuggestions] = useState(false)
 
   const trimmedRecipient = recipient.trim()
-  const isExactRecipient = /^0x[a-fA-F0-9]{40}$/.test(trimmedRecipient)
+  const isExactRecipient = isValidAddress(trimmedRecipient)
   const recipientValidationError = trimmedRecipient && !isExactRecipient ? t('send.invalidRecipientAddress') : ''
   const recipientMemory = isExactRecipient ? addressMemories[trimmedRecipient.toLowerCase()] ?? null : null
   const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
-  const isAmountValid = amount.trim().length > 0 && !Number.isNaN(Number(amount)) && Number(amount) > 0
+  const amountValidation = isValidAmount(amount, balance)
+  const amountValidationError = amount.trim()
+    ? !amountValidation.valid
+      ? t('send.invalidAmount')
+      : amountValidation.overBalance
+        ? t('send.insufficientBalance')
+        : ''
+    : ''
+  const isAmountValid = amountValidation.valid && !amountValidation.overBalance
   const showRecipientSafetyWarning = fromUniversalTip && isExactRecipient
   const senderAddress = metaMaskAccount ?? walletAddress
   const isSendDisabled = isLoading || !senderAddress || !isExactRecipient || !isAmountValid || !!txHash
@@ -105,13 +114,35 @@ export function Send({ onBack }: SendProps) {
       const pending = result[PENDING_SEND_STORAGE_KEY]
       // 30s TTL for inter-page navigation
       if (isPendingSend(pending) && Date.now() - pending.ts < 30_000) {
-        if (typeof pending.recipient === 'string') setRecipient(pending.recipient)
-        if (typeof pending.amount === 'string') setAmount(pending.amount)
-        setFromUniversalTip(true)
-        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
-        if (!pending.amount) {
+        const pendingRecipient = typeof pending.recipient === 'string' ? pending.recipient.trim() : ''
+        const pendingAmount = typeof pending.amount === 'string' ? pending.amount.trim() : ''
+        const recipientReady = !pendingRecipient || isValidAddress(pendingRecipient)
+        const amountValidation = pendingAmount ? isValidAmount(pendingAmount) : { valid: true, overBalance: false, amountMicros: null }
+        const amountReady = !pendingAmount || amountValidation.valid
+        let hasPrefill = false
+
+        if (recipientReady && pendingRecipient) {
+          setRecipient(pendingRecipient)
+          hasPrefill = true
+        }
+
+        if (amountReady && pendingAmount) {
+          setAmount(pendingAmount)
+          hasPrefill = true
+        }
+
+        if (pendingRecipient && !recipientReady) {
+          setError(t('send.invalidRecipientAddress'))
+        } else if (pendingAmount && !amountValidation.valid) {
+          setError(t('send.invalidAmount'))
+        }
+
+        setFromUniversalTip(hasPrefill)
+        if (hasPrefill && (!pendingAmount || !amountReady)) {
           setTimeout(() => amountRef.current?.focus(), 50)
         }
+
+        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
       } else {
         setFromUniversalTip(false)
         chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
@@ -378,13 +409,12 @@ export function Send({ onBack }: SendProps) {
       return
     }
 
-    const amountNum = parseFloat(amount)
-    if (isNaN(amountNum) || amountNum <= 0) {
+    if (!amountValidation.valid) {
       setError(t('send.invalidAmount'))
       return
     }
 
-    if (amountNum > parseFloat(balance)) {
+    if (amountValidation.overBalance) {
       setError(t('send.insufficientBalance'))
       return
     }
@@ -412,7 +442,7 @@ export function Send({ onBack }: SendProps) {
       // Switch to Arc Testnet before sending — non-fatal if user declines
       await switchToArcTestnet(tab.id)
 
-      const amountWei = BigInt(Math.round(amountNum * 1_000_000))
+      const amountWei = amountValidation.amountMicros ?? 0n
       const paddedRecipient = trimmedRecipient.slice(2).toLowerCase().padStart(64, '0')
       const paddedAmount = amountWei.toString(16).padStart(64, '0')
       const txData = '0xa9059cbb' + paddedRecipient + paddedAmount
@@ -545,7 +575,7 @@ export function Send({ onBack }: SendProps) {
 
           <div className="flex flex-col gap-2 w-full">
             <Button variant="outline" fullWidth
-              onClick={() => window.open(`${EXPLORER_URL}/tx/${txHash}`, '_blank', 'noopener,noreferrer')}
+              onClick={() => openSafeUrl(`${EXPLORER_URL}/tx/${txHash}`)}
             >
               <ExternalLink size={14} />
               {t('send.viewOnExplorer')}
@@ -703,6 +733,7 @@ export function Send({ onBack }: SendProps) {
           step="0.000001"
           min="0"
           value={amount}
+          error={amountValidationError}
           onChange={(e) => {
             setAmount(e.target.value)
             setError('')

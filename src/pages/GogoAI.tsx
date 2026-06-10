@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { EXPLORER_URL } from '@/lib/arc'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
-import { formatAddress } from '@/lib/utils'
+import { formatAddress, openSafeUrl } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import {
@@ -37,12 +37,11 @@ import {
   VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import { isValidAddress, isValidAmount } from '@/lib/validation'
 
 interface GogoAIProps {
   onBack: () => void
 }
-
-const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 type SpeechRecognitionLike = {
   lang: string
@@ -70,10 +69,6 @@ const QUICK_SUGGESTIONS = [
   'Find whale moves',
   'Analyze this address',
 ] as const
-
-function isValidAddress(value: string): boolean {
-  return ADDRESS_REGEX.test(value.trim())
-}
 
 function formatTime(timestamp: number): string {
   try {
@@ -329,6 +324,22 @@ async function persistPendingSend(recipient?: string, amount?: string): Promise<
       () => resolve(),
     )
   })
+}
+
+function buildSendValidationWarning(options: {
+  recipientInvalid: boolean
+  amountInvalid: boolean
+  amountOverBalance: boolean
+}): string {
+  const warnings: string[] = []
+  if (options.recipientInvalid) warnings.push(t('gogo.invalidAddress'))
+  if (options.amountInvalid) warnings.push(t('gogo.invalidAmount'))
+  else if (options.amountOverBalance) warnings.push(t('gogo.amountOverBalance'))
+  return warnings.join(' ')
+}
+
+function buildAddressValidationWarning(): string {
+  return t('gogo.invalidAddress')
 }
 
 export function GogoAI({ onBack }: GogoAIProps) {
@@ -817,18 +828,64 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
-    if (requiresAddress && !resolvedAddress) return
+    if (requiresAddress && (!resolvedAddress || !isValidAddress(resolvedAddress))) {
+      updateMessageAction(
+        messageIndex,
+        actionIndex,
+        (currentAction) => ({
+          ...currentAction,
+          completed: true,
+        }),
+        (message) => ({
+          ...message,
+          content: buildAddressValidationWarning(),
+        }),
+      )
+      return
+    }
 
     switch (action.type) {
       case 'send': {
-        updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
-          ...currentAction,
-          completed: true,
-        }))
+        const recipientInput = typeof action.params?.recipient === 'string' ? action.params.recipient.trim() : ''
+        const resolvedRecipient = recipientInput ? resolveAddress(recipientInput) : null
+        const recipientInvalid = Boolean(recipientInput) && (!resolvedRecipient || !isValidAddress(resolvedRecipient))
+        const amountInput = typeof action.params?.amount === 'string' ? action.params.amount.trim() : ''
+        const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
+        const amountInvalid = Boolean(amountInput) && !amountValidation.valid
+        const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
+        const warning = buildSendValidationWarning({
+          recipientInvalid,
+          amountInvalid,
+          amountOverBalance,
+        })
 
-        const recipient = resolveAddress(action.params?.recipient)
-        const amount = typeof action.params?.amount === 'string' ? action.params.amount.trim() || undefined : undefined
-        await persistPendingSend(recipient ?? undefined, amount)
+        const recipientToPersist = resolvedRecipient && isValidAddress(resolvedRecipient) ? resolvedRecipient : undefined
+        const amountToPersist = amountValidation.valid && !amountValidation.overBalance ? (amountInput || undefined) : undefined
+        if (recipientInvalid || warning) {
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) => ({
+              ...currentAction,
+              completed: true,
+            }),
+            (message) => ({
+              ...message,
+              content: warning || buildAddressValidationWarning(),
+            }),
+          )
+        } else {
+          updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
+            ...currentAction,
+            completed: true,
+          }))
+        }
+
+        if (!recipientToPersist && !amountToPersist) {
+          break
+        }
+
+        await persistPendingSend(recipientToPersist, amountToPersist)
         setCurrentView('send')
         break
       }
@@ -1019,11 +1076,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleOpenTweetCompose = (text: string) => {
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`
-    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
-      chrome.tabs.create({ url })
-      return
+    if (!openSafeUrl(url)) {
+      debugWarn('[GogoAI] blocked unsafe tweet compose url:', url)
     }
-    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const renderActionStep = (

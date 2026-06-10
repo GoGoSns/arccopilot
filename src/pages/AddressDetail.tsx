@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useStore, type AddressMemory } from '@/lib/store'
-import { formatAddress, formatBalance, timeAgo, copyToClipboard } from '@/lib/utils'
+import { formatAddress, formatBalance, openSafeUrl, timeAgo, copyToClipboard } from '@/lib/utils'
 import { useAddressInsights } from '@/lib/hooks/useAddressInsights'
 import { EXPLORER_URL } from '@/lib/arc'
 import { t } from '@/lib/i18n'
@@ -219,7 +219,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                 <Send size={18} />
                 {t('addressDetail.send')}
               </Button>
-              <Button variant="outline" onClick={() => window.open(`${EXPLORER_URL}/address/${selectedAddress}`, '_blank')} className="h-12">
+              <Button variant="outline" onClick={() => openSafeUrl(`${EXPLORER_URL}/address/${selectedAddress}`)} className="h-12">
                 <ExternalLink size={18} />
                 {t('addressDetail.explorer')}
               </Button>

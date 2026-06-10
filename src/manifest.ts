@@ -37,14 +37,12 @@ export default defineManifest({
     },
   ],
   options_page: 'src/options/index.html',
-  permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'sidePanel', 'alarms'],
+  permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'alarms'],
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
     `${ARC_RPC_URL}/*`,
     `${BLOCKSCOUT_BASE}/*`,
     `${TWITTERAPI_BASE}/*`,
-    'https://*/*',
-    'http://*/*',
   ],
   icons: {
     '16': 'icons/icon-16.png',

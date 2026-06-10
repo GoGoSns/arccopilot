@@ -30,7 +30,7 @@ import {
 } from '@/lib/reminders'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { getLocalePreference, setLocale, t } from '@/lib/i18n'
+import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
 
 interface SettingsProps {
   onBack: () => void
@@ -40,6 +40,11 @@ function readStoredBoolean(key: string, value: unknown, fallback: boolean): bool
   if (typeof value === 'boolean') return value
   void chrome.storage.local.remove(key)
   return fallback
+}
+
+function getSavedKeyLabel(key: string | null): string {
+  if (!key) return t('settings.notSet')
+  return formatText('settings.savedMasked', { suffix: key.slice(-4) })
 }
 
 export function Settings({ onBack }: SettingsProps) {
@@ -59,6 +64,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [officialAccounts, setOfficialAccountsState] = useState(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
+  const geminiKeyLabel = getSavedKeyLabel(geminiApiKey)
+  const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
 
   useEffect(() => {
     void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts()]).then(([geminiKey, twitterKey, searchQuery, officialList]) => {
@@ -244,7 +251,7 @@ export function Settings({ onBack }: SettingsProps) {
                 <div>
                   <p className="text-sm font-semibold text-arc-text">{t('settings.geminiApiKey')}</p>
                   <p className={`text-[10px] ${geminiApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {geminiApiKey ? t('settings.saved') : t('settings.notSet')}
+                    {geminiKeyLabel}
                   </p>
                 </div>
               </div>
@@ -299,7 +306,7 @@ export function Settings({ onBack }: SettingsProps) {
                 <div>
                   <p className="text-sm font-semibold text-arc-text">{t('settings.twitterApiKey')}</p>
                   <p className={`text-[10px] ${twitterApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {twitterApiKey ? t('settings.saved') : t('settings.notSet')}
+                    {twitterKeyLabel}
                   </p>
                 </div>
               </div>
@@ -309,7 +316,7 @@ export function Settings({ onBack }: SettingsProps) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        setTwitterTempKey(twitterApiKey)
+                        setTwitterTempKey('')
                         setIsAddingTwitter(true)
                       }}
                       className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#d4af37] hover:bg-[#d4af37]/10 transition-colors"

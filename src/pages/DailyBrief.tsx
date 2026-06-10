@@ -11,7 +11,7 @@ import {
   USDC_CONTRACT,
 } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
-import { formatAddress, formatBalance, formatRelativeTime } from '@/lib/utils'
+import { formatAddress, formatBalance, formatRelativeTime, openSafeUrl } from '@/lib/utils'
 import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } from '@/lib/patterns'
 import {
   DISMISSED_PATTERNS_KEY,
@@ -231,6 +231,13 @@ function TweetListItem({
       </div>
     </button>
   )
+}
+
+function getSummaryTimeLabel(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return t('dailyBrief.summaryPrefixMorning')
+  if (hour < 18) return t('dailyBrief.summaryPrefixAfternoon')
+  return t('dailyBrief.summaryPrefixEvening')
 }
 
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
@@ -675,6 +682,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       : (locale === 'tr' ? t('dailyBrief.noActivityCheckedTr') : t('dailyBrief.noActivityCheckedEn'))
 
     return formatText(locale === 'tr' ? 'dailyBrief.summaryTr' : 'dailyBrief.summaryEn', {
+      timeLabel: getSummaryTimeLabel(),
       tweetCount,
       whaleCount,
       activityClause,
@@ -1083,7 +1091,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       label: t('dailyBrief.official'),
                       className: OFFICIAL_TWEET_BADGE_CLASS,
                     }}
-                    onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
+                    onClick={() => {
+                      if (!openSafeUrl(tweet.tweetUrl)) {
+                        debugWarn('[DailyBrief] blocked unsafe tweet url:', tweet.tweetUrl)
+                      }
+                    }}
                   />
                 ))}
               </div>
@@ -1129,7 +1141,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   key={tweet.id}
                   tweet={tweet}
                   badge={tweet.category ? TWEET_CATEGORY_BADGES[tweet.category] : null}
-                  onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
+                  onClick={() => {
+                    if (!openSafeUrl(tweet.tweetUrl)) {
+                      debugWarn('[DailyBrief] blocked unsafe tweet url:', tweet.tweetUrl)
+                    }
+                  }}
                 />
               ))}
             </div>

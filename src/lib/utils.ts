@@ -42,6 +42,25 @@ export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text)
 }
 
+export function openSafeUrl(url: string): boolean {
+  if (typeof url !== 'string') return false
+
+  const normalized = url.trim()
+  if (!normalized.startsWith('https://')) return false
+
+  if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    chrome.tabs.create({ url: normalized })
+    return true
+  }
+
+  if (typeof window !== 'undefined') {
+    window.open(normalized, '_blank', 'noopener,noreferrer')
+    return true
+  }
+
+  return false
+}
+
 export function formatRelativeTime(timestamp: string): string {
   const diff = Date.now() - new Date(timestamp).getTime()
   const locale = getLocaleSync()
