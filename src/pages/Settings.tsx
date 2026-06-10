@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Bell, Book, ChevronRight, Key, Mic, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Mic, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -7,10 +7,13 @@ import { debugWarn } from '@/lib/debug'
 import {
   DEFAULT_TWITTER_SEARCH_QUERY,
   clearTwitterApiKey,
+  getOfficialAccounts,
   getSearchQuery,
   getTwitterApiKey,
   setSearchQuery,
+  setOfficialAccounts,
   setTwitterApiKey,
+  DEFAULT_TWITTER_OFFICIAL_ACCOUNTS,
 } from '@/lib/twitterApi'
 import {
   NOTIF_BALANCE_STORAGE_KEY,
@@ -53,14 +56,16 @@ export function Settings({ onBack }: SettingsProps) {
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
   const [twitterSearchQuery, setTwitterSearchQueryState] = useState(DEFAULT_TWITTER_SEARCH_QUERY)
+  const [officialAccounts, setOfficialAccountsState] = useState(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
 
   useEffect(() => {
-    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery()]).then(([geminiKey, twitterKey, searchQuery]) => {
+    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts()]).then(([geminiKey, twitterKey, searchQuery, officialList]) => {
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
       setTwitterSearchQueryState(searchQuery)
+      setOfficialAccountsState(officialList)
     })
 
     chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
@@ -175,6 +180,17 @@ export function Settings({ onBack }: SettingsProps) {
   const handleResetTwitterSearchQuery = async () => {
     await setSearchQuery('')
     setTwitterSearchQueryState(DEFAULT_TWITTER_SEARCH_QUERY)
+  }
+
+  const handleSaveOfficialAccounts = async () => {
+    const nextAccounts = officialAccounts.trim() || DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
+    const normalized = await setOfficialAccounts(nextAccounts)
+    setOfficialAccountsState(normalized)
+  }
+
+  const handleResetOfficialAccounts = async () => {
+    const normalized = await setOfficialAccounts(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
+    setOfficialAccountsState(normalized)
   }
 
   const handleRemoveReminder = async (id: string) => {
@@ -366,6 +382,46 @@ export function Settings({ onBack }: SettingsProps) {
                     type="button"
                     size="sm"
                     onClick={handleSaveTwitterSearchQuery}
+                    className="min-w-24"
+                  >
+                    {t('settings.save')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+                <AtSign size={20} />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-arc-text">{t('settings.officialAccounts')}</p>
+                    <p className="text-[10px] text-arc-text-dim">{t('settings.officialAccountsDescription')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetOfficialAccounts}
+                    className="shrink-0 text-[10px] font-semibold text-[#d4af37] underline-offset-2 hover:underline"
+                  >
+                    {t('settings.resetToDefault')}
+                  </button>
+                </div>
+                <Input
+                  value={officialAccounts}
+                  onChange={(e) => setOfficialAccountsState(e.target.value)}
+                  placeholder={t('settings.officialAccountsPlaceholder')}
+                  aria-label={t('settings.officialAccounts')}
+                  className="font-mono text-xs"
+                />
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveOfficialAccounts}
                     className="min-w-24"
                   >
                     {t('settings.save')}

@@ -3,7 +3,11 @@ import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constant
 import { debugWarn } from '@/lib/debug'
 import { getLocalePromptLanguage, getLocaleSync } from '@/lib/i18n'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
-import { GOGO_HISTORY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
+import {
+  GOGO_HISTORY,
+  TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
+  TWITTER_TWEETS_CACHE_KEY,
+} from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
@@ -103,6 +107,7 @@ type PromptContext = {
   recentTransfers: RecentTransferSummary[]
   detectedPatterns: string[]
   recentTweets: RecentTweetSummary[]
+  officialTweets: string[]
 }
 
 export interface GogoContext {
@@ -151,6 +156,7 @@ Speak like a smart friend who knows crypto. Match the user's language (Turkish o
 
 CAPABILITIES:
 Read the user's balance, activity, address book, whales, patterns, and recent Arc tweets. Recent tweets may include category labels: news, opportunity, or discussion. Use them to spot urgency quickly. Suggest next steps proactively. Reference past conversation. Warn about risky or unknown addresses.
+Recent official Arc/Circle updates are also included separately as officialTweets. Use them when the latest announcement matters.
 The balance is denominated in USDC on Arc Testnet.
 
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
@@ -759,6 +765,13 @@ function getRecentTweets(): RecentTweetSummary[] {
   }))
 }
 
+function getOfficialTweetSummaries(): string[] {
+  const tweets = readLocalCache<RecentTweetSummary[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY) ?? []
+  return tweets
+    .slice(0, 2)
+    .map((tweet) => `Official: ${formatTweetSummary(tweet)}`)
+}
+
 function getDetectedPatterns(
   walletAddress: string,
   addressBook: Record<string, AddressBookEntry>,
@@ -788,6 +801,7 @@ function buildPromptContext(base: GogoContext): PromptContext {
     recentTransfers: getRecentTransfers(base.walletAddress, base.addressBook),
     detectedPatterns: getDetectedPatterns(base.walletAddress, base.addressBook),
     recentTweets: getRecentTweets(),
+    officialTweets: getOfficialTweetSummaries(),
   }
 }
 

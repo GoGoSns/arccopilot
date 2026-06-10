@@ -17,11 +17,14 @@ import {
   DISMISSED_PATTERNS_KEY,
   PENDING_SEND_STORAGE_KEY,
   REMINDERS,
+  TWITTERAPI_KEY,
+  TWITTER_OFFICIAL_ACCOUNTS,
+  TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
   TWITTER_SEARCH_QUERY,
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
-import { categorizeTweets, fetchArcTweets, type TwitterTweet } from '@/lib/twitterApi'
+import { categorizeTweets, fetchArcTweets, fetchOfficialTweets, type TwitterTweet } from '@/lib/twitterApi'
 import {
   getDueReminders,
   getReminderDetails,
@@ -158,7 +161,12 @@ function TweetAvatar({ tweet }: { tweet: TwitterTweet }) {
 }
 
 // --- API helpers -------------------------------------------------------------
-const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, { label: string; className: string }> = {
+type TweetBadge = {
+  label: string
+  className: string
+}
+
+const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, TweetBadge> = {
   news: {
     label: 'News',
     className: 'border-[#1d9bf0]/35 bg-[#1d9bf0]/12 text-[#8bc7ff]',
@@ -173,16 +181,55 @@ const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, { lab
   },
 }
 
-function TweetCategoryBadge({ category }: { category?: TwitterTweet['category'] }) {
-  if (!category) return null
+const OFFICIAL_TWEET_BADGE_CLASS = 'border-[#d4af37]/45 bg-gradient-to-r from-[#d4af37]/20 to-emerald-400/10 text-[#f5d87d] shadow-[0_0_0_1px_rgba(212,175,55,0.15)]'
 
-  const badge = TWEET_CATEGORY_BADGES[category]
-  if (!badge) return null
-
+function TweetBadgePill({ badge }: { badge: TweetBadge }) {
   return (
     <span className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] ${badge.className}`}>
       {badge.label}
     </span>
+  )
+}
+
+function TweetListItem({
+  tweet,
+  badge,
+  onClick,
+}: {
+  tweet: TwitterTweet
+  badge?: TweetBadge | null
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className="group flex w-full cursor-pointer gap-3 text-left"
+      onClick={onClick}
+    >
+      <TweetAvatar tweet={tweet} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="truncate text-[11px] font-semibold text-arc-text">{tweet.authorName}</span>
+          {tweet.verified && <BadgeCheck size={11} className="shrink-0 text-[#1d9bf0]" />}
+        </div>
+        <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
+          <span className="truncate">@{tweet.authorHandle}</span>
+          <span className="shrink-0">·</span>
+          <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : t('dailyBrief.unknownTime')}</span>
+        </div>
+        {badge && (
+          <div className="mt-0.5 flex items-center">
+            <TweetBadgePill badge={badge} />
+          </div>
+        )}
+        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
+          {tweet.text}
+        </p>
+        <p className="text-[10px] font-medium text-arc-text-dim">
+          ♥ {tweet.likes} · ↻ {tweet.retweets}
+        </p>
+      </div>
+    </button>
   )
 }
 
@@ -316,6 +363,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
   const [tweetsLoading,  setTweetsLoading]  = useState(true)
   const [tweetsError,    setTweetsError]    = useState<string | null>(null)
+  const [officialTweets, setOfficialTweets] = useState<TwitterTweet[]>([])
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -541,12 +589,58 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       areaName: string,
     ) => {
       if (areaName !== 'local') return
-      if (changes[TWITTER_SEARCH_QUERY]) {
+      if (changes[TWITTER_SEARCH_QUERY] || changes[TWITTERAPI_KEY]) {
         void loadTweets()
       }
     }
 
     void loadTweets()
+    chrome.storage.onChanged.addListener(onStorageChanged)
+
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(onStorageChanged)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let requestVersion = 0
+
+    const loadOfficialTweets = async () => {
+      const currentVersion = ++requestVersion
+      const cached = readCache<TwitterTweet[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY)
+      if (cached) {
+        if (cancelled || currentVersion !== requestVersion) return
+        setOfficialTweets(cached.slice(0, 3))
+        return
+      }
+
+      try {
+        const fetched = await fetchOfficialTweets()
+        if (cancelled || currentVersion !== requestVersion) return
+        if (fetched.length > 0) {
+          writeCache(TWITTER_OFFICIAL_TWEETS_CACHE_KEY, fetched, BRIEF_TWEETS_CACHE_TTL_MS)
+        }
+        setOfficialTweets(fetched.slice(0, 3))
+      } catch (error) {
+        if (cancelled || currentVersion !== requestVersion) return
+        debugWarn('[DailyBrief] official tweets load failed:', error)
+        setOfficialTweets([])
+      }
+    }
+
+    const onStorageChanged = (
+      changes: { [key: string]: chrome.storage.StorageChange },
+      areaName: string,
+    ) => {
+      if (areaName !== 'local') return
+      if (changes[TWITTER_OFFICIAL_ACCOUNTS] || changes[TWITTERAPI_KEY]) {
+        void loadOfficialTweets()
+      }
+    }
+
+    void loadOfficialTweets()
     chrome.storage.onChanged.addListener(onStorageChanged)
 
     return () => {
@@ -590,8 +684,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const recommendations: RecommendationItem[] = []
   const safeDueReminders = Array.isArray(dueReminders) ? dueReminders : []
   const safeWhaleEntries = Array.isArray(whaleEntries) ? whaleEntries : []
+  const safeOfficialTweets = Array.isArray(officialTweets) ? officialTweets : []
   const safeTweets = Array.isArray(tweets) ? tweets : []
   const safeActivity = Array.isArray(activity) ? activity : []
+  const hasOfficialTweets = safeOfficialTweets.length > 0
 
   const openSendWithPending = (pending: { recipient?: string; amount?: string }) => {
     chrome.storage.local.set({
@@ -973,6 +1069,35 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
+          {hasOfficialTweets && (
+            <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">
+                {t('dailyBrief.official')}
+              </p>
+              <div className="space-y-4">
+                {safeOfficialTweets.slice(0, 3).map((tweet) => (
+                  <TweetListItem
+                    key={`official-${tweet.id}`}
+                    tweet={tweet}
+                    badge={{
+                      label: t('dailyBrief.official'),
+                      className: OFFICIAL_TWEET_BADGE_CLASS,
+                    }}
+                    onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hasOfficialTweets && (
+            <div className="border-t border-arc-border/60 pt-3">
+              <p className="mb-3 font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                {t('dailyBrief.community')}
+              </p>
+            </div>
+          )}
+
           {tweetsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
@@ -1000,36 +1125,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           ) : (
             <div className="space-y-4">
               {safeTweets.slice(0, 3).map((tweet) => (
-                <button
+                <TweetListItem
                   key={tweet.id}
-                  type="button"
-                  className="flex w-full cursor-pointer gap-3 text-left group"
+                  tweet={tweet}
+                  badge={tweet.category ? TWEET_CATEGORY_BADGES[tweet.category] : null}
                   onClick={() => chrome.tabs.create({ url: tweet.tweetUrl })}
-                >
-                  <TweetAvatar tweet={tweet} />
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex min-w-0 items-center gap-1">
-                      <span className="truncate text-[11px] font-semibold text-arc-text">{tweet.authorName}</span>
-                      {tweet.verified && <BadgeCheck size={11} className="shrink-0 text-[#1d9bf0]" />}
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
-                      <span className="truncate">@{tweet.authorHandle}</span>
-                      <span className="shrink-0">·</span>
-                      <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : t('dailyBrief.unknownTime')}</span>
-                    </div>
-                    {tweet.category && (
-                      <div className="mt-0.5 flex items-center">
-                        <TweetCategoryBadge category={tweet.category} />
-                      </div>
-                    )}
-                    <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
-                      {tweet.text}
-                    </p>
-                    <p className="text-[10px] font-medium text-arc-text-dim">
-                      ♥ {tweet.likes} · ↻ {tweet.retweets}
-                    </p>
-                  </div>
-                </button>
+                />
               ))}
             </div>
           )}

@@ -1,10 +1,17 @@
-import { TWITTERAPI_KEY, TWITTER_SEARCH_QUERY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
+import {
+  TWITTERAPI_KEY,
+  TWITTER_OFFICIAL_ACCOUNTS,
+  TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
+  TWITTER_SEARCH_QUERY,
+  TWITTER_TWEETS_CACHE_KEY,
+} from '@/lib/storageKeys'
 import { getApiKey as getGeminiApiKey } from '@/lib/gogoAI'
 import { GEMINI_MODEL, TWITTERAPI_BASE } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
 export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
+export const DEFAULT_TWITTER_OFFICIAL_ACCOUNTS = 'arc, circle'
 export type TweetCategory = 'news' | 'opportunity' | 'discussion'
 
 function canUseChromeStorage(): boolean {
@@ -17,6 +24,71 @@ async function clearTweetsCache(): Promise<void> {
     localStorage.removeItem(TWITTER_TWEETS_CACHE_KEY)
   } catch {
     // Ignore cache cleanup failures. The next fetch will still use the current query.
+  }
+}
+
+async function clearOfficialTweetsCache(): Promise<void> {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.removeItem(TWITTER_OFFICIAL_TWEETS_CACHE_KEY)
+  } catch {
+    // Ignore cache cleanup failures. The next fetch will still use the current official account list.
+  }
+}
+
+function normalizeTwitterHandle(handle: string): string {
+  return handle
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, '')
+    .replace(/[^a-z0-9_]/g, '')
+}
+
+function parseTwitterHandleList(value: string): string[] {
+  const seen = new Set<string>()
+  const handles: string[] = []
+
+  for (const part of value.split(/[,\n;]+/)) {
+    const normalized = normalizeTwitterHandle(part)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    handles.push(normalized)
+  }
+
+  return handles
+}
+
+function formatTwitterHandleList(handles: string[]): string {
+  return handles.join(', ')
+}
+
+function buildOfficialTweetsQuery(handles: string[]): string {
+  const normalized = handles.length > 0 ? handles : parseTwitterHandleList(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
+  return normalized.map((handle) => `from:${handle}`).join(' OR ')
+}
+
+function mapTwitterApiTweet(tweet: TwitterApiTweet): TwitterTweet {
+  const authorHandle = typeof tweet.author?.userName === 'string' && tweet.author.userName.trim()
+    ? normalizeTwitterHandle(tweet.author.userName)
+    : 'unknown'
+  const id = typeof tweet.id === 'string' && tweet.id.trim() ? tweet.id.trim() : String(Math.random())
+  const authorName = typeof tweet.author?.name === 'string' && tweet.author.name.trim()
+    ? tweet.author.name.trim()
+    : 'Unknown'
+
+  return {
+    id,
+    text: typeof tweet.text === 'string' ? tweet.text : '',
+    authorName,
+    authorHandle: authorHandle || 'unknown',
+    authorAvatar: typeof tweet.author?.profilePicture === 'string' ? tweet.author.profilePicture : '',
+    createdAt: typeof tweet.createdAt === 'string' ? tweet.createdAt : '',
+    likes: typeof tweet.likeCount === 'number' ? tweet.likeCount : 0,
+    retweets: typeof tweet.retweetCount === 'number' ? tweet.retweetCount : 0,
+    verified: Boolean(tweet.author?.isBlueVerified),
+    tweetUrl: typeof tweet.url === 'string' && tweet.url
+      ? tweet.url
+      : `https://twitter.com/${authorHandle || 'unknown'}/status/${id}`,
   }
 }
 
@@ -145,6 +217,44 @@ export async function clearTwitterApiKey(): Promise<void> {
   await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
 }
 
+export async function getOfficialAccounts(): Promise<string> {
+  if (!canUseChromeStorage()) return DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
+
+  const res = await chrome.storage.local.get([TWITTER_OFFICIAL_ACCOUNTS]) as Record<string, string | undefined>
+  const stored = typeof res[TWITTER_OFFICIAL_ACCOUNTS] === 'string'
+    ? res[TWITTER_OFFICIAL_ACCOUNTS]!.trim()
+    : ''
+  const handles = parseTwitterHandleList(stored)
+
+  if (handles.length === 0) {
+    if (stored) {
+      await chrome.storage.local.remove(TWITTER_OFFICIAL_ACCOUNTS)
+    }
+    return DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
+  }
+
+  const normalized = formatTwitterHandleList(handles)
+  if (normalized !== stored) {
+    await chrome.storage.local.set({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
+  }
+
+  return normalized
+}
+
+export async function setOfficialAccounts(accounts: string): Promise<string> {
+  const handles = parseTwitterHandleList(accounts)
+  const normalized = handles.length > 0
+    ? formatTwitterHandleList(handles)
+    : DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
+
+  await clearOfficialTweetsCache()
+  if (canUseChromeStorage()) {
+    await chrome.storage.local.set({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
+  }
+
+  return normalized
+}
+
 export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterTweet[]> {
   if (tweets.length === 0) return tweets
 
@@ -235,11 +345,7 @@ export async function setSearchQuery(query: string): Promise<void> {
   }
 }
 
-export async function fetchArcTweets(): Promise<TwitterTweet[]> {
-  const apiKey = await getTwitterApiKey()
-  if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
-
-  const query = await getSearchQuery()
+async function fetchTweetsByQuery(query: string, apiKey: string, limit: number): Promise<TwitterTweet[]> {
   const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
   searchUrl.searchParams.set('query', query)
   searchUrl.searchParams.set('queryType', 'Latest')
@@ -257,16 +363,28 @@ export async function fetchArcTweets(): Promise<TwitterTweet[]> {
   const data = await res.json() as TwitterApiResponse
   const tweets = Array.isArray(data.tweets) ? data.tweets : []
 
-  return tweets.slice(0, 5).map((t: any) => ({
-    id: t.id || String(Math.random()),
-    text: t.text || '',
-    authorName: t.author?.name || t.author?.userName || 'Unknown',
-    authorHandle: t.author?.userName || 'unknown',
-    authorAvatar: t.author?.profilePicture || '',
-    createdAt: t.createdAt || '',
-    likes: t.likeCount || 0,
-    retweets: t.retweetCount || 0,
-    verified: t.author?.isBlueVerified || false,
-    tweetUrl: t.url || `https://twitter.com/${t.author?.userName}/status/${t.id}`,
-  }))
+  return tweets.slice(0, limit).map(mapTwitterApiTweet)
+}
+
+export async function fetchArcTweets(): Promise<TwitterTweet[]> {
+  const apiKey = await getTwitterApiKey()
+  if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
+
+  const query = await getSearchQuery()
+  return fetchTweetsByQuery(query, apiKey, 5)
+}
+
+export async function fetchOfficialTweets(): Promise<TwitterTweet[]> {
+  const apiKey = await getTwitterApiKey()
+  if (!apiKey) return []
+
+  try {
+    const officialAccounts = await getOfficialAccounts()
+    const handles = parseTwitterHandleList(officialAccounts)
+    const query = buildOfficialTweetsQuery(handles)
+    return await fetchTweetsByQuery(query, apiKey, 3)
+  } catch (error) {
+    debugWarn('[TwitterAPI] fetchOfficialTweets failed:', error)
+    return []
+  }
 }
