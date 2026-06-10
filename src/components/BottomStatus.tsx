@@ -1,4 +1,5 @@
 import { Book, ChevronRight, Sun, Sparkles } from 'lucide-react'
+import { formatText, t } from '@/lib/i18n'
 
 interface BottomStatusProps {
   level: number
@@ -32,11 +33,11 @@ export function BottomStatus({
           </span>
           {streak > 0 ? (
             <span className="rounded-full bg-arc-danger/15 px-2 py-0.5 text-xs font-bold text-arc-danger">
-              {streak}d streak
+              {formatText('common.streak', { streak })}
             </span>
           ) : (
             <span className="rounded-full bg-arc-success/15 px-2 py-0.5 text-xs font-bold text-arc-success">
-              New
+              {t('bottom.new')}
             </span>
           )}
         </button>
@@ -44,7 +45,7 @@ export function BottomStatus({
         {onOpenBrief && (
           <button
             onClick={onOpenBrief}
-            title="Daily Brief"
+            title={t('bottom.dailyBrief')}
             className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
           >
             <Sun size={13} />
@@ -54,7 +55,7 @@ export function BottomStatus({
         {onOpenGogo && (
           <button
             onClick={onOpenGogo}
-            title="Gogo AI"
+            title={t('bottom.gogoAI')}
             className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
           >
             <Sparkles size={13} />
@@ -70,7 +71,7 @@ export function BottomStatus({
             className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
           >
             <Book size={12} />
-            Address Book
+            {t('bottom.addressBook')}
             <ChevronRight size={12} />
           </button>
         )}
@@ -78,7 +79,7 @@ export function BottomStatus({
           onClick={onOpenDashboard}
           className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
         >
-          Open dashboard
+          {t('bottom.openDashboard')}
           <ChevronRight size={12} />
         </button>
       </div>

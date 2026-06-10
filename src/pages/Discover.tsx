@@ -1,5 +1,6 @@
 import { ArrowLeft } from 'lucide-react'
 import { DiscoverTab } from '@/components/DiscoverTab'
+import { t } from '@/lib/i18n'
 import { useStore } from '@/lib/store'
 
 interface DiscoverProps {
@@ -15,7 +16,7 @@ export function Discover({ onBack }: DiscoverProps) {
         <button onClick={onBack} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-base font-semibold text-arc-text">Discover Arc</h2>
+        <h2 className="text-base font-semibold text-arc-text">{t('discover.title')}</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto">

@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { formatAddress, formatBalance, timeAgo } from '@/lib/utils'
 import { useAddressInsights } from '@/lib/hooks/useAddressInsights'
+import { t } from '@/lib/i18n'
 import type { AddressMemory } from '@/lib/store'
 
 interface MemoryCardProps {
@@ -51,7 +52,9 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
                 {memory?.label || formatAddress(address)}
               </p>
               <p className="text-[10px] text-arc-text-dim">
-                {isLoading ? 'Loading insights...' : `${totalTx} tx · last ${lastTx ? timeAgo(lastTx) : 'never'}`}
+                {isLoading
+                  ? t('memory.loadingInsights')
+                  : `${totalTx} ${t('memory.transactions').toLowerCase()} · ${t('memory.lastInteraction')} ${lastTx ? timeAgo(lastTx) : t('memory.never')}`}
               </p>
             </div>
           </div>
@@ -68,7 +71,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
               className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-arc-gold bg-arc-gold/10 hover:bg-arc-gold/20 transition-colors"
             >
               <Plus size={12} />
-              Save
+              {t('memory.save')}
             </button>
           )}
         </div>
@@ -85,7 +88,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
           </div>
           <div className="space-y-0.5">
             <h3 className="text-lg font-bold text-arc-text">
-              {memory?.label || 'Unknown Address'}
+              {memory?.label || t('memory.unknownAddress')}
             </h3>
             <p className="text-xs font-mono text-arc-text-dim">
               {formatAddress(address, 8)}
@@ -104,20 +107,20 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
 
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-arc-border bg-arc-bg/50 p-2 text-center">
-          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">Transactions</p>
-          <p className="text-sm font-bold text-arc-text">{isLoading ? '...' : totalTx}</p>
+          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('memory.transactions')}</p>
+          <p className="text-sm font-bold text-arc-text">{isLoading ? t('common.loadingDots') : totalTx}</p>
         </div>
         <div className="rounded-xl border border-arc-border bg-arc-bg/50 p-2 text-center">
-          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">Volume</p>
+          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('memory.volume')}</p>
           <p className="text-sm font-bold text-arc-text">
-            {isLoading ? '...' : `$${formatBalance(totalVolume, 6)}`}
+            {isLoading ? t('common.loadingDots') : `$${formatBalance(totalVolume, 6)}`}
           </p>
         </div>
       </div>
 
       {memory?.note && (
         <div className="space-y-1">
-          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">Note</p>
+          <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('memory.note')}</p>
           <p className="text-xs text-arc-text italic leading-relaxed">
             &quot;{memory.note}&quot;
           </p>
@@ -125,8 +128,8 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
       )}
 
       <div className="flex items-center justify-between text-[10px] text-arc-text-dim">
-        <span>Added {memory ? new Date(memory.createdAt).toLocaleDateString() : 'Never'}</span>
-        <span>Last interaction {lastTx ? timeAgo(lastTx) : 'Never'}</span>
+        <span>{t('memory.added')} {memory ? new Date(memory.createdAt).toLocaleDateString() : t('memory.never')}</span>
+        <span>{t('memory.lastInteraction')} {lastTx ? timeAgo(lastTx) : t('memory.never')}</span>
       </div>
     </Card>
   )

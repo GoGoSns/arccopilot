@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Copy } from 'lucide-react'
+import { t } from '@/lib/i18n'
 import { WalletHeader } from '@/components/WalletHeader'
 import { BalanceCard } from '@/components/BalanceCard'
 import { ActionButtons } from '@/components/ActionButtons'
@@ -55,21 +56,21 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
           {address ? address[2].toUpperCase() : 'G'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-arc-text">My Wallet</p>
+          <p className="text-sm font-medium text-arc-text">{t('wallet.myWallet')}</p>
           <p className="font-mono text-xs text-arc-text-dim">
             {address ? formatAddress(address, 4) : '-'}
           </p>
         </div>
         <button
           onClick={handleCopy}
-          title="Copy address"
+          title={t('wallet.copyAddress')}
           className="rounded-lg p-1.5 text-arc-text-dim transition-colors hover:text-arc-gold"
         >
           <Copy size={14} />
         </button>
         {copied && (
           <span className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 rounded border border-arc-border bg-arc-card px-1.5 py-0.5 text-[10px] text-arc-success">
-            Copied!
+            {t('wallet.copied')}
           </span>
         )}
       </div>
@@ -90,7 +91,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
         {activeTab === 'activity' && <ActivityTab address={address} />}
         {activeTab === 'nfts' && (
           <div className="flex h-32 flex-col items-center justify-center text-sm text-arc-text-dim">
-            No NFTs yet
+            {t('wallet.nftsEmpty')}
           </div>
         )}
         {activeTab === 'discover' && <DiscoverTab address={address} onViewAll={onDiscover} />}

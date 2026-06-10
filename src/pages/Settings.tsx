@@ -27,6 +27,7 @@ import {
 } from '@/lib/reminders'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { getLocalePreference, setLocale, t } from '@/lib/i18n'
 
 interface SettingsProps {
   onBack: () => void
@@ -40,6 +41,7 @@ function readStoredBoolean(key: string, value: unknown, fallback: boolean): bool
 
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
+  const localePreference = getLocalePreference()
   const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
   const [twitterApiKey, setTwitterApiKeyState] = useState<string | null>(null)
   const [isAddingGemini, setIsAddingGemini] = useState(false)
@@ -190,7 +192,7 @@ export function Settings({ onBack }: SettingsProps) {
         <button onClick={onBack} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-base font-semibold text-arc-text">Settings</h2>
+        <h2 className="text-base font-semibold text-arc-text">{t('settings.title')}</h2>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -203,15 +205,15 @@ export function Settings({ onBack }: SettingsProps) {
               <Book size={20} />
             </div>
             <div>
-              <p className="text-sm font-semibold text-arc-text">Address Book</p>
-              <p className="text-[10px] text-arc-text-dim">Manage saved addresses and insights</p>
+              <p className="text-sm font-semibold text-arc-text">{t('settings.addressBook')}</p>
+              <p className="text-[10px] text-arc-text-dim">{t('settings.manageAddresses')}</p>
             </div>
           </div>
           <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          AI Features
+          {t('settings.aiFeatures')}
         </p>
         <div className="border-b border-arc-border/50">
           <div
@@ -224,9 +226,9 @@ export function Settings({ onBack }: SettingsProps) {
                   <Key size={20} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-arc-text">Gemini API Key</p>
+                  <p className="text-sm font-semibold text-arc-text">{t('settings.geminiApiKey')}</p>
                   <p className={`text-[10px] ${geminiApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {geminiApiKey ? 'Saved' : 'Not set'}
+                    {geminiApiKey ? t('settings.saved') : t('settings.notSet')}
                   </p>
                 </div>
               </div>
@@ -235,7 +237,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <button
                     onClick={(e) => { e.stopPropagation(); handleClearGeminiKey() }}
                     className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
-                    title="Clear API Key"
+                    title={t('settings.clearApiKey')}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -250,7 +252,7 @@ export function Settings({ onBack }: SettingsProps) {
                 <input
                   autoFocus
                   type="password"
-                  placeholder="Paste Gemini API Key..."
+                  placeholder={t('settings.pasteGeminiKey')}
                   className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-gold"
                   value={tempKey}
                   onChange={(e) => setTempKey(e.target.value)}
@@ -260,7 +262,7 @@ export function Settings({ onBack }: SettingsProps) {
                   onClick={handleSaveGemini}
                   className="bg-arc-gold text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
-                  Save
+                  {t('settings.save')}
                 </button>
               </div>
             </div>
@@ -279,9 +281,9 @@ export function Settings({ onBack }: SettingsProps) {
                   <Twitter size={20} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-arc-text">TwitterAPI.io Key</p>
+                  <p className="text-sm font-semibold text-arc-text">{t('settings.twitterApiKey')}</p>
                   <p className={`text-[10px] ${twitterApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {twitterApiKey ? 'Saved' : 'Not set'}
+                    {twitterApiKey ? t('settings.saved') : t('settings.notSet')}
                   </p>
                 </div>
               </div>
@@ -296,12 +298,12 @@ export function Settings({ onBack }: SettingsProps) {
                       }}
                       className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#d4af37] hover:bg-[#d4af37]/10 transition-colors"
                     >
-                      Update
+                      {t('settings.update')}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleClearTwitterKey() }}
                       className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
-                      title="Clear TwitterAPI.io Key"
+                      title={t('settings.clearTwitterKey')}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -318,7 +320,7 @@ export function Settings({ onBack }: SettingsProps) {
                 <input
                   autoFocus
                   type="password"
-                  placeholder="TwitterAPI.io key"
+                  placeholder={t('settings.twitterKey')}
                   className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-[#d4af37]"
                   value={twitterTempKey}
                   onChange={(e) => setTwitterTempKey(e.target.value)}
@@ -328,7 +330,7 @@ export function Settings({ onBack }: SettingsProps) {
                   onClick={handleSaveTwitterKey}
                   className="bg-[#d4af37] text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
-                  {twitterApiKey ? 'Update' : 'Save'}
+                  {twitterApiKey ? t('settings.update') : t('settings.save')}
                 </button>
               </div>
             </div>
@@ -341,22 +343,22 @@ export function Settings({ onBack }: SettingsProps) {
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-arc-text">Tweet Search Topics</p>
-                    <p className="text-[10px] text-arc-text-dim">Topics to track on X. Separate with OR.</p>
+                    <p className="text-sm font-semibold text-arc-text">{t('settings.tweetSearchTopics')}</p>
+                    <p className="text-[10px] text-arc-text-dim">{t('settings.tweetSearchTopicsDescription')}</p>
                   </div>
                   <button
                     type="button"
                     onClick={handleResetTwitterSearchQuery}
                     className="shrink-0 text-[10px] font-semibold text-[#d4af37] underline-offset-2 hover:underline"
                   >
-                    Reset to default
+                    {t('settings.resetToDefault')}
                   </button>
                 </div>
                 <Input
                   value={twitterSearchQuery}
                   onChange={(e) => setTwitterSearchQueryState(e.target.value)}
                   placeholder={DEFAULT_TWITTER_SEARCH_QUERY}
-                  aria-label="Tweet Search Topics"
+                  aria-label={t('settings.tweetSearchTopics')}
                   className="font-mono text-xs"
                 />
                 <div className="flex items-center justify-end">
@@ -366,7 +368,7 @@ export function Settings({ onBack }: SettingsProps) {
                     onClick={handleSaveTwitterSearchQuery}
                     className="min-w-24"
                   >
-                    Save
+                    {t('settings.save')}
                   </Button>
                 </div>
               </div>
@@ -375,7 +377,7 @@ export function Settings({ onBack }: SettingsProps) {
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          Reminders
+          {t('settings.reminders')}
         </p>
         <div className="border-b border-arc-border/50">
           {remindersLoading ? (
@@ -386,7 +388,7 @@ export function Settings({ onBack }: SettingsProps) {
             </div>
           ) : reminders.length === 0 ? (
             <div className="px-4 py-4 text-sm text-arc-text-dim">
-              No reminders yet.
+              {t('settings.noRemindersYet')}
             </div>
           ) : (
             reminders.map((reminder, index) => (
@@ -399,7 +401,7 @@ export function Settings({ onBack }: SettingsProps) {
                   type="button"
                   onClick={() => void handleRemoveReminder(reminder.id)}
                   className="shrink-0 rounded-lg p-2 text-arc-text-dim hover:text-arc-danger transition-colors"
-                  title="Delete reminder"
+                  title={t('common.remove')}
                 >
                   <Trash2 size={16} />
                 </button>
@@ -409,19 +411,19 @@ export function Settings({ onBack }: SettingsProps) {
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          Notifications
+          {t('settings.notifications')}
         </p>
         <div className="border-b border-arc-border/50">
           {[
             {
-              label: 'Incoming USDC alerts',
-              description: 'Notify when USDC arrives in your wallet',
+              label: t('settings.incomingAlerts'),
+              description: t('settings.incomingAlertsDescription'),
               enabled: incomingAlerts,
               onToggle: handleToggleIncomingAlerts,
             },
             {
-              label: 'Balance change alerts',
-              description: 'Notify when your balance moves by more than 10%',
+              label: t('settings.balanceAlerts'),
+              description: t('settings.balanceAlertsDescription'),
               enabled: balanceAlerts,
               onToggle: handleToggleBalanceAlerts,
             },
@@ -458,20 +460,20 @@ export function Settings({ onBack }: SettingsProps) {
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          Voice
+          {t('settings.voice')}
         </p>
         <div className="border-b border-arc-border/50">
           {[
             {
-              label: 'Voice input',
-              description: 'Use your microphone to talk to Gogo',
+              label: t('settings.voiceInput'),
+              description: t('settings.voiceInputDescription'),
               enabled: voiceInputEnabled,
               onToggle: handleToggleVoiceInput,
               icon: Mic,
             },
             {
-              label: 'Voice responses',
-              description: 'Let Gogo read answers aloud',
+              label: t('settings.voiceResponses'),
+              description: t('settings.voiceResponsesDescription'),
               enabled: voiceResponsesEnabled,
               onToggle: handleToggleVoiceResponses,
               icon: Volume2,
@@ -513,21 +515,57 @@ export function Settings({ onBack }: SettingsProps) {
         </div>
 
         {[
-          { section: 'Network', items: [{ label: 'Current Network', value: 'Arc Testnet' }, { label: 'RPC URL', value: ARC_RPC_URL.replace(/^https?:\/\//, '') }] },
-          { section: 'Security', items: [{ label: 'Lock Extension', value: '' }, { label: 'Export Private Key', value: '' }] },
-          { section: 'Preferences', items: [{ label: 'Theme', value: 'Dark' }, { label: 'Currency', value: 'USD' }] },
-          { section: 'About', items: [{ label: 'Version', value: 'v0.1.0' }, { label: 'Arc Testnet chainId', value: String(ARC_CHAIN_ID) }] },
+          { section: t('common.network'), items: [{ label: t('settings.currentNetwork'), value: 'Arc Testnet' }, { label: t('settings.rpcUrl'), value: ARC_RPC_URL.replace(/^https?:\/\//, '') }] },
+          { section: t('common.security'), items: [{ label: t('settings.lockExtension'), value: '' }, { label: t('settings.exportPrivateKey'), value: '' }] },
+          { section: t('common.preferences'), items: [{ label: t('common.theme'), value: t('common.dark') }, { label: t('common.currency'), value: t('common.usd') }, { label: t('settings.language'), value: '' }] },
+          { section: t('common.about'), items: [{ label: t('common.version'), value: 'v0.1.0' }, { label: t('settings.chainId'), value: String(ARC_CHAIN_ID) }] },
         ].map(({ section, items }) => (
           <div key={section}>
             <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
               {section}
             </p>
-            {items.map(({ label, value }) => (
-              <div key={label} className="flex items-center justify-between px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer">
-                <span className="text-sm text-arc-text">{label}</span>
-                {value && <span className="text-xs text-arc-text-dim">{value}</span>}
-              </div>
-            ))}
+            {items.map(({ label, value }) => {
+              if (label === t('settings.language')) {
+                return (
+                  <div key={label} className="flex flex-col gap-3 px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-arc-text">{label}</span>
+                      <span className="text-xs text-arc-text-dim">{localePreference === 'auto' ? t('settings.auto') : localePreference === 'en' ? t('settings.english') : t('settings.turkish')}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: 'auto' as const, label: t('settings.auto') },
+                        { value: 'en' as const, label: t('settings.english') },
+                        { value: 'tr' as const, label: t('settings.turkish') },
+                      ].map((option) => {
+                        const selected = localePreference === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => void setLocale(option.value)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              selected
+                                ? 'border-arc-gold bg-arc-gold/10 text-arc-gold'
+                                : 'border-arc-border text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              }
+
+              return (
+                <div key={label} className="flex items-center justify-between px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer">
+                  <span className="text-sm text-arc-text">{label}</span>
+                  {value && <span className="text-xs text-arc-text-dim">{value}</span>}
+                </div>
+              )
+            })}
           </div>
         ))}
       </div>

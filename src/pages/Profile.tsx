@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { formatAddress, copyToClipboard } from '@/lib/utils'
 import { useAddressInsights } from '@/lib/hooks/useAddressInsights'
+import { t } from '@/lib/i18n'
 
 interface ProfileProps {
   onBack: () => void
@@ -25,7 +26,6 @@ export function Profile({ onBack }: ProfileProps) {
   const profile = useStore((s) => s.profile)
   const setProfile = useStore((s) => s.setProfile)
   const accountCreatedAt = useStore((s) => s.accountCreatedAt)
-  
   const { totalTx, totalVolume } = useAddressInsights(walletAddress)
 
   const [isEditing, setIsEditing] = useState(false)
@@ -35,7 +35,7 @@ export function Profile({ onBack }: ProfileProps) {
 
   const level = Math.floor(xp / 100)
   const nextLevelXP = (level + 1) * 100
-  const progress = (xp % 100)
+  const progress = xp % 100
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -45,51 +45,30 @@ export function Profile({ onBack }: ProfileProps) {
   const handleSave = () => {
     setProfile({ displayName: editName, bio: editBio })
     setIsEditing(false)
-    showToast('Profile updated!')
+    showToast(t('profile.updated'))
   }
 
   const handleShare = () => {
     const text = `Check my Arc profile on ArcCopilot: ${formatAddress(walletAddress || '')}`
     void copyToClipboard(text)
-    showToast('Profile link copied!')
+    showToast(t('profile.linkCopied'))
   }
 
   const handleConnectX = () => {
-    showToast('X OAuth coming soon. Integration in progress.')
+    showToast(t('profile.xSoon'))
   }
 
   const badges = useMemo((): Badge[] => {
     const daysOld = Math.floor((Date.now() - accountCreatedAt) / (1000 * 60 * 60 * 24))
-    
     return [
-      { 
-        id: 'pioneer', 
-        label: 'Tx Pioneer', 
-        criteria: 'Perform at least 1 transaction', 
-        isUnlocked: totalTx >= 1 
-      },
-      { 
-        id: 'whale', 
-        label: 'USDC Whale', 
-        criteria: 'Total volume >= 100 USDC', 
-        isUnlocked: Number(totalVolume / 1000000n) >= 100 
-      },
-      { 
-        id: 'warrior', 
-        label: 'Week Warrior', 
-        criteria: 'Maintain a 7-day streak', 
-        isUnlocked: streak >= 7 
-      },
-      { 
-        id: 'early', 
-        label: 'Early Adopter', 
-        criteria: 'Account age > 30 days', 
-        isUnlocked: daysOld > 30 
-      },
+      { id: 'pioneer', label: t('profile.txPioneer'), criteria: t('profile.txPioneerCriteria'), isUnlocked: totalTx >= 1 },
+      { id: 'whale', label: t('profile.usdcWhale'), criteria: t('profile.usdcWhaleCriteria'), isUnlocked: Number(totalVolume / 1000000n) >= 100 },
+      { id: 'warrior', label: t('profile.weekWarrior'), criteria: t('profile.weekWarriorCriteria'), isUnlocked: streak >= 7 },
+      { id: 'early', label: t('profile.earlyAdopter'), criteria: t('profile.earlyAdopterCriteria'), isUnlocked: daysOld > 30 },
     ]
   }, [totalTx, totalVolume, streak, accountCreatedAt])
 
-  const displayName = profile.displayName || (walletAddress ? formatAddress(walletAddress) : 'Unknown')
+  const displayName = profile.displayName || (walletAddress ? formatAddress(walletAddress) : t('common.unknown'))
   const initial = displayName[0].toUpperCase()
 
   return (
@@ -99,20 +78,20 @@ export function Profile({ onBack }: ProfileProps) {
           <button onClick={onBack} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
             <ArrowLeft size={18} />
           </button>
-          <h2 className="text-base font-semibold text-arc-text">Profile</h2>
+          <h2 className="text-base font-semibold text-arc-text">{t('profile.title')}</h2>
         </div>
         <div className="flex gap-1">
           <button
             onClick={handleShare}
             className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-gold transition-colors"
-            title="Share Profile"
+            title={t('profile.shareProfile')}
           >
             <Share2 size={18} />
           </button>
           <button
             onClick={() => setIsEditing(true)}
             className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-gold transition-colors"
-            title="Edit Profile"
+            title={t('profile.editProfile')}
           >
             <Edit2 size={18} />
           </button>
@@ -129,7 +108,7 @@ export function Profile({ onBack }: ProfileProps) {
               Lv {level}
             </div>
           </div>
-          
+
           <div className="text-center space-y-1">
             <p className="text-lg font-bold text-arc-text">{displayName}</p>
             <p className="text-xs text-arc-text-dim font-mono">{walletAddress ? formatAddress(walletAddress, 6) : '-'}</p>
@@ -143,9 +122,9 @@ export function Profile({ onBack }: ProfileProps) {
 
           <div className="flex items-center gap-2 w-full max-w-[200px] mt-2">
             <div className="flex-1 h-1.5 bg-arc-border rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-arc-gold shadow-[0_0_8px_rgba(212,175,55,0.5)] transition-all duration-1000" 
-                style={{ width: `${progress}%` }} 
+              <div
+                className="h-full bg-arc-gold shadow-[0_0_8px_rgba(212,175,55,0.5)] transition-all duration-1000"
+                style={{ width: `${progress}%` }}
               />
             </div>
             <span className="text-[10px] font-bold text-arc-text-dim whitespace-nowrap">
@@ -158,28 +137,28 @@ export function Profile({ onBack }: ProfileProps) {
               Level {level}
             </span>
             <span className="text-xs px-3 py-1 rounded-full bg-arc-danger/10 text-arc-danger border border-arc-danger/20 font-bold">
-              {streak}d streak
+              {t('common.streak').replace('{streak}', String(streak))}
             </span>
           </div>
         </div>
 
         <div className="space-y-3">
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-arc-text-dim ml-1">Social</p>
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-arc-text-dim ml-1">{t('profile.social')}</p>
           <Button variant="outline" fullWidth onClick={handleConnectX}>
             <ExternalLink size={14} />
-            Connect X (Twitter)
+            {t('profile.connectX')}
           </Button>
         </div>
 
         <div className="space-y-3">
-          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-arc-text-dim ml-1">Badges</p>
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-arc-text-dim ml-1">{t('profile.badges')}</p>
           <div className="grid grid-cols-2 gap-3">
             {badges.map((badge) => (
-              <Card 
-                key={badge.id} 
+              <Card
+                key={badge.id}
                 className={`relative flex flex-col items-center gap-2 p-3 text-center transition-all group ${
-                  badge.isUnlocked 
-                    ? 'bg-arc-gold/5 border-arc-gold/30 shadow-lg shadow-arc-gold/5' 
+                  badge.isUnlocked
+                    ? 'bg-arc-gold/5 border-arc-gold/30 shadow-lg shadow-arc-gold/5'
                     : 'opacity-60 bg-arc-card/30'
                 }`}
               >
@@ -198,7 +177,7 @@ export function Profile({ onBack }: ProfileProps) {
                     {badge.label}
                   </p>
                   <p className="text-[8px] text-arc-text-dim leading-tight">
-                    {badge.isUnlocked ? 'Achievement Unlocked' : badge.criteria}
+                    {badge.isUnlocked ? t('profile.achievementUnlocked') : badge.criteria}
                   </p>
                 </div>
               </Card>
@@ -211,7 +190,7 @@ export function Profile({ onBack }: ProfileProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <Card className="w-full max-w-sm p-5 space-y-4 shadow-2xl border-arc-gold/20">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-arc-text">Edit Profile</h3>
+              <h3 className="text-lg font-bold text-arc-text">{t('profile.editProfileDialog')}</h3>
               <button onClick={() => setIsEditing(false)} className="text-arc-text-dim hover:text-arc-text">
                 <X size={20} />
               </button>
@@ -219,18 +198,18 @@ export function Profile({ onBack }: ProfileProps) {
 
             <div className="space-y-3">
               <Input
-                label="Display Name"
-                placeholder="How should we call you?"
+                label={t('profile.displayName')}
+                placeholder={t('profile.howShouldWeCallYou')}
                 value={editName}
                 onChange={(e) => setEditName(e.target.value.slice(0, 32))}
               />
               <div className="space-y-1.5">
                 <label className="text-[10px] uppercase tracking-wider font-bold text-arc-text-dim ml-1">
-                  Bio
+                  {t('profile.bio')}
                 </label>
                 <textarea
                   className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-gold/50 transition-colors min-h-[100px] resize-none"
-                  placeholder="Tell us about yourself..."
+                  placeholder={t('profile.tellUsAboutYourself')}
                   value={editBio}
                   onChange={(e) => setEditBio(e.target.value.slice(0, 160))}
                 />
@@ -242,7 +221,7 @@ export function Profile({ onBack }: ProfileProps) {
 
             <Button variant="primary" fullWidth onClick={handleSave}>
               <Save size={16} />
-              Save Profile
+              {t('profile.saveProfile')}
             </Button>
           </Card>
         </div>

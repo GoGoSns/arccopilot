@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { EXPLORER_URL } from '@/lib/arc'
+import { formatText, getLocaleSync, t } from '@/lib/i18n'
 import { formatAddress } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -41,13 +42,6 @@ interface GogoAIProps {
   onBack: () => void
 }
 
-const QUICK_SUGGESTIONS = [
-  "What's my balance?",
-  'Summarize my last 24h',
-  'Find patterns in my activity',
-  'Analyze an address',
-]
-
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 type SpeechRecognitionLike = {
@@ -69,6 +63,13 @@ type SpeechWindow = Window & {
   SpeechRecognition?: SpeechRecognitionConstructorLike
   webkitSpeechRecognition?: SpeechRecognitionConstructorLike
 }
+
+const QUICK_SUGGESTIONS = [
+  'Check my balance',
+  'Show last 24h activity',
+  'Find whale moves',
+  'Analyze this address',
+] as const
 
 function isValidAddress(value: string): boolean {
   return ADDRESS_REGEX.test(value.trim())
@@ -93,9 +94,7 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructorLike | null {
 }
 
 function getPreferredSpeechLanguage(): string {
-  if (typeof navigator === 'undefined') return 'tr-TR'
-  const lang = navigator.language?.toLowerCase() ?? 'tr-tr'
-  return lang.startsWith('tr') ? 'tr-TR' : 'en-US'
+  return getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US'
 }
 
 function isSpeechSynthesisAvailable(): boolean {
@@ -105,23 +104,23 @@ function isSpeechSynthesisAvailable(): boolean {
 function getActionLabel(action?: GogoAction | null): string {
   switch (action?.type) {
     case 'send':
-      return 'Open Send'
+      return t('gogo.openSend')
     case 'view_address':
-      return 'View Address'
+      return t('gogo.viewAddress')
     case 'track_whale':
-      return 'Track Whale'
+      return t('gogo.trackWhale')
     case 'analyze_address':
-      return 'Analyze Address'
+      return t('gogo.analyzeAddress')
     case 'summarize_activity':
-      return 'Summarize Activity'
+      return t('gogo.summarizeActivity')
     case 'find_pattern':
-      return 'Find Patterns'
+      return t('gogo.findPatterns')
     case 'open_brief':
-      return 'Open Brief'
+      return t('gogo.openBrief')
     case 'create_reminder':
-      return 'Set Reminder'
+      return t('gogo.setReminder')
     case 'draft_tweet':
-      return 'Draft Tweet'
+      return t('gogo.draftTweet')
     case 'none':
     default:
       return ''
@@ -131,22 +130,22 @@ function getActionLabel(action?: GogoAction | null): string {
 function getActionLoadingLabel(action?: GogoAction | null): string {
   switch (action?.type) {
     case 'summarize_activity':
-      return 'Summarizing...'
+      return t('gogo.working')
     case 'analyze_address':
-      return 'Analyzing...'
+      return t('gogo.working')
     case 'create_reminder':
-      return 'Saving reminder...'
+      return t('gogo.working')
     default:
-      return 'Working...'
+      return t('gogo.working')
   }
 }
 
 function getCompletedActionLabel(action?: GogoAction | null): string {
   if (action?.type === 'create_reminder') {
-    return 'Reminder set ✓'
+    return t('gogo.reminderSet')
   }
 
-  return 'Done ✓'
+  return t('gogo.done')
 }
 
 function getRiskTone(analysis: AddressAnalysis): 'contract' | 'empty' | 'normal' {
@@ -226,12 +225,12 @@ function getSpendingStyles(tone: 'negative' | 'neutral' | 'positive') {
 function getRiskLabel(tone: 'contract' | 'empty' | 'normal'): string {
   switch (tone) {
     case 'contract':
-      return 'High risk'
+      return t('gogo.highRisk')
     case 'empty':
-      return 'Medium risk'
+      return t('gogo.mediumRisk')
     case 'normal':
     default:
-      return 'Low risk'
+      return t('gogo.lowRisk')
   }
 }
 
@@ -247,7 +246,7 @@ function getRecipientDisplayName(
   addressMemories: Record<string, { label?: string }>,
 ): string {
   const trimmed = value?.trim()
-  if (!trimmed) return 'unknown recipient'
+  if (!trimmed) return t('gogo.unknownRecipient')
 
   const resolved = resolveAddress(trimmed)
   if (resolved) {
@@ -271,25 +270,25 @@ function getMultiStepActionTitle(
       const recipientValue = typeof params.recipient === 'string' ? params.recipient : undefined
       const recipient = getRecipientDisplayName(recipientValue, resolveAddress, addressMemories)
       return recipientValue
-        ? `Send ${amountLabel} to ${recipient}`
-        : `Send ${amountLabel}`
+        ? `${t('common.send')} ${amountLabel} ${formatText('send.successTo', { recipient })}`
+        : `${t('common.send')} ${amountLabel}`
     }
     case 'view_address':
-      return `View address ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
+      return `${t('gogo.viewAddress')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'track_whale':
-      return `Track whale ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
+      return `${t('gogo.trackWhale')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'analyze_address':
-      return `Analyze address ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
+      return `${t('gogo.analyzeAddress')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'summarize_activity':
-      return `Summarize ${typeof params.period === 'string' ? params.period : '24h'} activity`
+      return `${t('gogo.summarizeActivity')} ${typeof params.period === 'string' ? params.period : '24h'}`
     case 'find_pattern':
-      return 'Find patterns'
+      return t('gogo.findPatterns')
     case 'open_brief':
-      return 'Open brief'
+      return t('gogo.openBrief')
     case 'create_reminder': {
       const title = typeof params.title === 'string' && params.title.trim()
         ? params.title.trim()
-        : 'Reminder'
+        : t('gogo.reminderSet')
       const reminder: Reminder = {
         id: 'preview',
         title,
@@ -305,13 +304,13 @@ function getMultiStepActionTitle(
         createdAt: '',
       }
 
-      return `Reminder: ${title} (${getReminderScheduleLabel(reminder)})`
+      return `${t('dailyBrief.reminderPrefix')}: ${title} (${getReminderScheduleLabel(reminder)})`
     }
     case 'draft_tweet':
-      return 'Tweet draft'
+      return t('gogo.tweetDraft')
     case 'none':
     default:
-      return 'Next step'
+      return t('gogo.nextStep')
   }
 }
 

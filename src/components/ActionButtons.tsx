@@ -1,4 +1,5 @@
 import { ArrowUpRight, ArrowDownLeft, QrCode, Plus } from 'lucide-react'
+import { t } from '@/lib/i18n'
 
 interface ActionButtonsProps {
   onSend: () => void
@@ -7,15 +8,14 @@ interface ActionButtonsProps {
   onBuy: () => void
 }
 
-const actions = [
-  { label: 'Send',    Icon: ArrowUpRight,  key: 'send'    },
-  { label: 'Receive', Icon: ArrowDownLeft, key: 'receive' },
-  { label: 'Scan',    Icon: QrCode,        key: 'scan'    },
-  { label: 'Buy',     Icon: Plus,          key: 'buy'     },
-] as const
-
 export function ActionButtons({ onSend, onReceive, onScan, onBuy }: ActionButtonsProps) {
   const handlers = { send: onSend, receive: onReceive, scan: onScan, buy: onBuy }
+  const actions = [
+    { label: t('actions.send'), Icon: ArrowUpRight, key: 'send' },
+    { label: t('actions.receive'), Icon: ArrowDownLeft, key: 'receive' },
+    { label: t('actions.scan'), Icon: QrCode, key: 'scan' },
+    { label: t('actions.buy'), Icon: Plus, key: 'buy' },
+  ] as const
 
   return (
     <div className="grid grid-cols-4 gap-2 px-4 py-3">

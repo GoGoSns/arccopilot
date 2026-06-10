@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import '@/styles/globals.css'
 import { useStore, type AddressMemory } from '@/lib/store'
 import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
+import { initI18n } from '@/lib/i18n'
 
 function normalizeStoredAddressBook(raw: unknown): Record<string, AddressMemory> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -78,10 +79,14 @@ function Root() {
   return <App />
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <Root />
-    </ErrorBoundary>
-  </React.StrictMode>
-)
+void (async () => {
+  await initI18n()
+
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <Root />
+      </ErrorBoundary>
+    </React.StrictMode>,
+  )
+})()

@@ -28,6 +28,7 @@ import {
   markReminderTriggered,
   type Reminder,
 } from '@/lib/reminders'
+import { formatText, getLocaleSync, t } from '@/lib/i18n'
 
 // --- constants ---------------------------------------------------------------
 const USDC_DECIMALS = 6
@@ -337,8 +338,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const displayName = profile?.displayName?.trim() || 'GoGo'
   const now         = new Date()
   const hour        = now.getHours()
-  const greeting    = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-  const dateStr     = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+  const locale      = getLocaleSync()
+  const greeting    = hour < 12
+    ? (locale === 'tr' ? 'Günaydın' : 'Good morning')
+    : hour < 18
+      ? (locale === 'tr' ? 'Tünaydın' : 'Good afternoon')
+      : (locale === 'tr' ? 'İyi akşamlar' : 'Good evening')
+  const dateStr     = now.toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
   // -- effect: transfers -----------------------------------------------------
   useEffect(() => {
@@ -561,20 +567,24 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
   const summaryLine = (() => {
     if (tweetsLoading || activityLoading || !whaleReady) {
-      return 'İşte bugünkü özetin.'
+      return t('dailyBrief.emptyBrief')
     }
 
     const tweetCount = tweets.length
     const whaleCount = trackedWhales.length
     if (tweetCount === 0 && whaleCount === 0 && !has24hActivity) {
-      return 'İşte bugünkü özetin.'
+      return t('dailyBrief.emptyBrief')
     }
 
     const activityClause = has24hActivity
-      ? 'son 24 saatte aktiviteni kontrol ettim'
-      : 'son 24 saatte aktivite olmadigini kontrol ettim'
+      ? (locale === 'tr' ? t('dailyBrief.activityCheckedTr') : t('dailyBrief.activityCheckedEn'))
+      : (locale === 'tr' ? t('dailyBrief.noActivityCheckedTr') : t('dailyBrief.noActivityCheckedEn'))
 
-    return `Bu sabah ${tweetCount} Arc tweet'i, ${whaleCount} takip edilen whale ve ${activityClause}.`
+    return formatText(locale === 'tr' ? 'dailyBrief.summaryTr' : 'dailyBrief.summaryEn', {
+      tweetCount,
+      whaleCount,
+      activityClause,
+    })
   })()
 
   const recommendations: RecommendationItem[] = []
@@ -644,9 +654,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       const amount = formatUsdcAmount(activePattern.amount)
       recommendations.push({
         kind: 'pattern',
-        title: 'Smart send',
-        body: `You often send ${amount} USDC. Quick send?`,
-        actionLabel: 'Open Send',
+        title: t('dailyBrief.smartSendTitle'),
+        body: formatText(locale === 'tr' ? 'dailyBrief.recommendationPatternTr' : 'dailyBrief.recommendationPatternEn', { amount }),
+        actionLabel: t('dailyBrief.openSend'),
         actionStyle: 'primary',
         onAction: () => openSendWithPending({ amount }),
       })
@@ -659,9 +669,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
       recommendations.push({
         kind: 'pattern',
-        title: 'Smart send',
-        body: `You usually send to ${patternRecipient} on ${dayLabel}. Send again?`,
-        actionLabel: 'Open Send',
+        title: t('dailyBrief.smartSendTitle'),
+        body: formatText(locale === 'tr' ? 'dailyBrief.recommendationRecipientTr' : 'dailyBrief.recommendationRecipientEn', {
+          recipient: patternRecipient,
+          day: dayLabel,
+        }),
+        actionLabel: t('dailyBrief.openSend'),
         actionStyle: 'primary',
         onAction: () => openSendWithPending({
           recipient: activePattern.address,
@@ -674,9 +687,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   if (recentWhale) {
     recommendations.push({
       kind: 'whale',
-      title: 'Whale alert',
-      body: `${recentWhale.label} moved ${recentWhale.amount} USDC recently. View?`,
-      actionLabel: 'View',
+      title: t('dailyBrief.whaleAlertTitle'),
+      body: formatText(locale === 'tr' ? 'dailyBrief.recommendationWhaleTr' : 'dailyBrief.recommendationWhaleEn', {
+        label: recentWhale.label,
+        amount: recentWhale.amount,
+      }),
+      actionLabel: t('dailyBrief.view'),
       actionStyle: 'outline',
       onAction: () => goToWhale(recentWhale),
     })
@@ -685,9 +701,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   if (balanceChange && balanceDelta > 5) {
     recommendations.push({
       kind: 'balance',
-      title: 'Balance swing',
-      body: `Your balance changed ${balanceChange} USDC in 24h. Check activity?`,
-      actionLabel: 'Check Activity',
+      title: t('dailyBrief.balanceSwingTitle'),
+      body: formatText(locale === 'tr' ? 'dailyBrief.recommendationBalanceTr' : 'dailyBrief.recommendationBalanceEn', {
+        change: balanceChange,
+      }),
+      actionLabel: t('dailyBrief.checkActivity'),
       actionStyle: 'outline',
       onAction: scrollToRecentActivity,
     })
@@ -713,8 +731,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           <div className="flex items-center gap-2">
             <Lightbulb size={14} className="text-arc-gold" />
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/85">Recommendations</p>
-              <p className="text-[10px] text-arc-text-dim">For You</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/85">{t('dailyBrief.recommendations')}</p>
             </div>
           </div>
 
@@ -738,7 +755,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="space-y-1">
                           <p className="text-sm leading-relaxed text-arc-text">
-                            Reminder: {reminder.title}
+                            {locale === 'tr' ? 'Hatırlatıcı' : 'Reminder'}: {reminder.title}
                           </p>
                           <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
                             {getReminderDetails(reminder)}
@@ -752,7 +769,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                               className="h-8 px-3 text-[10px]"
                               onClick={() => handleReminderOpenSend(reminder)}
                             >
-                              Open Send
+                              {t('dailyBrief.openSend')}
                             </Button>
                           )}
                           <Button
@@ -761,7 +778,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                             className="h-8 px-3 text-[10px]"
                             onClick={() => void handleReminderDone(reminder)}
                           >
-                            Done
+                            {t('common.done')}
                           </Button>
                         </div>
                       </div>
@@ -789,8 +806,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           ) : recommendations.length === 0 ? (
             <div className="rounded-xl border border-arc-border bg-arc-bg/70 px-3 py-4 text-center">
-              <p className="text-sm font-medium text-arc-text">Nothing urgent right now.</p>
-              <p className="mt-1 text-xs text-arc-text-dim">You&apos;re all caught up.</p>
+              <p className="text-sm font-medium text-arc-text">{t('state.empty')}</p>
+              <p className="mt-1 text-xs text-arc-text-dim">{t('dailyBrief.noNewPatterns')}</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -826,10 +843,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         </div>
 
         <div className="space-y-2 rounded-2xl border border-arc-border bg-arc-card p-4">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Your balance</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.yourBalance')}</p>
           <div className="flex items-end gap-3">
             <span className="text-3xl font-bold text-arc-gold">{balance}</span>
-            <span className="mb-0.5 text-base text-arc-text-dim">USDC</span>
+            <span className="mb-0.5 text-base text-arc-text-dim">{t('common.usdc')}</span>
           </div>
           <div className="flex items-center gap-1.5">
             {changeLoading ? (
@@ -843,13 +860,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 </span>
               </>
             ) : (
-              <span className="text-xs text-arc-text-dim">No activity in last 24h</span>
+              <span className="text-xs text-arc-text-dim">{t('dailyBrief.noActivityIn24h')}</span>
             )}
           </div>
         </div>
 
         <div ref={recentActivityRef} className="space-y-1 rounded-2xl border border-arc-border bg-arc-card p-4">
-          <p className="mb-3 font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Recent activity</p>
+          <p className="mb-3 font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.recentActivity')}</p>
           {activityLoading ? (
             <div className="space-y-2">
               {[0, 100, 200].map((d) => (
@@ -857,7 +874,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               ))}
             </div>
           ) : safeActivity.length === 0 ? (
-            <p className="py-2 text-center text-xs text-arc-text-dim">No recent activity</p>
+            <p className="py-2 text-center text-xs text-arc-text-dim">{t('dailyBrief.noRecentActivity')}</p>
           ) : (
             <div className="space-y-px">
               {safeActivity.map((tx, i) => {
@@ -885,12 +902,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         </div>
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Arc ecosystem</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcEcosystem')}</p>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Block time', value: stats?.blockTime },
-              { label: 'Total tx', value: stats?.totalTx },
-              { label: 'Wallets', value: stats?.totalAddresses },
+              { label: t('dailyBrief.blockTime'), value: stats?.blockTime },
+              { label: t('dailyBrief.totalTx'), value: stats?.totalTx },
+              { label: t('dailyBrief.wallets'), value: stats?.totalAddresses },
             ].map(({ label, value }) => (
               <div key={label} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
                 <p className="text-[9px] text-arc-text-dim">{label}</p>
@@ -906,7 +923,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-gold/60' : 'border-arc-border'}`}>
           <div className="flex items-center gap-2">
             <Eye size={14} className="text-arc-gold" />
-            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Whale Movements</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.whaleMovements')}</p>
           </div>
 
           {whaleLoading && (
@@ -915,13 +932,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
           {!whaleLoading && whaleReady && whales.length === 0 && (
             <div className="space-y-2 py-1 text-center">
-              <p className="text-xs text-arc-text-dim">No whales tracked yet</p>
-              <p className="text-[10px] text-arc-text-dim">Mark addresses as whale from Address Book</p>
+              <p className="text-xs text-arc-text-dim">{t('dailyBrief.noWhalesTrackedYet')}</p>
+              <p className="text-[10px] text-arc-text-dim">{t('dailyBrief.markWhaleInAddressBook')}</p>
               <button
                 onClick={() => setCurrentView('address-book')}
                 className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
               >
-                Browse Address Book
+                {t('dailyBrief.browseAddressBook')}
               </button>
             </div>
           )}
@@ -934,7 +951,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>
                     <p className="text-[10px] text-arc-text-dim">
-                      {entry.direction === 'out' ? 'Sent' : 'Received'} {entry.amount} USDC · {formatRelativeTime(entry.timestamp)}
+                      {entry.direction === 'out' ? t('activity.sent') : t('activity.received')} {entry.amount} {t('common.usdc')} · {formatRelativeTime(entry.timestamp)}
                     </p>
                   </div>
                   <span className={`shrink-0 text-xs font-semibold ${entry.direction === 'out' ? 'text-arc-danger' : 'text-arc-success'}`}>
@@ -946,14 +963,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
 
           {!whaleLoading && whaleReady && whales.length > 0 && whaleEntries.length === 0 && (
-            <p className="py-1 text-center text-xs text-arc-text-dim">No recent whale activity</p>
+            <p className="py-1 text-center text-xs text-arc-text-dim">{t('dailyBrief.noRecentWhaleActivity')}</p>
           )}
         </div>
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-center gap-2">
             <Twitter size={14} className="text-[#d4af37]" />
-            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">Arc on X</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
           {tweetsLoading ? (
@@ -975,11 +992,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 onClick={() => setCurrentView('settings')}
                 className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
               >
-                Update key in Settings
+                {t('dailyBrief.updateKeyInSettings')}
               </button>
             </div>
           ) : safeTweets.length === 0 ? (
-            <p className="py-2 text-center text-xs text-arc-text-dim">No Arc tweets found yet</p>
+            <p className="py-2 text-center text-xs text-arc-text-dim">{t('dailyBrief.noArcTweetsFoundYet')}</p>
           ) : (
             <div className="space-y-4">
               {safeTweets.slice(0, 3).map((tweet) => (
@@ -998,7 +1015,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                     <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
                       <span className="truncate">@{tweet.authorHandle}</span>
                       <span className="shrink-0">·</span>
-                      <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : 'Unknown time'}</span>
+                      <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : t('dailyBrief.unknownTime')}</span>
                     </div>
                     {tweet.category && (
                       <div className="mt-0.5 flex items-center">
@@ -1020,10 +1037,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="relative overflow-hidden rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
           <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} className="text-arc-gold" />
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">Insight</p>
-            </div>
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-arc-gold" />
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">{t('dailyBrief.insight')}</p>
+          </div>
             {activePattern && (
               <button
                 onClick={() => dismissPattern(activePattern)}
@@ -1048,19 +1065,23 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   className="h-7 px-3 text-[10px]"
                   onClick={() => handlePatternAction(activePattern)}
                 >
-                  {activePattern.kind === 'recurring-recipient' && 'Send again'}
-                  {activePattern.kind === 'day-of-week' && 'Got it'}
-                  {activePattern.kind === 'amount-cluster' && `Send ${formatUsdcAmount(activePattern.amount)} USDC`}
+                  {activePattern.kind === 'recurring-recipient' && t('dailyBrief.sendAgain')}
+                  {activePattern.kind === 'day-of-week' && t('dailyBrief.gotIt')}
+                  {activePattern.kind === 'amount-cluster' && (
+                    locale === 'tr'
+                      ? `${formatUsdcAmount(activePattern.amount)} USDC gönder`
+                      : `Send ${formatUsdcAmount(activePattern.amount)} USDC`
+                  )}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="space-y-1">
               <p className="text-sm leading-relaxed text-arc-text-dim">
-                {rawTransfers.length < 3 ? 'Building patterns from your activity...' : 'No new patterns detected today.'}
+                {rawTransfers.length < 3 ? t('dailyBrief.buildingPatterns') : t('dailyBrief.noNewPatterns')}
               </p>
               {rawTransfers.length < 3 && (
-                <p className="text-[10px] text-arc-text-dim/60">Need at least 3 transactions</p>
+                <p className="text-[10px] text-arc-text-dim/60">{t('dailyBrief.needAtLeast3Tx')}</p>
               )}
             </div>
           )}
@@ -1075,8 +1096,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             }}
             className="w-full py-1 text-center text-[10px] text-arc-text-dim/40 transition-colors hover:text-arc-text-dim"
           >
-            Check whales now (dev)
-          </button>
+                {t('dailyBrief.checkWhalesNowDev')}
+              </button>
         )}
       </div>
     </div>

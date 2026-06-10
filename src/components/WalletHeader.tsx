@@ -1,4 +1,5 @@
 import { Bell, Menu } from 'lucide-react'
+import { t } from '@/lib/i18n'
 
 interface WalletHeaderProps {
   onMenu: () => void
@@ -10,7 +11,7 @@ export function WalletHeader({ onMenu, onNotifications }: WalletHeaderProps) {
     <div className="flex items-center justify-between px-4 py-3 border-b border-arc-border">
       <div className="flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-arc-success" />
-        <span className="text-xs font-medium text-arc-text-dim">Arc Testnet</span>
+        <span className="text-xs font-medium text-arc-text-dim">{t('wallet.arcTestnet')}</span>
       </div>
       <div className="flex items-center gap-2">
         <button

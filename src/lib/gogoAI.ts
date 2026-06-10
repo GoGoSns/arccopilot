@@ -1,6 +1,7 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
 import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
+import { getLocalePromptLanguage, getLocaleSync } from '@/lib/i18n'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import { GOGO_HISTORY, TWITTER_TWEETS_CACHE_KEY } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
@@ -454,9 +455,9 @@ function getPeriodLabel(period: '24h' | '7d' | '30d'): string {
   if (language === 'Turkish') {
     switch (period) {
       case '7d':
-        return '7 gunde'
+        return '7 günde'
       case '30d':
-        return '30 gunde'
+        return '30 günde'
       case '24h':
       default:
         return '24 saatte'
@@ -509,18 +510,18 @@ function buildSpendingSummary(
   const periodLabel = getPeriodLabel(period)
   const topRecipientText = topRecipient
     ? language === 'Turkish'
-      ? ` En cok gonderdigin kisi: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
+      ? ` En çok gönderdiğin kişi: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
       : ` Top recipient: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
     : ''
 
   if (txCount === 0) {
     return language === 'Turkish'
-      ? `Son ${periodLabel} USDC harcama hareketi bulunamadi.`
+      ? `Son ${periodLabel} USDC harcama hareketi bulunamadı.`
       : `No USDC spending activity was found in the ${periodLabel}.`
   }
 
   if (language === 'Turkish') {
-    return `Son ${periodLabel} ${txCount} transfer yaptin. ${sent} USDC gonderdin, ${received} USDC aldin ve net ${signedNet} USDC ile kapattin.${topRecipientText}`
+    return `Son ${periodLabel} ${txCount} transfer yaptın. ${sent} USDC gönderdin, ${received} USDC aldın ve net ${signedNet} USDC ile kapattın.${topRecipientText}`
   }
 
   return `Over the ${periodLabel}, you made ${txCount} transfers. You sent ${sent} USDC, received ${received} USDC, and finished at net ${signedNet} USDC.${topRecipientText}`
@@ -611,8 +612,7 @@ function buildGogoContextFromStore(): GogoContext {
 }
 
 function getLikelyLanguage(): 'Turkish' | 'English' {
-  if (typeof navigator === 'undefined') return 'English'
-  return navigator.language?.toLowerCase().startsWith('tr') ? 'Turkish' : 'English'
+  return getLocalePromptLanguage(getLocaleSync())
 }
 
 function getTimeOfDayLabel(): 'morning' | 'afternoon' | 'evening' | 'night' {
@@ -682,17 +682,29 @@ function formatTransferSummary(
 }
 
 function formatPatternSummary(pattern: Pattern): string {
+  const language = getLikelyLanguage()
   switch (pattern.kind) {
-    case 'recurring-recipient':
-      return `Sends to ${pattern.label ?? shortAddr(pattern.address)} ${pattern.count} times; last amount ${pattern.lastAmount} USDC.`
+    case 'recurring-recipient': {
+      const label = pattern.label ?? shortAddr(pattern.address)
+      return language === 'Turkish'
+        ? `${label} adresine ${pattern.count} kez gönderiyor; son miktar ${pattern.lastAmount} USDC.`
+        : `Sends to ${label} ${pattern.count} times; last amount ${pattern.lastAmount} USDC.`
+    }
     case 'day-of-week': {
-      const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][pattern.weekday] ?? 'that day'
-      return `Usually sends on ${weekday} to ${pattern.label ?? shortAddr(pattern.address)} (${pattern.count} observed weeks).`
+      const label = pattern.label ?? shortAddr(pattern.address)
+      const weekday = language === 'Turkish'
+        ? ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'][pattern.weekday] ?? 'o gün'
+        : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][pattern.weekday] ?? 'that day'
+      return language === 'Turkish'
+        ? `Genelde ${weekday} günleri ${label} adresine gönderiyor (${pattern.count} haftada gözlendi).`
+        : `Usually sends on ${weekday} to ${label} (${pattern.count} observed weeks).`
     }
     case 'amount-cluster':
-      return `Often sends ${pattern.amount.replace(/\.?0+$/, '')} USDC (${pattern.count} times).`
+      return language === 'Turkish'
+        ? `Sık sık ${pattern.amount.replace(/\.?0+$/, '')} USDC gönderiyor (${pattern.count} kez).`
+        : `Often sends ${pattern.amount.replace(/\.?0+$/, '')} USDC (${pattern.count} times).`
     default:
-      return 'Pattern detected.'
+      return language === 'Turkish' ? 'Patern tespit edildi.' : 'Pattern detected.'
   }
 }
 
@@ -800,7 +812,8 @@ You are writing the first assistant message immediately after the app opens.
 Greet the user by time of day (${timeOfDay}).
 Briefly summarize their current situation using REAL numbers from context: balance, recent activity count, whale count, tweet count, and any relevant pattern count.
 Then suggest exactly ONE concrete next step if relevant, based on a pattern, whale movement, or a useful follow-up check.
-Keep it to 2-3 sentences, warm, and in the user's likely language (${likelyLanguage}).
+Keep it to 2-3 sentences, warm, and in the user's active UI language (${likelyLanguage}).
+Respond in ${likelyLanguage}.
 If a suggestion is not relevant, keep the action as none.
 
 COUNTS:

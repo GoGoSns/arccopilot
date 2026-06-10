@@ -12,6 +12,7 @@ import { AddressBook } from '@/pages/AddressBook'
 import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
 import { GogoAI } from '@/pages/GogoAI'
+import { useLocale } from '@/lib/i18n'
 
 const VALID_VIEWS: View[] = [
   'welcome',
@@ -41,6 +42,7 @@ function isPendingSend(value: unknown): value is { ts: number; recipient?: strin
 }
 
 export default function App() {
+  useLocale()
   const isOnboarded = useStore((s) => s.isOnboarded)
   const currentView = useStore((s) => s.currentView)
   const setCurrentView = useStore((s) => s.setCurrentView)

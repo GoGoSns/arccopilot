@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { copyToClipboard } from '@/lib/utils'
 import { useStore } from '@/lib/store'
+import { formatText, t } from '@/lib/i18n'
 
 interface ReceiveProps {
   onBack: () => void
@@ -76,10 +77,10 @@ export function Receive({ onBack }: ReceiveProps) {
 
     try {
       await copyToClipboard(address)
-      flashNotice('Copied!')
+      flashNotice(t('receive.copied'))
     } catch (err) {
       console.error('[Receive] copy failed:', err)
-      flashNotice('Copy failed')
+      flashNotice(t('receive.copyFailed'))
     }
   }
 
@@ -89,24 +90,24 @@ export function Receive({ onBack }: ReceiveProps) {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'Receive USDC on Arc Testnet',
-          text: `Send USDC on Arc Testnet to: ${address}`,
+          title: t('receive.shareTitle'),
+          text: formatText('receive.shareText', { address }),
         })
-        flashNotice('Shared!')
+        flashNotice(t('receive.shared'))
         return
       }
 
       await copyToClipboard(address)
-      flashNotice('Copied!')
+      flashNotice(t('receive.copied'))
     } catch (err: any) {
       if (err?.name === 'AbortError') return
 
       try {
         await copyToClipboard(address)
-        flashNotice('Copied!')
+        flashNotice(t('receive.copied'))
       } catch (copyErr) {
         console.error('[Receive] share fallback failed:', copyErr)
-        flashNotice('Share unavailable')
+        flashNotice(t('receive.shareUnavailable'))
       }
     }
   }
@@ -117,7 +118,7 @@ export function Receive({ onBack }: ReceiveProps) {
         <button onClick={onBack} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-base font-semibold text-arc-text">Receive USDC</h2>
+        <h2 className="text-base font-semibold text-arc-text">{t('receive.receiveUsdc')}</h2>
       </div>
 
       <div className="relative flex-1 overflow-y-auto px-4 py-6">
@@ -147,10 +148,10 @@ export function Receive({ onBack }: ReceiveProps) {
           <Card className="w-full p-4 space-y-4">
             <div className="space-y-1 text-center">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-arc-text-dim">
-                Your Arc Testnet address
+                {t('receive.walletAddress')}
               </p>
               <p className="break-all font-mono text-[11px] leading-5 text-arc-text select-all">
-                {address ?? 'No wallet address available'}
+                {address ?? t('receive.noWalletAddress')}
               </p>
             </div>
 
@@ -163,7 +164,7 @@ export function Receive({ onBack }: ReceiveProps) {
                 disabled={!address}
               >
                 <Copy size={14} />
-                Copy address
+                {t('receive.copyAddress')}
               </Button>
               <Button
                 variant="ghost"
@@ -173,14 +174,14 @@ export function Receive({ onBack }: ReceiveProps) {
                 disabled={!address}
               >
                 <Share size={14} />
-                Share
+                {t('receive.share')}
               </Button>
             </div>
           </Card>
 
           <div className="rounded-2xl border border-arc-border bg-arc-card p-4">
             <p className="text-xs leading-relaxed text-arc-text-dim">
-              Only send USDC tokens on Arc Testnet to this address. Sending other tokens or wrong network will result in lost funds.
+              {t('receive.onlySendWarning')}
             </p>
           </div>
         </div>

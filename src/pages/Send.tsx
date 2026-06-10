@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import { formatText, t } from '@/lib/i18n'
 import {
   ARC_CHAIN_ID,
   ensureMetaMaskAccounts,
@@ -83,7 +84,7 @@ export function Send({ onBack }: SendProps) {
 
   const trimmedRecipient = recipient.trim()
   const isExactRecipient = /^0x[a-fA-F0-9]{40}$/.test(trimmedRecipient)
-  const recipientValidationError = trimmedRecipient && !isExactRecipient ? 'Invalid recipient address.' : ''
+  const recipientValidationError = trimmedRecipient && !isExactRecipient ? t('send.invalidRecipientAddress') : ''
   const recipientMemory = isExactRecipient ? addressMemories[trimmedRecipient.toLowerCase()] ?? null : null
   const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
   const isAmountValid = amount.trim().length > 0 && !Number.isNaN(Number(amount)) && Number(amount) > 0
@@ -173,7 +174,7 @@ export function Send({ onBack }: SendProps) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-        throw new Error('Please open a web page first.')
+        throw new Error(t('send.enterWebPageFirst'))
       }
 
       const result = await requestMetaMaskAccounts(tab.id)
@@ -368,23 +369,23 @@ export function Send({ onBack }: SendProps) {
     receiptPollTokenRef.current += 1
 
     if (!senderAddress) {
-      setError('Connect your wallet first')
+      setError(t('send.connectWalletFirst'))
       return
     }
 
     if (!isExactRecipient) {
-      setError('Invalid recipient address.')
+      setError(t('send.invalidRecipientAddress'))
       return
     }
 
     const amountNum = parseFloat(amount)
     if (isNaN(amountNum) || amountNum <= 0) {
-      setError('Invalid amount')
+      setError(t('send.invalidAmount'))
       return
     }
 
     if (amountNum > parseFloat(balance)) {
-      setError('Insufficient balance')
+      setError(t('send.insufficientBalance'))
       return
     }
 
@@ -393,7 +394,7 @@ export function Send({ onBack }: SendProps) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-        throw new Error('Please open a web page first')
+        throw new Error(t('send.enterWebPageFirst'))
       }
 
       // We still probe/ensure accounts to update UI state, but the real enforcement
@@ -474,14 +475,14 @@ export function Send({ onBack }: SendProps) {
       })
 
       const result = results[0]?.result
-      if (!result) throw new Error('No response from the page.')
+      if (!result) throw new Error(t('send.noResponseFromPage'))
       if ('error' in result) {
         if (result.error.code === 4100 || /not been authorized|unauthorized/i.test(result.error.message)) {
           setMetaMaskAccessState('unauthorized')
         }
         throw new Error(getMetaMaskFriendlyError(result.error))
       }
-      if (!result.hash) throw new Error('No tx hash returned')
+      if (!result.hash) throw new Error(t('send.noTxHashReturned'))
 
       setTxHash(result.hash)
       setTxStatus('pending')
@@ -495,7 +496,7 @@ export function Send({ onBack }: SendProps) {
       if (/MetaMask permission needed/i.test(message)) {
         setMetaMaskAccessState('unauthorized')
       }
-      setError(message || (err?.message ?? 'Failed to send'))
+      setError(message || (err?.message ?? t('send.failedToSend')))
     } finally {
       setIsLoading(false)
     }
@@ -506,9 +507,10 @@ export function Send({ onBack }: SendProps) {
     const displayRecipient = recipientMemory?.label ?? formatAddress(lastTransfer.recipient, 4)
     const isInBook = Boolean(recipientMemory)
     const shareText =
-      `Just sent ${lastTransfer.amount} USDC on Arc Testnet\n` +
-      `TX: ${EXPLORER_URL}/tx/${txHash}\n\n` +
-      `Sent via ArcCopilot`
+      formatText('send.shareText', {
+        amount: lastTransfer.amount,
+        url: `${EXPLORER_URL}/tx/${txHash}`,
+      })
 
     return (
       <div className="flex flex-col h-full bg-arc-bg">
@@ -516,19 +518,19 @@ export function Send({ onBack }: SendProps) {
           <button onClick={resetSendForm} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
             <ArrowLeft size={18} />
           </button>
-          <h2 className="text-base font-semibold text-arc-text">Send USDC</h2>
+          <h2 className="text-base font-semibold text-arc-text">{t('send.title')}</h2>
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-5 py-6 gap-5">
           <CheckCircle2 size={52} className="text-arc-gold" />
 
           <div className="text-center space-y-1">
-            <p className="text-sm font-medium text-arc-text-dim">Sent</p>
+            <p className="text-sm font-medium text-arc-text-dim">{t('send.sent')}</p>
             <p className="text-2xl font-bold text-arc-text">{lastTransfer.amount} USDC</p>
-            <p className="text-sm text-arc-text-dim">to {displayRecipient}</p>
+            <p className="text-sm text-arc-text-dim">{formatText('send.successTo', { recipient: displayRecipient })}</p>
             {txStatus === 'confirmed' && (
               <span className="inline-block mt-1 rounded-full bg-arc-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-arc-success">
-                Confirmed
+                {t('send.confirmed')}
               </span>
             )}
           </div>
@@ -546,7 +548,7 @@ export function Send({ onBack }: SendProps) {
               onClick={() => window.open(`${EXPLORER_URL}/tx/${txHash}`, '_blank', 'noopener,noreferrer')}
             >
               <ExternalLink size={14} />
-              View on ArcScan
+              {t('send.viewOnExplorer')}
             </Button>
             {!isInBook && (
               <Button variant="ghost" fullWidth
@@ -557,21 +559,21 @@ export function Send({ onBack }: SendProps) {
                 }}
               >
                 <UserPlus size={14} />
-                Save Recipient
+                {t('send.saveRecipient')}
               </Button>
             )}
             <Button variant="ghost" fullWidth
               onClick={() => navigator.clipboard.writeText(shareText)}
             >
               <Share2 size={14} />
-              Share
+              {t('send.share')}
             </Button>
           </div>
         </div>
 
         <div className="px-4 pb-6">
           <Button variant="ghost" fullWidth onClick={resetSendForm}>
-            Send another
+            {t('send.sendAnother')}
           </Button>
         </div>
       </div>
@@ -585,15 +587,15 @@ export function Send({ onBack }: SendProps) {
         <button onClick={onBack} className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
           <ArrowLeft size={18} />
         </button>
-        <h2 className="text-base font-semibold text-arc-text">Send USDC</h2>
+        <h2 className="text-base font-semibold text-arc-text">{t('send.title')}</h2>
       </div>
 
       <div className="flex-1 px-4 py-6 space-y-4 overflow-y-auto">
         <div className="space-y-2">
           <div className="relative">
             <Input
-              label="Recipient address"
-              placeholder="0x... or label"
+              label={t('send.recipientAddress')}
+              placeholder={t('send.recipientPlaceholder')}
               value={recipient}
               error={recipientValidationError}
               onFocus={() => setShowSuggestions(true)}
@@ -634,24 +636,24 @@ export function Send({ onBack }: SendProps) {
           <div className="flex flex-wrap gap-2">
             {isExactRecipient && (
               <span className="rounded-full border border-arc-success/20 bg-arc-success/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-success">
-                Valid address
+                {t('send.validAddress')}
               </span>
             )}
             {isUnknownRecipient && (
               <span className="rounded-full border border-arc-gold/20 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-gold">
-                Unknown recipient
+                {t('send.unknownRecipient')}
               </span>
             )}
             {recipientContractStatus === 'contract' && (
               <span className="rounded-full border border-arc-border bg-arc-card/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-text">
-                Contract address
+                {t('send.contractAddress')}
               </span>
             )}
           </div>
 
           {showRecipientSafetyWarning && (
             <p className="text-[11px] leading-relaxed text-arc-gold">
-              Verify this recipient before sending.
+              {t('send.verifyRecipient')}
             </p>
           )}
         </div>
@@ -659,9 +661,9 @@ export function Send({ onBack }: SendProps) {
         {metaMaskAccessState === 'unauthorized' && (
           <Card className="space-y-3 border-arc-gold/30 bg-arc-gold/10 p-3">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-arc-gold">MetaMask permission needed</p>
+              <p className="text-sm font-semibold text-arc-gold">{t('send.metaMaskPermissionNeeded')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">
-                Connect MetaMask to authorize this site before sending.
+                {t('send.metaMaskPermissionNeeded')}
               </p>
             </div>
             <Button
@@ -672,7 +674,7 @@ export function Send({ onBack }: SendProps) {
               disabled={metaMaskConnecting}
             >
               {metaMaskConnecting && <Loader2 size={14} className="animate-spin" />}
-              {metaMaskConnecting ? 'Connecting...' : 'Connect MetaMask'}
+              {metaMaskConnecting ? t('send.connecting') : t('send.connectMetaMask')}
             </Button>
           </Card>
         )}
@@ -695,7 +697,7 @@ export function Send({ onBack }: SendProps) {
 
         <Input
           ref={amountRef}
-          label="Amount (USDC)"
+          label={t('send.amount')}
           placeholder="0.00"
           type="number"
           step="0.000001"
@@ -717,17 +719,17 @@ export function Send({ onBack }: SendProps) {
         )}
 
         <div className="flex items-center justify-between text-xs text-arc-text-dim">
-          <span>Available balance</span>
+          <span>{t('send.availableBalance')}</span>
           <span className="text-arc-gold">{balance} USDC</span>
         </div>
 
         <div className="p-3 rounded-xl bg-arc-card border border-arc-border text-xs text-arc-text-dim space-y-1">
           <div className="flex justify-between">
-            <span>Network fee</span>
+            <span>{t('send.networkFee')}</span>
             <span className="text-arc-text">0.001 USDC</span>
           </div>
           <div className="flex justify-between">
-            <span>Estimated time</span>
+            <span>{t('send.estimatedTime')}</span>
             <span className="text-arc-text">~3s</span>
           </div>
         </div>
@@ -743,7 +745,7 @@ export function Send({ onBack }: SendProps) {
           style={isLoading ? { opacity: 0.5 } : undefined}
         >
           {isLoading && <Loader2 size={16} className="animate-spin" />}
-          {isLoading ? 'Sending...' : 'Confirm Send'}
+          {isLoading ? t('send.sending') : t('send.confirmSend')}
         </Button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Settings, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ARC_CHAIN_PARAMS } from '@/lib/metamask'
+import { t } from '@/lib/i18n'
 import { useStore } from '@/lib/store'
 
 type ConnectResult =
@@ -26,8 +27,7 @@ export function Welcome() {
 
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
         throw new Error(
-          'Please open a web page first (e.g. arcpaymain.vercel.app), ' +
-          'then click Connect MetaMask again. MetaMask is unavailable on browser system pages.'
+          `${t('send.enterWebPageFirst')} ${t('welcome.metamaskMissing')}`
         )
       }
 
@@ -37,7 +37,7 @@ export function Welcome() {
         world: 'MAIN',
         func: (async (): Promise<ConnectResult> => {
           const eth = (window as any).ethereum
-          if (!eth) return { error: 'MetaMask is not installed or not active on this page.' }
+          if (!eth) return { error: t('welcome.metamaskMissing') }
           try {
             const accounts: string[] = await eth.request({ method: 'eth_requestAccounts' })
             const chainId: string = await eth.request({ method: 'eth_chainId' })
@@ -49,9 +49,9 @@ export function Welcome() {
       })
 
       const payload = results[0]?.result
-      if (!payload) throw new Error('No response from the page.')
+      if (!payload) throw new Error(t('welcome.noResponseFromPage'))
       if ('error' in payload) throw new Error(payload.error)
-      if (!payload.accounts.length) throw new Error('MetaMask returned no accounts.')
+      if (!payload.accounts.length) throw new Error(t('welcome.noAccounts'))
 
       const address = payload.accounts[0]
 
@@ -77,7 +77,7 @@ export function Welcome() {
       setCurrentView('wallet')
     } catch (err: any) {
       console.error('MetaMask connect error:', err)
-      setErrorMsg(err.message ?? 'Connection failed.')
+      setErrorMsg(err.message ?? t('welcome.connectionFailed'))
     } finally {
       setConnecting(false)
     }
@@ -107,9 +107,9 @@ export function Welcome() {
         </div>
 
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold text-arc-text font-display">Welcome to ArcCopilot</h1>
+          <h1 className="text-2xl font-bold text-arc-text font-display">{t('welcome.title')}</h1>
           <p className="text-sm text-arc-text-dim leading-relaxed">
-            Your copilot for the Arc economy. Wallet, dashboard, community, and AI in one place.
+            {t('welcome.subtitle')}
           </p>
         </div>
 
@@ -117,20 +117,20 @@ export function Welcome() {
           {/* Create wallet - Phase 3 */}
           <div className="relative">
             <Button variant="primary" fullWidth size="lg" disabled>
-              Create new wallet
+              {t('welcome.createWallet')}
             </Button>
             <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-gold/20 text-arc-gold border border-arc-gold/30 pointer-events-none">
-              Coming soon
+              {t('welcome.comingSoon')}
             </span>
           </div>
 
           {/* Import wallet - Phase 3 */}
           <div className="relative">
             <Button variant="outline" fullWidth size="lg" disabled>
-              Import existing wallet
+              {t('welcome.importWallet')}
             </Button>
             <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-gold/20 text-arc-gold border border-arc-gold/30 pointer-events-none">
-              Coming soon
+              {t('welcome.comingSoon')}
             </span>
           </div>
 
@@ -139,14 +139,14 @@ export function Welcome() {
             variant="ghost"
             fullWidth
             size="lg"
-            onClick={handleMetaMask}
-            disabled={connecting}
-          >
-            {connecting
-              ? <><Loader2 size={16} className="animate-spin" /> Connecting...</>
-              : 'Connect MetaMask'
+          onClick={handleMetaMask}
+          disabled={connecting}
+        >
+          {connecting
+              ? <><Loader2 size={16} className="animate-spin" /> {t('welcome.connecting')}</>
+              : t('welcome.connectMetaMask')
             }
-          </Button>
+        </Button>
         </div>
 
         {/* Error */}
@@ -158,16 +158,16 @@ export function Welcome() {
 
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-arc-success" />
-          <span className="text-xs text-arc-text-dim">Arc Testnet</span>
+          <span className="text-xs text-arc-text-dim">{t('wallet.arcTestnet')}</span>
         </div>
       </div>
 
       <div className="px-6 py-3 text-center">
         <p className="text-[10px] text-arc-text-dim">
           By continuing, you agree to our{' '}
-          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">Terms</button>
+          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">{t('welcome.terms')}</button>
           {' '}and{' '}
-          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">Privacy Policy</button>
+          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">{t('welcome.privacyPolicy')}</button>
         </p>
       </div>
     </div>

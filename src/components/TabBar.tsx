@@ -1,3 +1,5 @@
+import { t } from '@/lib/i18n'
+
 type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
 
 interface TabBarProps {
@@ -5,14 +7,14 @@ interface TabBarProps {
   onChange: (tab: Tab) => void
 }
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'tokens',   label: 'Tokens'   },
-  { id: 'activity', label: 'Activity' },
-  { id: 'nfts',     label: 'NFTs'     },
-  { id: 'discover', label: 'Discover' },
-]
-
 export function TabBar({ active, onChange }: TabBarProps) {
+  const TABS: { id: Tab; label: string }[] = [
+    { id: 'tokens', label: t('tabs.tokens') },
+    { id: 'activity', label: t('tabs.activity') },
+    { id: 'nfts', label: t('tabs.nfts') },
+    { id: 'discover', label: t('tabs.discover') },
+  ]
+
   return (
     <div className="flex border-b border-arc-border">
       {TABS.map(({ id, label }) => (
