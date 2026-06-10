@@ -4,7 +4,7 @@ import { ARC_RPC_URL, BLOCKSCOUT_BASE, TWITTERAPI_BASE } from './lib/constants'
 export default defineManifest({
   manifest_version: 3,
   name: 'ArcCopilot',
-  version: '0.1.0',
+  version: '0.2.0',
   description: 'Your copilot for the Arc economy - wallet, dashboard, social, and AI in one extension',
   action: {
     default_popup: 'src/popup/index.html',

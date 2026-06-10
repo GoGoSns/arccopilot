@@ -87,7 +87,7 @@ export function Welcome() {
     <div className="flex flex-col h-full bg-arc-bg">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-xs font-mono text-arc-text-dim">ArcCopilot v0.1.0</span>
+        <span className="text-xs font-mono text-arc-text-dim">ArcCopilot v0.2.0</span>
         <button className="p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors">
           <Settings size={14} />
         </button>

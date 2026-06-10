@@ -581,7 +581,7 @@ export function Settings({ onBack }: SettingsProps) {
           { section: t('common.network'), items: [{ label: t('settings.currentNetwork'), value: 'Arc Testnet' }, { label: t('settings.rpcUrl'), value: ARC_RPC_URL.replace(/^https?:\/\//, '') }] },
           { section: t('common.security'), items: [{ label: t('settings.lockExtension'), value: '' }, { label: t('settings.exportPrivateKey'), value: '' }] },
           { section: t('common.preferences'), items: [{ label: t('common.theme'), value: t('common.dark') }, { label: t('common.currency'), value: t('common.usd') }, { label: t('settings.language'), value: '' }] },
-          { section: t('common.about'), items: [{ label: t('common.version'), value: 'v0.1.0' }, { label: t('settings.chainId'), value: String(ARC_CHAIN_ID) }] },
+          { section: t('common.about'), items: [{ label: t('common.version'), value: 'v0.2.0' }, { label: t('settings.chainId'), value: String(ARC_CHAIN_ID) }] },
         ].map(({ section, items }) => (
           <div key={section}>
             <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">

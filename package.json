@@ -1,7 +1,7 @@
 {
   "name": "arccopilot",
-  "version": "0.1.0",
-  "description": "Your copilot for the Arc economy — wallet, dashboard, social, and AI in one extension",
+  "version": "0.2.0",
+  "description": "Your copilot for the Arc economy - wallet, dashboard, social, and AI in one extension",
   "private": true,
   "type": "module",
   "scripts": {

@@ -16,7 +16,7 @@ export function Options() {
           </div>
           <div>
             <h1 className="text-xl font-bold font-display">ArcCopilot Settings</h1>
-            <p className="text-xs text-arc-text-dim">v0.1.0 - Arc Testnet</p>
+            <p className="text-xs text-arc-text-dim">v0.2.0 - Arc Testnet</p>
           </div>
         </div>
 
@@ -24,7 +24,7 @@ export function Options() {
           {[
             { title: 'Network', desc: `Arc Testnet (chainId ${ARC_CHAIN_ID})`, value: 'Active' },
             { title: 'RPC', desc: ARC_RPC_URL.replace(/^https?:\/\//, ''), value: 'Connected' },
-            { title: 'Version', desc: 'ArcCopilot', value: 'v0.1.0' },
+            { title: 'Version', desc: 'ArcCopilot', value: 'v0.2.0' },
           ].map(({ title, desc, value }) => (
             <div key={title} className="flex items-center justify-between p-4 rounded-2xl bg-arc-card border border-arc-border">
               <div>
