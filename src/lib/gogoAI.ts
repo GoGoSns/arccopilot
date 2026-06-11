@@ -585,7 +585,7 @@ function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {
     ? raw.dataComplete
     : typeof raw.activityPartial === 'boolean'
       ? !raw.activityPartial
-      : true
+      : txCount != null
   const hasActivity = typeof raw.hasActivity === 'boolean'
     ? raw.hasActivity
     : dataComplete

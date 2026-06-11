@@ -148,7 +148,6 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
         address={address ?? ''}
         balance={balance}
         isLoading={isLoading}
-        changePercent={2.4}
       />
 
       <PortfolioSection tokens={portfolioTokens} isLoading={isPortfolioLoading} />
