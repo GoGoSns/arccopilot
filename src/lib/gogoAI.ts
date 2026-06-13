@@ -497,27 +497,14 @@ function getPeriodMs(period: '24h' | '7d' | '30d'): number {
 }
 
 function getPeriodLabel(period: '24h' | '7d' | '30d'): string {
-  const language = getLikelyLanguage()
-  if (language === 'Turkish') {
-    switch (period) {
-      case '7d':
-        return '7 günde'
-      case '30d':
-        return '30 günde'
-      case '24h':
-      default:
-        return '24 saatte'
-    }
-  }
-
   switch (period) {
     case '7d':
-      return 'last 7 days'
+      return t('gogo.period7d')
     case '30d':
-      return 'last 30 days'
+      return t('gogo.period30d')
     case '24h':
     default:
-      return 'last 24 hours'
+      return t('gogo.period24h')
   }
 }
 
@@ -550,7 +537,6 @@ function buildSpendingSummary(
   txCount: number,
   topRecipient: { label: string; amountUnits: bigint } | null,
 ): string {
-  const language = getLikelyLanguage()
   const sent = formatUsdcAmount(totalSentUnits)
   const received = formatUsdcAmount(totalReceivedUnits)
   const netAbs = netUnits < 0n ? -netUnits : netUnits
@@ -558,22 +544,24 @@ function buildSpendingSummary(
   const signedNet = `${netUnits > 0n ? '+' : netUnits < 0n ? '-' : ''}${netValue}`
   const periodLabel = getPeriodLabel(period)
   const topRecipientText = topRecipient
-    ? language === 'Turkish'
-      ? ` En çok gönderdiğin kişi: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
-      : ` Top recipient: ${topRecipient.label} (${formatUsdcAmount(topRecipient.amountUnits)} USDC).`
+    ? formatText('gogo.spendingSummaryTopRecipient', {
+        label: topRecipient.label,
+        amount: formatUsdcAmount(topRecipient.amountUnits),
+      })
     : ''
 
   if (txCount === 0) {
-    return language === 'Turkish'
-      ? `Son ${periodLabel} USDC harcama hareketi bulunamadı.`
-      : `No USDC spending activity was found in the ${periodLabel}.`
+    return formatText('gogo.spendingSummaryNoActivity', { periodLabel })
   }
 
-  if (language === 'Turkish') {
-    return `Son ${periodLabel} ${txCount} transfer yaptın. ${sent} USDC gönderdin, ${received} USDC aldın ve net ${signedNet} USDC ile kapattın.${topRecipientText}`
-  }
-
-  return `Over the ${periodLabel}, you made ${txCount} transfers. You sent ${sent} USDC, received ${received} USDC, and finished at net ${signedNet} USDC.${topRecipientText}`
+  return formatText('gogo.spendingSummaryBody', {
+    periodLabel,
+    txCount,
+    sent,
+    received,
+    signedNet,
+    topRecipientText,
+  })
 }
 
 function normalizeAddressAnalysis(raw: unknown): AddressAnalysis | null {

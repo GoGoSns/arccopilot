@@ -248,6 +248,18 @@ function getSpendingStyles(tone: 'negative' | 'neutral' | 'positive') {
   }
 }
 
+function getSpendingLabel(tone: 'negative' | 'neutral' | 'positive'): string {
+  switch (tone) {
+    case 'negative':
+      return t('gogo.netSpend')
+    case 'positive':
+      return t('gogo.netGain')
+    case 'neutral':
+    default:
+      return t('gogo.breakEven')
+  }
+}
+
 function getRiskLabel(analysis: AddressAnalysis): string {
   const tone = getRiskTone(analysis)
 
@@ -1572,7 +1584,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const riskLabel = analysis ? getRiskLabel(analysis) : ''
     const spendingTone = spendingAnalysis ? getSpendingTone(spendingAnalysis.net) : null
     const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
-    const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'
+    const spendingLabel = spendingTone ? getSpendingLabel(spendingTone) : ''
     const actionLoadingLabel = getActionLoadingLabel(action)
 
     return (
@@ -1675,13 +1687,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
                         </p>
                       </div>
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Transactions</p>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.transactions')}</p>
                         <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
                       </div>
                     </div>
 
                     <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.summary')}</p>
                       <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
                     </div>
 
@@ -1701,17 +1713,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <div className="flex items-center gap-3">
                     <Loader2 size={18} className="animate-spin text-arc-gold" />
                     <div>
-                      <p className="text-sm font-medium text-arc-text">Summarizing your spending...</p>
-                      <p className="text-xs text-arc-text-dim">Counting sent and received USDC transfers.</p>
+                      <p className="text-sm font-medium text-arc-text">{t('gogo.summarizingSpending')}</p>
+                      <p className="text-xs text-arc-text-dim">{t('gogo.countingSpendingTransfers')}</p>
                     </div>
                   </div>
                 ) : spendingAnalysis && spendingStyles ? (
                   <>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
-                          Spending summary
-                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">{t('gogo.spendingSummary')}</p>
                         <h4 className={`mt-1 text-base font-semibold ${spendingStyles.accent}`}>
                           {spendingLabel}
                         </h4>
@@ -1723,41 +1733,41 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
                     <div className="mt-4 grid grid-cols-2 gap-3">
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Sent</p>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.sent')}</p>
                         <p className="mt-1 text-sm font-medium text-arc-text">
                           {formatSpendingAmount(spendingAnalysis.totalSent)} USDC
                         </p>
                       </div>
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Received</p>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.received')}</p>
                         <p className="mt-1 text-sm font-medium text-arc-text">
                           {formatSpendingAmount(spendingAnalysis.totalReceived)} USDC
                         </p>
                       </div>
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Net</p>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.net')}</p>
                         <p className={`mt-1 text-sm font-medium ${spendingStyles.accent}`}>
                           {spendingAnalysis.net > 0 ? '+' : spendingAnalysis.net < 0 ? '-' : ''}
                           {formatSpendingAmount(Math.abs(spendingAnalysis.net))} USDC
                         </p>
                       </div>
                       <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Tx count</p>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.txCount')}</p>
                         <p className="mt-1 text-sm font-medium text-arc-text">{spendingAnalysis.txCount}</p>
                       </div>
                     </div>
 
                     <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Top recipient</p>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.topRecipient')}</p>
                       <p className="mt-1 text-sm leading-relaxed text-arc-text">
                         {spendingAnalysis.topRecipient
                           ? `${spendingAnalysis.topRecipient.label} (${formatSpendingAmount(spendingAnalysis.topRecipient.amount)} USDC)`
-                          : 'No outgoing transfers in this period.'}
+                          : t('gogo.noOutgoingTransfers')}
                       </p>
                     </div>
 
                     <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.summary')}</p>
                       <p className="mt-1 text-sm leading-relaxed text-arc-text">{spendingAnalysis.summary}</p>
                     </div>
                   </>
@@ -1983,11 +1993,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const riskLabel = analysis ? getRiskLabel(analysis) : ''
               const spendingTone = spendingAnalysis ? getSpendingTone(spendingAnalysis.net) : null
               const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
-              const spendingLabel = spendingTone === 'negative' ? 'Net spend' : spendingTone === 'positive' ? 'Net gain' : 'Break-even'
-              const actionLoadingLabel = action ? getActionLoadingLabel(action) : 'Working...'
+              const spendingLabel = spendingTone ? getSpendingLabel(spendingTone) : ''
+              const actionLoadingLabel = action ? getActionLoadingLabel(action) : t('gogo.working')
               const canSpeakMessage = !isUser && !isError && Boolean(message.content.trim())
               const isSpeakingThisMessage = speakingMessageKey === actionKey
-              const speechButtonLabel = isSpeakingThisMessage && speechSynthesisSupported ? 'Stop' : 'Sesli oku'
+              const speechButtonLabel = isSpeakingThisMessage && speechSynthesisSupported ? t('gogo.stopReading') : t('gogo.readAloud')
 
               return (
                 <div key={`${message.timestamp}-${index}`} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
@@ -2142,13 +2152,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
                               </p>
                             </div>
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Transactions</p>
-                              <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
-                            </div>
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.transactions')}</p>
+                            <p className="mt-1 text-sm font-medium text-arc-text">{formatAddressTxCount(analysis.txCount)}</p>
                           </div>
+                        </div>
 
-                          <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                        <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.summary')}</p>
                             <p className="mt-1 text-sm leading-relaxed text-arc-text">{analysis.summary}</p>
                           </div>
 
@@ -2184,8 +2194,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                           <div className="flex items-center gap-3">
                             <Loader2 size={18} className="animate-spin text-arc-gold" />
                             <div>
-                              <p className="text-sm font-medium text-arc-text">Summarizing your spending...</p>
-                              <p className="text-xs text-arc-text-dim">Counting sent and received USDC transfers.</p>
+                              <p className="text-sm font-medium text-arc-text">{t('gogo.summarizingSpending')}</p>
+                              <p className="text-xs text-arc-text-dim">{t('gogo.countingSpendingTransfers')}</p>
                             </div>
                           </div>
                         </Card>
@@ -2193,9 +2203,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                         <Card className={`border p-4 shadow-lg shadow-black/10 ${spendingStyles.card}`}>
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
-                                Spending summary
-                              </p>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">{t('gogo.spendingSummary')}</p>
                               <h4 className={`mt-1 text-base font-semibold ${spendingStyles.accent}`}>
                                 {spendingLabel}
                               </h4>
@@ -2207,41 +2215,41 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
                           <div className="mt-4 grid grid-cols-2 gap-3">
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Sent</p>
+                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.sent')}</p>
                               <p className="mt-1 text-sm font-medium text-arc-text">
                                 {formatSpendingAmount(spendingAnalysis.totalSent)} USDC
                               </p>
                             </div>
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Received</p>
+                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.received')}</p>
                               <p className="mt-1 text-sm font-medium text-arc-text">
                                 {formatSpendingAmount(spendingAnalysis.totalReceived)} USDC
                               </p>
                             </div>
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Net</p>
+                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.net')}</p>
                               <p className={`mt-1 text-sm font-medium ${spendingStyles.accent}`}>
                                 {spendingAnalysis.net > 0 ? '+' : spendingAnalysis.net < 0 ? '-' : ''}
                                 {formatSpendingAmount(Math.abs(spendingAnalysis.net))} USDC
                               </p>
                             </div>
                             <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Tx count</p>
+                              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.txCount')}</p>
                               <p className="mt-1 text-sm font-medium text-arc-text">{spendingAnalysis.txCount}</p>
                             </div>
                           </div>
 
                           <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Top recipient</p>
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.topRecipient')}</p>
                             <p className="mt-1 text-sm leading-relaxed text-arc-text">
                               {spendingAnalysis.topRecipient
                                 ? `${spendingAnalysis.topRecipient.label} (${formatSpendingAmount(spendingAnalysis.topRecipient.amount)} USDC)`
-                                : 'No outgoing transfers in this period.'}
+                                : t('gogo.noOutgoingTransfers')}
                             </p>
                           </div>
 
                           <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Summary</p>
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.summary')}</p>
                             <p className="mt-1 text-sm leading-relaxed text-arc-text">{spendingAnalysis.summary}</p>
                           </div>
                         </Card>
