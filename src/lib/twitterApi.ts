@@ -4,15 +4,33 @@ import {
   TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
   TWITTER_SEARCH_QUERY,
   TWITTER_TWEETS_CACHE_KEY,
+  getTwitterFeedCacheKey,
 } from '@/lib/storageKeys'
 import { getApiKey as getGeminiApiKey } from '@/lib/gogoAI'
-import { GEMINI_MODEL, TWITTERAPI_BASE } from '@/lib/constants'
+import {
+  GEMINI_MODEL,
+  TWITTERAPI_BASE,
+  TWITTER_FEED_CACHE_TTL_MS,
+  TWITTER_FEED_RETRY_BACKOFF_MS,
+} from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
 export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
 export const DEFAULT_TWITTER_OFFICIAL_ACCOUNTS = 'arc, circle'
 export type TweetCategory = 'news' | 'opportunity' | 'discussion'
+type TwitterFeedKind = 'community' | 'official'
+
+type TwitterFeedCacheEntry = {
+  tweets: TwitterTweet[]
+  fetchedAt: number
+}
+
+export type TwitterFeedFetchResult = {
+  tweets: TwitterTweet[]
+  fetchedAt: number
+  cacheStatus: 'fresh-cache' | 'network' | 'stale-cache'
+}
 
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
@@ -34,6 +52,53 @@ async function clearOfficialTweetsCache(): Promise<void> {
   } catch {
     // Ignore cache cleanup failures. The next fetch will still use the current official account list.
   }
+}
+
+function normalizeFeedQuery(query: string): string {
+  return query.trim().replace(/\s+/g, ' ')
+}
+
+function buildTwitterFeedCacheKey(kind: TwitterFeedKind, query: string): string {
+  return getTwitterFeedCacheKey(kind, normalizeFeedQuery(query))
+}
+
+function isTwitterFeedCacheEntry(value: unknown): value is TwitterFeedCacheEntry {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  const entry = value as { tweets?: unknown; fetchedAt?: unknown }
+  return Array.isArray(entry.tweets) && typeof entry.fetchedAt === 'number'
+}
+
+function isFreshTwitterFeedCache(entry: TwitterFeedCacheEntry): boolean {
+  return Date.now() - entry.fetchedAt < TWITTER_FEED_CACHE_TTL_MS
+}
+
+async function readTwitterFeedCache(kind: TwitterFeedKind, query: string): Promise<TwitterFeedCacheEntry | null> {
+  if (!canUseChromeStorage()) return null
+
+  const cacheKey = buildTwitterFeedCacheKey(kind, query)
+  const result = await chrome.storage.local.get(cacheKey) as Record<string, unknown>
+  const cached = result[cacheKey]
+
+  if (!isTwitterFeedCacheEntry(cached)) {
+    if (typeof cached !== 'undefined') {
+      await chrome.storage.local.remove(cacheKey)
+    }
+    return null
+  }
+
+  return cached
+}
+
+async function writeTwitterFeedCache(kind: TwitterFeedKind, query: string, entry: TwitterFeedCacheEntry): Promise<void> {
+  if (!canUseChromeStorage()) return
+
+  const cacheKey = buildTwitterFeedCacheKey(kind, query)
+  await chrome.storage.local.set({ [cacheKey]: entry })
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
 function normalizeTwitterHandle(handle: string): string {
@@ -345,46 +410,119 @@ export async function setSearchQuery(query: string): Promise<void> {
   }
 }
 
-async function fetchTweetsByQuery(query: string, apiKey: string, limit: number): Promise<TwitterTweet[]> {
+async function fetchTweetsByQueryWithCache(
+  query: string,
+  apiKey: string | null,
+  limit: number,
+  kind: TwitterFeedKind,
+): Promise<TwitterFeedFetchResult> {
+  const normalizedQuery = normalizeFeedQuery(query)
+  const cached = await readTwitterFeedCache(kind, normalizedQuery)
+  if (cached && isFreshTwitterFeedCache(cached)) {
+    return {
+      tweets: cached.tweets.slice(0, limit),
+      fetchedAt: cached.fetchedAt,
+      cacheStatus: 'fresh-cache',
+    }
+  }
+
+  if (!apiKey) {
+    throw new Error('TwitterAPI key not set. Add it in Settings.')
+  }
+
   const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
-  searchUrl.searchParams.set('query', query)
+  searchUrl.searchParams.set('query', normalizedQuery)
   searchUrl.searchParams.set('queryType', 'Latest')
 
-  const res = await fetch(searchUrl.toString(), {
+  const executeFetch = async (): Promise<Response> => fetch(searchUrl.toString(), {
     headers: { 'X-API-Key': apiKey },
   })
 
+  const staleCacheResult = (): TwitterFeedFetchResult | null => {
+    if (!cached) return null
+    return {
+      tweets: cached.tweets.slice(0, limit),
+      fetchedAt: cached.fetchedAt,
+      cacheStatus: 'stale-cache',
+    }
+  }
+
+  let res: Response
+  try {
+    res = await executeFetch()
+  } catch (error) {
+    const fallback = staleCacheResult()
+    if (fallback) return fallback
+    throw error instanceof Error ? error : new Error(String(error))
+  }
+
+  if (res.status === 429) {
+    debugWarn('[TwitterAPI] rate limited, retrying once:', { kind, query: normalizedQuery })
+    await delay(TWITTER_FEED_RETRY_BACKOFF_MS)
+
+    try {
+      res = await executeFetch()
+    } catch (error) {
+      const fallback = staleCacheResult()
+      if (fallback) return fallback
+      throw error instanceof Error ? error : new Error(String(error))
+    }
+
+    if (res.status === 429) {
+      const fallback = staleCacheResult()
+      if (fallback) return fallback
+      throw new Error('Rate limit. Try again later.')
+    }
+  }
+
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) throw new Error('Invalid TwitterAPI key. Update in Settings.')
-    if (res.status === 429) throw new Error('Rate limit. Try again later.')
     throw new Error(`TwitterAPI error ${res.status}`)
   }
 
   const data = await res.json() as TwitterApiResponse
   const tweets = Array.isArray(data.tweets) ? data.tweets : []
+  const mapped = tweets.slice(0, limit).map(mapTwitterApiTweet)
+  const fetchedAt = Date.now()
 
-  return tweets.slice(0, limit).map(mapTwitterApiTweet)
+  await writeTwitterFeedCache(kind, normalizedQuery, {
+    tweets: mapped,
+    fetchedAt,
+  })
+
+  return {
+    tweets: mapped,
+    fetchedAt,
+    cacheStatus: 'network',
+  }
+}
+
+export async function fetchArcTweetFeed(): Promise<TwitterFeedFetchResult> {
+  const apiKey = await getTwitterApiKey()
+  const query = await getSearchQuery()
+  return fetchTweetsByQueryWithCache(query, apiKey, 5, 'community')
 }
 
 export async function fetchArcTweets(): Promise<TwitterTweet[]> {
-  const apiKey = await getTwitterApiKey()
-  if (!apiKey) throw new Error('TwitterAPI key not set. Add it in Settings.')
-
-  const query = await getSearchQuery()
-  return fetchTweetsByQuery(query, apiKey, 5)
+  const result = await fetchArcTweetFeed()
+  return result.tweets
 }
 
-export async function fetchOfficialTweets(): Promise<TwitterTweet[]> {
+export async function fetchOfficialTweetFeed(): Promise<TwitterFeedFetchResult | null> {
   const apiKey = await getTwitterApiKey()
-  if (!apiKey) return []
 
   try {
     const officialAccounts = await getOfficialAccounts()
     const handles = parseTwitterHandleList(officialAccounts)
     const query = buildOfficialTweetsQuery(handles)
-    return await fetchTweetsByQuery(query, apiKey, 3)
+    return await fetchTweetsByQueryWithCache(query, apiKey, 3, 'official')
   } catch (error) {
-    debugWarn('[TwitterAPI] fetchOfficialTweets failed:', error)
-    return []
+    debugWarn('[TwitterAPI] fetchOfficialTweetFeed failed:', error)
+    return null
   }
+}
+
+export async function fetchOfficialTweets(): Promise<TwitterTweet[]> {
+  const result = await fetchOfficialTweetFeed()
+  return result?.tweets ?? []
 }

@@ -8,6 +8,18 @@ export const TWITTER_SEARCH_QUERY = 'arccopilot:twitter-search-query'
 export const TWITTER_OFFICIAL_ACCOUNTS = 'arccopilot:twitter-official-accounts'
 export const TWITTER_TWEETS_CACHE_KEY = 'arccopilot:tweets:arc'
 export const TWITTER_OFFICIAL_TWEETS_CACHE_KEY = 'arccopilot:tweets:official'
+export type TwitterFeedCacheScope = 'community' | 'official'
+const TWITTER_FEED_CACHE_PREFIX = 'arccopilot:tweets:feed'
+
+function normalizeTwitterFeedCacheQuery(query: string): string {
+  return query.trim().replace(/\s+/g, ' ')
+}
+
+export function getTwitterFeedCacheKey(scope: TwitterFeedCacheScope, query: string): string {
+  const normalizedQuery = normalizeTwitterFeedCacheQuery(query)
+  const encodedQuery = normalizedQuery ? encodeURIComponent(normalizedQuery) : 'default'
+  return `${TWITTER_FEED_CACHE_PREFIX}:${scope}:${encodedQuery}`
+}
 export const REMINDERS = 'arccopilot:reminders'
 export const GOGO_HISTORY = 'arccopilot:gogo-history'
 export const GOGO_HISTORY_STORAGE_KEY = GOGO_HISTORY

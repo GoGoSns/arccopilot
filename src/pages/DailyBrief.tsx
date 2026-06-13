@@ -6,9 +6,10 @@ import {
   BLOCKSCOUT_API_BASE,
   BRIEF_STATS_CACHE_TTL_MS,
   BRIEF_TRANSFER_CACHE_TTL_MS,
-  BRIEF_TWEETS_CACHE_TTL_MS,
   BRIEF_WHALE_CACHE_TTL_MS,
   USDC_CONTRACT,
+  TWITTER_FEED_CACHE_TTL_MS,
+  TWITTER_FEED_PACE_DELAY_MS,
 } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
 import { formatAddress, formatBalance, formatRelativeTime, openSafeUrl } from '@/lib/utils'
@@ -24,7 +25,12 @@ import {
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
-import { categorizeTweets, fetchArcTweets, fetchOfficialTweets, type TwitterTweet } from '@/lib/twitterApi'
+import {
+  categorizeTweets,
+  fetchArcTweetFeed,
+  fetchOfficialTweetFeed,
+  type TwitterTweet,
+} from '@/lib/twitterApi'
 import {
   getDueReminders,
   getReminderDetails,
@@ -109,8 +115,8 @@ function readCache<T>(key: string): T | null {
   }
 }
 
-function writeCache<T>(key: string, data: T, ttl: number): void {
-  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now(), ttl })) } catch {}
+function writeCache<T>(key: string, data: T, ttl: number, ts = Date.now()): void {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts, ttl })) } catch {}
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -238,6 +244,12 @@ function getSummaryTimeLabel(): string {
   if (hour < 12) return t('dailyBrief.summaryPrefixMorning')
   if (hour < 18) return t('dailyBrief.summaryPrefixAfternoon')
   return t('dailyBrief.summaryPrefixEvening')
+}
+
+function formatFeedRefreshLabel(fetchedAt: number): string {
+  return formatText('dailyBrief.lastUpdated', {
+    age: formatRelativeTime(new Date(fetchedAt).toISOString()),
+  })
 }
 
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
@@ -370,7 +382,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
   const [tweetsLoading,  setTweetsLoading]  = useState(true)
   const [tweetsError,    setTweetsError]    = useState<string | null>(null)
+  const [tweetsStaleAt,  setTweetsStaleAt]  = useState<number | null>(null)
   const [officialTweets, setOfficialTweets] = useState<TwitterTweet[]>([])
+  const [officialTweetsStaleAt, setOfficialTweetsStaleAt] = useState<number | null>(null)
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -557,37 +571,76 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     let cancelled = false
     let requestVersion = 0
 
-    const loadTweets = async () => {
-      const currentVersion = ++requestVersion
-      setTweetsLoading(true)
-      setTweetsError(null)
+    const loadOfficialTweets = async (currentVersion: number): Promise<void> => {
+      const cached = readCache<TwitterTweet[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY)
+      if (cached) {
+        if (cancelled || currentVersion !== requestVersion) return
+        setOfficialTweets(cached.slice(0, 3))
+        setOfficialTweetsStaleAt(null)
+        return
+      }
 
+      const fetched = await fetchOfficialTweetFeed()
+      if (cancelled || currentVersion !== requestVersion) return
+      if (!fetched) {
+        setOfficialTweets([])
+        setOfficialTweetsStaleAt(null)
+        return
+      }
+
+      writeCache(TWITTER_OFFICIAL_TWEETS_CACHE_KEY, fetched.tweets, TWITTER_FEED_CACHE_TTL_MS, fetched.fetchedAt)
+      setOfficialTweets(fetched.tweets.slice(0, 3))
+      setOfficialTweetsStaleAt(fetched.cacheStatus === 'stale-cache' ? fetched.fetchedAt : null)
+    }
+
+    const loadCommunityTweets = async (currentVersion: number): Promise<void> => {
       const cached = readCache<TwitterTweet[]>(TWITTER_TWEETS_CACHE_KEY)
       if (cached) {
         const hasCategorizedTweets = cached.every((tweet) => Boolean(tweet.category))
         const items = hasCategorizedTweets ? cached : await categorizeTweets(cached)
         if (cancelled || currentVersion !== requestVersion) return
         if (!hasCategorizedTweets && items.some((tweet) => Boolean(tweet.category))) {
-          writeCache(TWITTER_TWEETS_CACHE_KEY, items, BRIEF_TWEETS_CACHE_TTL_MS)
+          writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWITTER_FEED_CACHE_TTL_MS, Date.now())
         }
         setTweets(items)
-        if (!cancelled && currentVersion === requestVersion) {
-          setTweetsLoading(false)
-        }
+        setTweetsStaleAt(null)
         return
       }
 
       try {
-        const fetched = await fetchArcTweets()
-        const items = await categorizeTweets(fetched)
+        const fetched = await fetchArcTweetFeed()
+        const items = await categorizeTweets(fetched.tweets)
         if (cancelled || currentVersion !== requestVersion) return
-        writeCache(TWITTER_TWEETS_CACHE_KEY, items, BRIEF_TWEETS_CACHE_TTL_MS)
+        writeCache(TWITTER_TWEETS_CACHE_KEY, items, TWITTER_FEED_CACHE_TTL_MS, fetched.fetchedAt)
         setTweets(items)
+        setTweetsStaleAt(fetched.cacheStatus === 'stale-cache' ? fetched.fetchedAt : null)
       } catch (err) {
         if (cancelled || currentVersion !== requestVersion) return
         setTweetsError(err instanceof Error ? err.message : 'Tweets unavailable right now. Try refreshing in a few minutes.')
+        setTweets([])
+        setTweetsStaleAt(null)
+      }
+    }
+
+    const loadTweets = async () => {
+      const currentVersion = ++requestVersion
+      setTweetsLoading(true)
+      setTweetsError(null)
+      setTweets([])
+      setTweetsStaleAt(null)
+      setOfficialTweets([])
+      setOfficialTweetsStaleAt(null)
+
+      try {
+        await loadOfficialTweets(currentVersion)
+        if (cancelled || currentVersion !== requestVersion) return
+        await new Promise<void>((resolve) => setTimeout(resolve, TWITTER_FEED_PACE_DELAY_MS))
+        if (cancelled || currentVersion !== requestVersion) return
+        await loadCommunityTweets(currentVersion)
       } finally {
-        if (!cancelled && currentVersion === requestVersion) setTweetsLoading(false)
+        if (!cancelled && currentVersion === requestVersion) {
+          setTweetsLoading(false)
+        }
       }
     }
 
@@ -596,58 +649,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       areaName: string,
     ) => {
       if (areaName !== 'local') return
-      if (changes[TWITTER_SEARCH_QUERY] || changes[TWITTERAPI_KEY]) {
+      if (changes[TWITTER_SEARCH_QUERY] || changes[TWITTER_OFFICIAL_ACCOUNTS] || changes[TWITTERAPI_KEY]) {
         void loadTweets()
       }
     }
 
     void loadTweets()
-    chrome.storage.onChanged.addListener(onStorageChanged)
-
-    return () => {
-      cancelled = true
-      chrome.storage.onChanged.removeListener(onStorageChanged)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    let requestVersion = 0
-
-    const loadOfficialTweets = async () => {
-      const currentVersion = ++requestVersion
-      const cached = readCache<TwitterTweet[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY)
-      if (cached) {
-        if (cancelled || currentVersion !== requestVersion) return
-        setOfficialTweets(cached.slice(0, 3))
-        return
-      }
-
-      try {
-        const fetched = await fetchOfficialTweets()
-        if (cancelled || currentVersion !== requestVersion) return
-        if (fetched.length > 0) {
-          writeCache(TWITTER_OFFICIAL_TWEETS_CACHE_KEY, fetched, BRIEF_TWEETS_CACHE_TTL_MS)
-        }
-        setOfficialTweets(fetched.slice(0, 3))
-      } catch (error) {
-        if (cancelled || currentVersion !== requestVersion) return
-        debugWarn('[DailyBrief] official tweets load failed:', error)
-        setOfficialTweets([])
-      }
-    }
-
-    const onStorageChanged = (
-      changes: { [key: string]: chrome.storage.StorageChange },
-      areaName: string,
-    ) => {
-      if (areaName !== 'local') return
-      if (changes[TWITTER_OFFICIAL_ACCOUNTS] || changes[TWITTERAPI_KEY]) {
-        void loadOfficialTweets()
-      }
-    }
-
-    void loadOfficialTweets()
     chrome.storage.onChanged.addListener(onStorageChanged)
 
     return () => {
@@ -1082,6 +1089,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">
                 {t('dailyBrief.official')}
               </p>
+              {officialTweetsStaleAt && (
+                <p className="text-[10px] text-arc-text-dim/80">
+                  {formatFeedRefreshLabel(officialTweetsStaleAt)}
+                </p>
+              )}
               <div className="space-y-4">
                 {safeOfficialTweets.slice(0, 3).map((tweet) => (
                   <TweetListItem
@@ -1136,6 +1148,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             <p className="py-2 text-center text-xs text-arc-text-dim">{t('dailyBrief.noArcTweetsFoundYet')}</p>
           ) : (
             <div className="space-y-4">
+              {tweetsStaleAt && (
+                <p className="text-[10px] text-arc-text-dim/80">
+                  {formatFeedRefreshLabel(tweetsStaleAt)}
+                </p>
+              )}
               {safeTweets.slice(0, 3).map((tweet) => (
                 <TweetListItem
                   key={tweet.id}
