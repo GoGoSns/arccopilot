@@ -38,6 +38,7 @@ import {
 } from '@/lib/reminders'
 import {
   PENDING_SEND_STORAGE_KEY,
+  PENDING_VIEW_STORAGE_KEY,
   VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
@@ -52,6 +53,7 @@ type SpeechRecognitionLike = {
   continuous: boolean
   interimResults: boolean
   maxAlternatives: number
+  onstart: (() => void) | null
   onresult: ((event: any) => void) | null
   onerror: ((event: any) => void) | null
   onend: (() => void) | null
@@ -61,6 +63,18 @@ type SpeechRecognitionLike = {
 }
 
 type SpeechRecognitionConstructorLike = new () => SpeechRecognitionLike
+
+type VoiceInputFeedbackTone = 'info' | 'warning' | 'error'
+
+type VoiceInputFeedback = {
+  message: string
+  tone: VoiceInputFeedbackTone
+}
+
+type VoiceInputContext = {
+  isFullPage: boolean
+  autoStart: boolean
+}
 
 type SpeechWindow = Window & {
   SpeechRecognition?: SpeechRecognitionConstructorLike
@@ -99,8 +113,81 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructorLike | null {
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
 }
 
+function getVoiceInputContext(): VoiceInputContext {
+  if (typeof window === 'undefined') {
+    return {
+      isFullPage: false,
+      autoStart: false,
+    }
+  }
+
+  const params = new URLSearchParams(window.location.search)
+  return {
+    isFullPage: params.get('fullpage') === '1',
+    autoStart: params.get('voice') === '1',
+  }
+}
+
 function getPreferredSpeechLanguage(): string {
   return getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US'
+}
+
+function normalizeVoiceRecognitionError(error: unknown): string {
+  if (typeof error === 'string') {
+    return error.toLowerCase()
+  }
+
+  if (error && typeof error === 'object') {
+    const candidate = (error as { error?: unknown; name?: unknown; message?: unknown }).error
+      ?? (error as { name?: unknown }).name
+      ?? (error as { message?: unknown }).message
+
+    if (typeof candidate === 'string') {
+      return candidate.toLowerCase()
+    }
+  }
+
+  return ''
+}
+
+function getVoiceRecognitionErrorFeedback(error: unknown): VoiceInputFeedback {
+  const normalized = normalizeVoiceRecognitionError(error)
+
+  if (
+    normalized.includes('not-allowed')
+    || normalized.includes('permission')
+    || normalized.includes('notallowed')
+    || normalized.includes('service-not-allowed')
+  ) {
+    return {
+      message: t('gogo.microphonePermissionDenied'),
+      tone: 'error',
+    }
+  }
+
+  if (normalized === 'no-speech' || normalized === 'audio-capture') {
+    return {
+      message: t('gogo.voiceTryAgain'),
+      tone: 'warning',
+    }
+  }
+
+  return {
+    message: t('gogo.voiceNotAvailable'),
+    tone: 'error',
+  }
+}
+
+function getVoiceFeedbackClassName(tone: VoiceInputFeedbackTone): string {
+  switch (tone) {
+    case 'warning':
+      return 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+    case 'error':
+      return 'border-arc-danger/30 bg-arc-danger/10 text-arc-danger'
+    case 'info':
+    default:
+      return 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold'
+  }
 }
 
 function isSpeechSynthesisAvailable(): boolean {
@@ -437,8 +524,10 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const [analysisLoadingKey, setAnalysisLoadingKey] = useState<string | null>(null)
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
+  const [voicePreferencesLoaded, setVoicePreferencesLoaded] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceInputUnavailableReason, setVoiceInputUnavailableReason] = useState<string | null>(null)
+  const [voiceInputFeedback, setVoiceInputFeedback] = useState<VoiceInputFeedback | null>(null)
   const [speakingMessageKey, setSpeakingMessageKey] = useState<string | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [isReadingImage, setIsReadingImage] = useState(false)
@@ -501,6 +590,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
     [address, portfolioAddress, portfolioTokens, portfolioUpdatedAt],
   )
 
+  const voiceInputContext = useMemo(getVoiceInputContext, [])
+
   const gogoContext = useMemo<GogoContext>(
     () => ({
       walletAddress: address ?? '',
@@ -518,7 +609,6 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const hasActionLoading = Boolean(analysisLoadingKey)
   const speechRecognitionSupported = Boolean(getSpeechRecognitionCtor())
   const speechSynthesisSupported = isSpeechSynthesisAvailable()
-  const voiceInputReady = voiceInputEnabled && speechRecognitionSupported && !voiceInputUnavailableReason
   const voiceResponsesReady = voiceResponsesEnabled && speechSynthesisSupported
   const isProactiveGreetingPending = Boolean(
     historyLoaded &&
@@ -531,9 +621,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
   )
   const isComposerLocked = isLoading || isProactiveGreetingPending || hasActionLoading
   const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
-  const voiceInputTooltip = !voiceInputEnabled
-    ? t('gogo.voiceInputSettings')
-    : voiceInputUnavailableReason ?? t('gogo.voiceNotAvailable')
+  const voiceInputTooltip = voiceInputContext.isFullPage
+    ? (!voiceInputEnabled ? t('gogo.voiceInputSettings') : voiceInputUnavailableReason ?? t('gogo.startListening'))
+    : t('gogo.openingVoiceMode')
   const voiceResponsesTooltip = !voiceResponsesEnabled
     ? t('gogo.voiceResponsesSettings')
     : t('gogo.voiceNotAvailable')
@@ -620,6 +710,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       setVoiceInputEnabled(result[VOICE_INPUT_STORAGE_KEY] === true)
       setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
       setVoiceInputUnavailableReason(null)
+      setVoicePreferencesLoaded(true)
     })
 
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
@@ -648,6 +739,19 @@ export function GogoAI({ onBack }: GogoAIProps) {
       chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [])
+
+  useEffect(() => {
+    if (!voicePreferencesLoaded) return
+    if (!voiceInputContext.isFullPage || !voiceInputContext.autoStart) return
+
+    const timer = window.setTimeout(() => {
+      void startVoiceInput()
+    }, 300)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [voiceInputContext.autoStart, voiceInputContext.isFullPage, voicePreferencesLoaded])
 
   useEffect(() => {
     if (!historyLoaded) return
@@ -765,6 +869,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
       recognitionRef.current = null
     }
     setIsListening(false)
+    setVoiceInputFeedback(null)
+    setVoiceInputUnavailableReason(null)
   }
 
   const stopVoiceResponse = () => {
@@ -773,19 +879,60 @@ export function GogoAI({ onBack }: GogoAIProps) {
     setSpeakingMessageKey(null)
   }
 
+  const openVoiceModeTab = async () => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.getURL || !chrome.tabs?.create) {
+      debugWarn('[GogoAI] failed to open voice mode tab: chrome tabs API unavailable')
+      const message = t('gogo.voiceNotAvailable')
+      setVoiceInputUnavailableReason(message)
+      setVoiceInputFeedback({ message, tone: 'error' })
+      return
+    }
+
+    try {
+      await chrome.storage.local.set({ [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai' })
+    } catch (error) {
+      debugWarn('[GogoAI] failed to persist pending Gogo view:', error)
+    }
+
+    const voiceUrl = new URL(chrome.runtime.getURL('src/popup/index.html'))
+    voiceUrl.searchParams.set('fullpage', '1')
+    voiceUrl.searchParams.set('voice', '1')
+
+    chrome.tabs.create({ url: voiceUrl.toString() })
+  }
+
   const startVoiceInput = () => {
-    if (!voiceInputReady) {
-      if (!speechRecognitionSupported) {
-        debugWarn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
-        setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
-      }
+    if (!voiceInputContext.isFullPage) {
+      void openVoiceModeTab()
+      return
+    }
+
+    if (!voicePreferencesLoaded) {
+      return
+    }
+
+    if (!voiceInputEnabled) {
+      const message = t('gogo.voiceInputSettings')
+      setVoiceInputUnavailableReason(message)
+      setVoiceInputFeedback({ message, tone: 'error' })
+      setIsListening(false)
+      return
+    }
+
+    if (!speechRecognitionSupported) {
+      const message = t('gogo.voiceNotAvailable')
+      debugWarn('[GogoAI] voice input unavailable: SpeechRecognition is not supported in this context')
+      setVoiceInputUnavailableReason(message)
+      setVoiceInputFeedback({ message, tone: 'error' })
       return
     }
 
     const RecognitionCtor = getSpeechRecognitionCtor()
     if (!RecognitionCtor) {
+      const message = t('gogo.voiceNotAvailable')
       debugWarn('[GogoAI] voice input unavailable: SpeechRecognition constructor missing')
-      setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
+      setVoiceInputUnavailableReason(message)
+      setVoiceInputFeedback({ message, tone: 'error' })
       return
     }
 
@@ -797,7 +944,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
       recognition.interimResults = true
       recognition.maxAlternatives = 1
       setVoiceInputUnavailableReason(null)
-      setIsListening(true)
+      setVoiceInputFeedback({ message: t('gogo.openingVoiceMode'), tone: 'info' })
+      setIsListening(false)
+
+      recognition.onstart = () => {
+        setIsListening(true)
+        setVoiceInputFeedback({ message: t('gogo.listening'), tone: 'info' })
+      }
 
       recognition.onresult = (event: any) => {
         const transcript = Array.from(event.results as ArrayLike<any>)
@@ -812,8 +965,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
       }
 
       recognition.onerror = (event: any) => {
+        const normalizedError = normalizeVoiceRecognitionError(event?.error ?? event)
+        if (normalizedError === 'aborted') {
+          setIsListening(false)
+          recognitionRef.current = null
+          setVoiceInputFeedback((current) => (current?.tone === 'info' ? null : current))
+          return
+        }
+
+        const feedback = getVoiceRecognitionErrorFeedback(event?.error ?? event)
         debugWarn('[GogoAI] voice input error:', event?.error ?? event)
-        setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
+        setVoiceInputUnavailableReason(feedback.message)
+        setVoiceInputFeedback(feedback)
         setIsListening(false)
         recognitionRef.current = null
       }
@@ -821,18 +984,26 @@ export function GogoAI({ onBack }: GogoAIProps) {
       recognition.onend = () => {
         setIsListening(false)
         recognitionRef.current = null
+        setVoiceInputFeedback((current) => (current?.tone === 'info' ? null : current))
       }
 
       recognition.start()
     } catch (error) {
       debugWarn('[GogoAI] failed to start voice input:', error)
-      setVoiceInputUnavailableReason(t('gogo.voiceNotAvailable'))
+      const feedback = getVoiceRecognitionErrorFeedback(error)
+      setVoiceInputUnavailableReason(feedback.message)
+      setVoiceInputFeedback(feedback)
       setIsListening(false)
       recognitionRef.current = null
     }
   }
 
   const toggleVoiceInput = () => {
+    if (!voiceInputContext.isFullPage) {
+      void openVoiceModeTab()
+      return
+    }
+
     if (isListening) {
       stopVoiceInput()
       return
@@ -2326,10 +2497,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
       {hasApiKey && (
         <div className="border-t border-arc-border bg-arc-bg px-4 py-4">
-          {isListening && (
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-arc-danger/30 bg-arc-danger/10 px-2.5 py-1 text-[10px] font-medium text-arc-danger animate-pulse">
-              <span className="h-2 w-2 rounded-full bg-arc-danger" />
-              {t('gogo.listening')}
+          {voiceInputFeedback && (
+            <div
+              className={`mb-2 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-medium ${getVoiceFeedbackClassName(voiceInputFeedback.tone)} ${isListening ? 'animate-pulse' : ''}`}
+            >
+              <span className="h-2 w-2 rounded-full bg-current" />
+              {voiceInputFeedback.message}
             </div>
           )}
           {imagePreviewNode}
@@ -2355,14 +2528,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <button
                   type="button"
                   onClick={() => void toggleVoiceInput()}
-                  disabled={isComposerLocked || !address || (!voiceInputReady && !isListening)}
-                  className={`rounded-lg border p-2 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`rounded-lg border p-2 transition-all ${
                     isListening
                       ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
-                      : 'border-arc-border bg-arc-card text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
+                      : 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:border-arc-gold/50 hover:bg-arc-gold/20'
                   }`}
-                  aria-label={isListening ? t('gogo.stopListening') : t('gogo.startListening')}
-                  title={isListening ? t('gogo.stopListening') : voiceInputTooltip}
+                  aria-label={voiceInputContext.isFullPage && isListening ? t('gogo.stopListening') : voiceInputTooltip}
+                  title={voiceInputContext.isFullPage && isListening ? t('gogo.stopListening') : voiceInputTooltip}
                 >
                   <Mic size={15} />
                 </button>
