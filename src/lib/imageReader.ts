@@ -1,4 +1,3 @@
-import jsQR from 'jsqr'
 import { GEMINI_MODEL } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 import { getApiKey } from '@/lib/gogoAI'
@@ -16,6 +15,7 @@ export interface ReadAddressFromImageResult {
   source: ImageReadSource
   raw: string | null
   address: string | null
+  qrDecoderLoadFailed?: boolean
 }
 
 const ADDRESS_RE = /0x[a-fA-F0-9]{40}/
@@ -98,15 +98,39 @@ export async function resizeImage(blob: Blob, maxDim = 1024): Promise<ResizedIma
   }
 }
 
-export function decodeQr(imageData: ImageData): string | null {
+type DecodeQrResult = {
+  text: string | null
+  loadFailed: boolean
+}
+
+async function decodeQr(imageData: ImageData): Promise<DecodeQrResult> {
+  let jsQR: typeof import('jsqr').default
+
+  try {
+    const module = await import('jsqr')
+    jsQR = module.default
+  } catch (error) {
+    debugWarn('[imageReader] jsQR load failed:', error)
+    return {
+      text: null,
+      loadFailed: true,
+    }
+  }
+
   try {
     const result = jsQR(imageData.data, imageData.width, imageData.height, {
       inversionAttempts: 'attemptBoth',
     })
-    return result?.data?.trim() || null
+    return {
+      text: result?.data?.trim() || null,
+      loadFailed: false,
+    }
   } catch (error) {
     debugWarn('[imageReader] QR decode failed:', error)
-    return null
+    return {
+      text: null,
+      loadFailed: false,
+    }
   }
 }
 
@@ -174,7 +198,7 @@ export async function extractAddressWithVision(base64: string, mimeType: string)
 export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromImageResult> {
   try {
     const resized = await resizeImage(blob, 1024)
-    const qrText = decodeQr(resized.imageData)
+    const { text: qrText, loadFailed: qrDecoderLoadFailed } = await decodeQr(resized.imageData)
 
     if (qrText) {
       const candidate = qrText.match(ADDRESS_RE)?.[0] ?? null
@@ -185,6 +209,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
             source: 'qr',
             raw: qrText,
             address,
+            qrDecoderLoadFailed,
           }
         }
       }
@@ -198,6 +223,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
           source: 'vision',
           raw: visionAddress,
           address: visionAddress,
+          qrDecoderLoadFailed,
         }
       }
 
@@ -205,6 +231,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
         source: qrText ? 'qr' : 'vision',
         raw: qrText ?? null,
         address: null,
+        qrDecoderLoadFailed,
       }
     }
 
@@ -212,6 +239,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
       source: qrText ? 'qr' : 'none',
       raw: qrText ?? null,
       address: null,
+      qrDecoderLoadFailed,
     }
   } catch (error) {
     debugWarn('[imageReader] readAddressFromImage failed:', error)
@@ -219,6 +247,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
       source: 'none',
       raw: null,
       address: null,
+      qrDecoderLoadFailed: false,
     }
   }
 }

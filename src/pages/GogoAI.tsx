@@ -495,6 +495,10 @@ function buildImageReadMessage(result: ReadAddressFromImageResult): string {
     })
   }
 
+  if (result.qrDecoderLoadFailed) {
+    return t('gogo.imageDecoderLoadFailed')
+  }
+
   if (result.source === 'none') {
     return t('gogo.imageNeedsGemini')
   }
