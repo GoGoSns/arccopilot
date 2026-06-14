@@ -39,7 +39,6 @@ import {
 import {
   PENDING_SEND_STORAGE_KEY,
   PENDING_VIEW_STORAGE_KEY,
-  VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import { isValidAddress, isValidAmount } from '@/lib/validation'
@@ -522,9 +521,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [copiedDraftKey, setCopiedDraftKey] = useState<string | null>(null)
   const [analysisLoadingKey, setAnalysisLoadingKey] = useState<string | null>(null)
-  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
-  const [voicePreferencesLoaded, setVoicePreferencesLoaded] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [voiceInputUnavailableReason, setVoiceInputUnavailableReason] = useState<string | null>(null)
   const [voiceInputFeedback, setVoiceInputFeedback] = useState<VoiceInputFeedback | null>(null)
@@ -622,7 +619,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const isComposerLocked = isLoading || isProactiveGreetingPending || hasActionLoading
   const showStarterSuggestions = hasApiKey && !hasUserMessages && !isComposerLocked
   const voiceInputTooltip = voiceInputContext.isFullPage
-    ? (!voiceInputEnabled ? t('gogo.voiceInputSettings') : voiceInputUnavailableReason ?? t('gogo.startListening'))
+    ? (voiceInputUnavailableReason ?? t('gogo.startListening'))
     : t('gogo.openingVoiceMode')
   const voiceResponsesTooltip = !voiceResponsesEnabled
     ? t('gogo.voiceResponsesSettings')
@@ -705,24 +702,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     let active = true
 
-    chrome.storage.local.get([VOICE_INPUT_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY], (result) => {
+    chrome.storage.local.get([VOICE_RESPONSES_STORAGE_KEY], (result) => {
       if (!active) return
-      setVoiceInputEnabled(result[VOICE_INPUT_STORAGE_KEY] === true)
       setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
-      setVoiceInputUnavailableReason(null)
-      setVoicePreferencesLoaded(true)
     })
 
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName !== 'local') return
-      if (VOICE_INPUT_STORAGE_KEY in changes) {
-        const nextValue = changes[VOICE_INPUT_STORAGE_KEY]?.newValue === true
-        setVoiceInputEnabled(nextValue)
-        setVoiceInputUnavailableReason(null)
-        if (!nextValue) {
-          stopVoiceInput()
-        }
-      }
       if (VOICE_RESPONSES_STORAGE_KEY in changes) {
         const nextValue = changes[VOICE_RESPONSES_STORAGE_KEY]?.newValue === true
         setVoiceResponsesEnabled(nextValue)
@@ -741,7 +727,6 @@ export function GogoAI({ onBack }: GogoAIProps) {
   }, [])
 
   useEffect(() => {
-    if (!voicePreferencesLoaded) return
     if (!voiceInputContext.isFullPage || !voiceInputContext.autoStart) return
 
     const timer = window.setTimeout(() => {
@@ -751,7 +736,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     return () => {
       window.clearTimeout(timer)
     }
-  }, [voiceInputContext.autoStart, voiceInputContext.isFullPage, voicePreferencesLoaded])
+  }, [voiceInputContext.autoStart, voiceInputContext.isFullPage])
 
   useEffect(() => {
     if (!historyLoaded) return
@@ -904,18 +889,6 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const startVoiceInput = () => {
     if (!voiceInputContext.isFullPage) {
       void openVoiceModeTab()
-      return
-    }
-
-    if (!voicePreferencesLoaded) {
-      return
-    }
-
-    if (!voiceInputEnabled) {
-      const message = t('gogo.voiceInputSettings')
-      setVoiceInputUnavailableReason(message)
-      setVoiceInputFeedback({ message, tone: 'error' })
-      setIsListening(false)
       return
     }
 

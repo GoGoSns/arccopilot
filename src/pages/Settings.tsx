@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Mic, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -19,7 +19,6 @@ import {
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   REMINDERS,
-  VOICE_INPUT_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import {
@@ -56,7 +55,6 @@ export function Settings({ onBack }: SettingsProps) {
   const [isAddingTwitter, setIsAddingTwitter] = useState(false)
   const [incomingAlerts, setIncomingAlerts] = useState(true)
   const [balanceAlerts, setBalanceAlerts] = useState(true)
-  const [voiceInputEnabled, setVoiceInputEnabled] = useState(false)
   const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
@@ -80,8 +78,7 @@ export function Settings({ onBack }: SettingsProps) {
       setBalanceAlerts(readStoredBoolean(NOTIF_BALANCE_STORAGE_KEY, result[NOTIF_BALANCE_STORAGE_KEY], true))
     })
 
-    chrome.storage.local.get([VOICE_INPUT_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY], (result) => {
-      setVoiceInputEnabled(readStoredBoolean(VOICE_INPUT_STORAGE_KEY, result[VOICE_INPUT_STORAGE_KEY], false))
+    chrome.storage.local.get([VOICE_RESPONSES_STORAGE_KEY], (result) => {
       setVoiceResponsesEnabled(readStoredBoolean(VOICE_RESPONSES_STORAGE_KEY, result[VOICE_RESPONSES_STORAGE_KEY], false))
     })
   }, [])
@@ -134,12 +131,6 @@ export function Settings({ onBack }: SettingsProps) {
     const nextValue = !balanceAlerts
     setBalanceAlerts(nextValue)
     await chrome.storage.local.set({ [NOTIF_BALANCE_STORAGE_KEY]: nextValue })
-  }
-
-  const handleToggleVoiceInput = async () => {
-    const nextValue = !voiceInputEnabled
-    setVoiceInputEnabled(nextValue)
-    await chrome.storage.local.set({ [VOICE_INPUT_STORAGE_KEY]: nextValue })
   }
 
   const handleToggleVoiceResponses = async () => {
@@ -526,22 +517,13 @@ export function Settings({ onBack }: SettingsProps) {
           {t('settings.voice')}
         </p>
         <div className="border-b border-arc-border/50">
-          {[
-            {
-              label: t('settings.voiceInput'),
-              description: t('settings.voiceInputDescription'),
-              enabled: voiceInputEnabled,
-              onToggle: handleToggleVoiceInput,
-              icon: Mic,
-            },
-            {
-              label: t('settings.voiceResponses'),
-              description: t('settings.voiceResponsesDescription'),
-              enabled: voiceResponsesEnabled,
-              onToggle: handleToggleVoiceResponses,
-              icon: Volume2,
-            },
-          ].map((item, index) => {
+          {[{
+            label: t('settings.voiceResponses'),
+            description: t('settings.voiceResponsesDescription'),
+            enabled: voiceResponsesEnabled,
+            onToggle: handleToggleVoiceResponses,
+            icon: Volume2,
+          }].map((item, index) => {
             const Icon = item.icon
 
             return (
