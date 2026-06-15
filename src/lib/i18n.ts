@@ -130,7 +130,7 @@ const EN = {
   'onboarding.title': 'Welcome to ArcCopilot',
   'onboarding.subtitle': 'A quick tour before you start.',
   'onboarding.point1': 'Watches your onchain life',
-  'onboarding.point2': 'Daily Brief and Arc on X',
+  'onboarding.point2': 'Daily brief + Arc on X',
   'onboarding.point3': 'Ask Gogo AI anything',
   'onboarding.getStarted': 'Get started',
 
@@ -654,8 +654,8 @@ const TR = {
   'onboarding.title': 'ArcCopilot’a hoş geldin',
   'onboarding.subtitle': 'Başlamadan önce kısa bir tur.',
   'onboarding.point1': 'Zincir üstü hayatını izler',
-  'onboarding.point2': 'Günlük Özet ve X’te Arc',
-  'onboarding.point3': 'Gogo AI’ya istediğini sor',
+  'onboarding.point2': 'Günlük özet + Arc on X',
+  'onboarding.point3': 'Gogo AI’ya her şeyi sor',
   'onboarding.getStarted': 'Başla',
 
   'send.title': 'USDC Gönder',

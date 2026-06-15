@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Copy, Sparkles, Wallet as WalletIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, Sparkles, Wallet as WalletIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { t } from '@/lib/i18n'
 import { WalletHeader } from '@/components/WalletHeader'
@@ -123,6 +123,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingReady, setOnboardingReady] = useState(false)
+  const onboardingDismissedRef = useRef(false)
 
   const address = useStore((s) => s.walletAddress)
   const xp = useStore((s) => s.xp)
@@ -136,7 +137,12 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
 
     void chromeStorageGet(ONBOARDING_SEEN).then((result) => {
       if (!active) return
-      setShowOnboarding(result[ONBOARDING_SEEN] !== true)
+      const onboardingSeen = result[ONBOARDING_SEEN] === true
+      if (onboardingSeen || onboardingDismissedRef.current) {
+        setShowOnboarding(false)
+      } else {
+        setShowOnboarding(true)
+      }
       setOnboardingReady(true)
     })
 
@@ -160,7 +166,9 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   }
 
   const dismissOnboarding = () => {
+    onboardingDismissedRef.current = true
     setShowOnboarding(false)
+    setOnboardingReady(true)
     void chromeStorageSet({ [ONBOARDING_SEEN]: true })
   }
 
@@ -193,8 +201,16 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
       </div>
 
       {onboardingReady && showOnboarding && (
-        <Card className="mx-4 mt-3 overflow-hidden border-arc-gold/20 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
-          <div className="flex items-start gap-3">
+        <Card className="relative mx-4 mt-3 overflow-hidden border-arc-gold/20 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
+          <button
+            type="button"
+            onClick={dismissOnboarding}
+            aria-label={t('common.close')}
+            className="absolute right-3 top-3 rounded-lg border border-arc-border bg-arc-bg/80 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+          >
+            <X size={14} />
+          </button>
+          <div className="flex items-start gap-3 pr-8">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-arc-gold/25 bg-arc-gold/10 text-arc-gold">
               <Sparkles size={18} />
             </div>
@@ -204,21 +220,21 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
                 <p className="text-xs leading-relaxed text-arc-text-dim">{t('onboarding.subtitle')}</p>
               </div>
               <ul className="space-y-2 text-xs leading-relaxed text-arc-text-dim">
-                <li className="flex items-start gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
-                  <span>{t('onboarding.point1')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
-                  <span>{t('onboarding.point2')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
-                  <span>{t('onboarding.point3')}</span>
-                </li>
+                {[
+                  ['1', t('onboarding.point1')],
+                  ['2', t('onboarding.point2')],
+                  ['3', t('onboarding.point3')],
+                ].map(([icon, label]) => (
+                  <li key={label} className="flex items-start gap-2">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-[10px] font-semibold text-arc-gold">
+                      {icon}
+                    </span>
+                    <span>{label}</span>
+                  </li>
+                ))}
               </ul>
               <div className="flex justify-end">
-                <Button type="button" size="sm" onClick={dismissOnboarding}>
+                <Button type="button" size="sm" onClick={dismissOnboarding} className="min-w-[92px]">
                   {t('onboarding.getStarted')}
                 </Button>
               </div>
