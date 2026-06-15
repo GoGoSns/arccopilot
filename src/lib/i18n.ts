@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+﻿import { useSyncExternalStore } from 'react'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 
 export type Locale = 'en' | 'tr'
@@ -98,6 +98,12 @@ const EN = {
   'wallet.copied': 'Copied!',
   'wallet.nftsEmpty': 'No NFTs yet',
   'wallet.addressMissing': 'No address available',
+  'wallet.scanTitle': 'Scan address',
+  'wallet.scanSubtitle': 'Choose or paste an image with a QR code or address.',
+  'wallet.scanPasteHint': 'Focus this box and paste an image here.',
+  'wallet.scanChooseImage': 'Choose image',
+  'wallet.scanFailed': 'Couldn’t read address',
+  'wallet.faucetUnavailable': 'Couldn’t open USDC faucet',
 
   'portfolio.title': 'Portfolio',
   'portfolio.loading': 'Loading portfolio...',
@@ -109,6 +115,7 @@ const EN = {
   'actions.receive': 'Receive',
   'actions.scan': 'Scan',
   'actions.buy': 'Buy',
+  'actions.getUsdc': 'Get USDC',
 
   'welcome.title': 'Welcome to ArcCopilot',
   'welcome.subtitle': 'Connect MetaMask to get started on Arc Testnet.',
@@ -628,6 +635,12 @@ const TR = {
   'wallet.copied': 'Kopyalandı!',
   'wallet.nftsEmpty': 'Henüz NFT yok',
   'wallet.addressMissing': 'Adres yok',
+  'wallet.scanTitle': 'Adres tara',
+  'wallet.scanSubtitle': 'QR kodu veya adres içeren bir görsel seç ya da yapıştır.',
+  'wallet.scanPasteHint': 'Bu kutuya odaklanıp bir görsel yapıştır.',
+  'wallet.scanChooseImage': 'Görsel seç',
+  'wallet.scanFailed': 'Adres okunamadı',
+  'wallet.faucetUnavailable': 'USDC faucet açılamadı',
 
   'portfolio.title': 'Portföy',
   'portfolio.loading': 'Portföy yükleniyor...',
@@ -639,6 +652,7 @@ const TR = {
   'actions.receive': 'Al',
   'actions.scan': 'Tara',
   'actions.buy': 'Satın al',
+  'actions.getUsdc': 'Test USDC',
 
   'welcome.title': 'ArcCopilot’a hoş geldin',
   'welcome.subtitle': 'Arc Testnet’te başlamak için MetaMask’i bağla.',

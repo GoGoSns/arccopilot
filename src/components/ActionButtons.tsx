@@ -14,7 +14,7 @@ export function ActionButtons({ onSend, onReceive, onScan, onBuy }: ActionButton
     { label: t('actions.send'), Icon: ArrowUpRight, key: 'send' },
     { label: t('actions.receive'), Icon: ArrowDownLeft, key: 'receive' },
     { label: t('actions.scan'), Icon: QrCode, key: 'scan' },
-    { label: t('actions.buy'), Icon: Plus, key: 'buy' },
+    { label: t('actions.getUsdc'), Icon: Plus, key: 'buy' },
   ] as const
 
   return (
@@ -22,6 +22,7 @@ export function ActionButtons({ onSend, onReceive, onScan, onBuy }: ActionButton
       {actions.map(({ label, Icon, key }) => (
         <button
           key={key}
+          type="button"
           onClick={handlers[key]}
           className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-arc-card border border-arc-border hover:border-arc-gold/40 hover:bg-arc-card/80 transition-all active:scale-95"
         >
