@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BLOCKSCOUT_API_BASE, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
+import { fetchWithTimeout } from '@/lib/external'
 import { isValidAddress } from '@/lib/validation'
 import { useStore, type PortfolioTokenBalance } from '@/lib/store'
+import { t } from '@/lib/i18n'
 
 export const PORTFOLIO_CACHE_KEY = 'arccopilot:portfolio'
 export const PORTFOLIO_CACHE_TTL_MS = 5 * 60_000
@@ -234,25 +236,12 @@ async function loadTokenBalances(address: string): Promise<PortfolioLoadResult> 
   if (cached) return cached
 
   try {
-    const response = await fetch(`${BLOCKSCOUT_API_BASE}/addresses/${normalized}/token-balances`, {
+    const response = await fetchWithTimeout(`${BLOCKSCOUT_API_BASE}/addresses/${normalized}/token-balances`, {
       headers: { accept: 'application/json' },
     })
 
-    if (response.status === 404) {
-      const emptyResult: PortfolioLoadResult = {
-        tokens: [],
-        updatedAt: now,
-        ok: true,
-        status: 404,
-        fromCache: false,
-      }
-      writeCachedPortfolio(normalized, emptyResult.tokens, emptyResult.updatedAt)
-      return emptyResult
-    }
-
     if (!response.ok) {
       debugWarn('[portfolio] token balances request failed:', response.status)
-      writeCachedPortfolio(normalized, [], now)
       return {
         tokens: [],
         updatedAt: now,
@@ -281,7 +270,6 @@ async function loadTokenBalances(address: string): Promise<PortfolioLoadResult> 
     }
   } catch (error) {
     debugWarn('[portfolio] token balances fetch failed:', error)
-    writeCachedPortfolio(normalized, [], now)
     return {
       tokens: [],
       updatedAt: now,
@@ -317,8 +305,11 @@ function getSeededPortfolio(address: string): PortfolioTokenBalance[] {
 export function usePortfolioBalances(address: string | null | undefined) {
   const normalizedAddress = normalizeAddress(address)
   const setPortfolioTokens = useStore((state) => state.setPortfolioTokens)
-  const [tokens, setTokens] = useState<PortfolioTokenBalance[]>(() => getSeededPortfolio(normalizedAddress))
+  const initialTokens = getSeededPortfolio(normalizedAddress)
+  const [tokens, setTokens] = useState<PortfolioTokenBalance[]>(() => initialTokens)
   const [isLoading, setIsLoading] = useState(Boolean(normalizedAddress))
+  const [error, setError] = useState<string | null>(null)
+  const tokensRef = useRef<PortfolioTokenBalance[]>(initialTokens)
   const requestIdRef = useRef(0)
 
   const refresh = useCallback(async () => {
@@ -326,7 +317,9 @@ export function usePortfolioBalances(address: string | null | undefined) {
 
     if (!isValidAddress(normalizedAddress)) {
       if (requestId === requestIdRef.current) {
+        tokensRef.current = []
         setTokens([])
+        setError(null)
         setIsLoading(false)
         setPortfolioTokens(null, [], Date.now())
       }
@@ -334,14 +327,31 @@ export function usePortfolioBalances(address: string | null | undefined) {
     }
 
     const seededTokens = getSeededPortfolio(normalizedAddress)
-    setTokens(seededTokens)
+    if (seededTokens.length > 0) {
+      tokensRef.current = seededTokens
+      setTokens(seededTokens)
+    } else if (tokensRef.current.length === 0) {
+      setTokens([])
+    }
     setIsLoading(true)
+    setError(null)
 
     const result = await loadTokenBalances(normalizedAddress)
     if (requestId !== requestIdRef.current) return
 
+    if (!result.ok) {
+      if (tokensRef.current.length === 0) {
+        setTokens([])
+        setError(t('portfolio.couldNotLoad'))
+      }
+      setIsLoading(false)
+      return
+    }
+
+    tokensRef.current = result.tokens
     setTokens(result.tokens)
     setPortfolioTokens(normalizedAddress, result.tokens, result.updatedAt)
+    setError(null)
     setIsLoading(false)
   }, [normalizedAddress, setPortfolioTokens])
 
@@ -358,5 +368,5 @@ export function usePortfolioBalances(address: string | null | undefined) {
     }
   }, [refresh])
 
-  return { tokens, isLoading, refresh }
+  return { tokens, isLoading, error, refresh }
 }

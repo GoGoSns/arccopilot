@@ -6,6 +6,7 @@ import '@/styles/globals.css'
 import { useStore, type AddressMemory } from '@/lib/store'
 import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
 import { initI18n } from '@/lib/i18n'
+import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
 
 function normalizeStoredAddressBook(raw: unknown): Record<string, AddressMemory> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -39,21 +40,20 @@ function Root() {
   useEffect(() => {
     let disposed = false
 
-    const hydrate = () => {
-      chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY, (result) => {
-        if (disposed) return
+    const hydrate = async () => {
+      const result = await chromeStorageGet(ADDRESS_BOOK_STORAGE_KEY)
+      if (disposed) return
 
-        const memories = result[ADDRESS_BOOK_STORAGE_KEY]
-        const normalized = normalizeStoredAddressBook(memories)
-        if (Object.keys(normalized).length > 0) {
-          mergeAddressMemories(normalized)
-        } else if (memories != null) {
-          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
-        }
-      })
+      const memories = result[ADDRESS_BOOK_STORAGE_KEY]
+      const normalized = normalizeStoredAddressBook(memories)
+      if (Object.keys(normalized).length > 0) {
+        mergeAddressMemories(normalized)
+      } else if (memories != null) {
+        void chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
+      }
     }
 
-    hydrate()
+    void hydrate()
 
     const onStorageChanged = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName !== 'local') return
@@ -63,7 +63,7 @@ function Root() {
         if (Object.keys(normalized).length > 0) {
           mergeAddressMemories(normalized)
         } else {
-          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+          void chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
         }
       }
     }

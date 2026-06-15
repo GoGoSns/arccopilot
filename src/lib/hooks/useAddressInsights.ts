@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { USDC_CONTRACT, BLOCKSCOUT_API_BASE } from '@/lib/constants'
 import { useStore } from '@/lib/store'
+import { fetchWithTimeout } from '@/lib/external'
+import { getExternalErrorMessage } from '@/lib/externalErrors'
 
 interface BlockscoutAddressRef {
   hash?: string
@@ -57,6 +59,8 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
         direction: null,
         dataComplete: false,
       })
+      setError(null)
+      setIsLoading(false)
       return
     }
 
@@ -68,7 +72,7 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
       url.searchParams.set('type', 'ERC-20')
       url.searchParams.set('token', USDC_CONTRACT)
 
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithTimeout(url.toString(), {
         headers: { accept: 'application/json' },
       })
 
@@ -82,6 +86,7 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
             direction: null,
             dataComplete: false,
           })
+          setError(getExternalErrorMessage(new Error(`HTTP ${response.status}`), 'activity.couldNotLoad'))
         }
         return
       }
@@ -147,7 +152,7 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
           dataComplete: true,
         })
       }
-    } catch {
+    } catch (error) {
       if (requestId === requestIdRef.current) {
         setInsights({
           totalTx: null,
@@ -157,7 +162,7 @@ export function useAddressInsights(targetAddress: string | null | undefined): Ad
           direction: null,
           dataComplete: false,
         })
-        setError(null)
+        setError(getExternalErrorMessage(error, 'activity.couldNotLoad'))
       }
     } finally {
       if (requestId === requestIdRef.current) {

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
+import { fetchWithTimeout } from '@/lib/external'
+import { getExternalErrorMessage } from '@/lib/externalErrors'
 const REFRESH_INTERVAL_MS = 5 * 60_000
 const USDC_DECIMALS = 18
 
@@ -26,10 +28,6 @@ interface UseTopBuildersResult {
   isLoading: boolean
   error: string
   refresh: () => Promise<void>
-}
-
-function normalizeError(error: unknown): string {
-  return 'Couldn\'t load builders'
 }
 
 function formatCompactCurrencyFromUnits(raw: string, decimals = USDC_DECIMALS): string {
@@ -64,7 +62,7 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
     setError('')
 
     try {
-      const response = await fetch(`${BLOCKSCOUT_API_BASE}/addresses?sort=transactions_count`, {
+      const response = await fetchWithTimeout(`${BLOCKSCOUT_API_BASE}/addresses?sort=transactions_count`, {
         headers: { accept: 'application/json' },
       })
 
@@ -72,6 +70,7 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
         if (requestId !== requestIdRef.current) return
         hasLoadedRef.current = true
         setBuilders([])
+        setError(getExternalErrorMessage(new Error(`HTTP ${response.status}`), 'discover.couldNotLoadBuilders'))
         return
       }
 
@@ -103,10 +102,11 @@ export function useTopBuilders(address?: string | null): UseTopBuildersResult {
 
       hasLoadedRef.current = true
       setBuilders(nextBuilders)
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current) return
       hasLoadedRef.current = true
       setBuilders([])
+      setError(getExternalErrorMessage(error, 'discover.couldNotLoadBuilders'))
     } finally {
       if (requestId === requestIdRef.current && shouldShowLoading) {
         setIsLoading(false)

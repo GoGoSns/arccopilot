@@ -3,19 +3,20 @@ import { useStore } from '@/lib/store'
 import { formatBalance } from '@/lib/utils'
 import { ARC_RPC_URL, USDC_CONTRACT } from '@/lib/constants'
 import { debugLog } from '@/lib/debug'
+import { fetchWithTimeout } from '@/lib/external'
 
 const BALANCE_OF = '0x70a08231' // balanceOf(address) selector
 // USDC on Arc Testnet uses 6 decimals (ERC-20 standard), NOT 18.
 // Arc's native currency has 18 decimals but the USDC token contract does not.
 const USDC_DECIMALS = 6
 
-export async function fetchUsdcBalance(address: string): Promise<string> {
+export async function fetchUsdcBalance(address: string): Promise<string | null> {
   const padded = address.slice(2).toLowerCase().padStart(64, '0')
   const data = BALANCE_OF + padded
 
   debugLog('[useUSDCBalance] fetching RPC for', `${address.slice(0, 10)}...`)
 
-  const res = await fetch(ARC_RPC_URL, {
+  const res = await fetchWithTimeout(ARC_RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -26,10 +27,12 @@ export async function fetchUsdcBalance(address: string): Promise<string> {
     }),
   })
 
+  if (!res.ok) return null
+
   const json = await res.json()
   debugLog('[useUSDCBalance] raw RPC response:', json)
 
-  if (json.error) throw new Error(json.error.message)
+  if (json.error) return null
 
   const raw = json.result as string
   if (!raw || raw === '0x' || raw === '0x0') return '0.00'
@@ -50,7 +53,7 @@ export function useUSDCBalance() {
   debugLog('[useUSDCBalance] called - address:', address, '| storedBalance:', storedBalance)
 
   // Seed from persisted store so there's no "0.00 flash" on popup reopen
-  const [balance, setBalance] = useState<string>(storedBalance ?? '0.00')
+  const [balance, setBalance] = useState<string | null>(storedBalance ?? null)
   const [isLoading, setIsLoading] = useState<boolean>(true)
 
   const refresh = useCallback(async () => {
@@ -62,15 +65,21 @@ export function useUSDCBalance() {
 
     try {
       const nextBalance = await fetchUsdcBalance(address)
-      setBalance(nextBalance)
-      persist(nextBalance)
+      if (nextBalance != null) {
+        setBalance(nextBalance)
+        persist(nextBalance)
+      } else if (storedBalance == null) {
+        setBalance(null)
+      }
     } catch (err) {
       console.error('[useUSDCBalance] fetch error:', err)
-      // Keep last known value rather than falling back to 0
+      if (storedBalance == null) {
+        setBalance(null)
+      }
     } finally {
       setIsLoading(false)
     }
-  }, [address, persist])
+  }, [address, persist, storedBalance])
 
   // Re-run whenever address changes (covers Zustand rehydration lag)
   useEffect(() => {

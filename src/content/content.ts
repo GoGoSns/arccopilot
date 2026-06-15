@@ -6,6 +6,7 @@
 import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
 import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 
 type AdapterName = 'genericAdapter' | 'arcscanAdapter' | 'githubAdapter' | 'twitterAdapter'
 
@@ -85,7 +86,7 @@ function main(): void {
     const cached = addressTypeCache.get(normalized)
     if (cached) return cached
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `${BLOCKSCOUT_API_BASE}/addresses/${normalized}`,
         { headers: { accept: 'application/json' } },
       )
@@ -358,16 +359,11 @@ function main(): void {
     const shortLabel = shortenAddress(address)
 
     try {
-      chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY, (result) => {
-        if (chrome.runtime.lastError) {
-          debugWarn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
-          return
-        }
-
+      void chromeStorageGet(ADDRESS_BOOK_STORAGE_KEY).then((result) => {
         const raw = result[ADDRESS_BOOK_STORAGE_KEY]
         const existing = normalizeStoredBook(raw)
         if (raw != null && Object.keys(existing).length === 0) {
-          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+          void chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
         }
         const current = existing[normalized]
         const next: AddressBookRecord = {
@@ -384,12 +380,7 @@ function main(): void {
           },
         }
 
-        chrome.storage.local.set({ [ADDRESS_BOOK_STORAGE_KEY]: next }, () => {
-          if (chrome.runtime.lastError) {
-            debugWarn('[ArcCopilot] save failed:', chrome.runtime.lastError.message)
-            return
-          }
-
+        void chromeStorageSet({ [ADDRESS_BOOK_STORAGE_KEY]: next }).then(() => {
           if (saveButtonEl && currentAddress.toLowerCase() === normalized) {
             setSaveButtonState(true)
           }
@@ -701,22 +692,17 @@ function main(): void {
     }
 
     setSaveButtonState(false)
-    try {
-      chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY, (result) => {
-        if (chrome.runtime.lastError) return
-        const normalized = address.toLowerCase()
-        const raw = result[ADDRESS_BOOK_STORAGE_KEY]
-        const book = normalizeStoredBook(raw)
-        if (raw != null && Object.keys(book).length === 0) {
-          void chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
-        }
-        if (currentAddress.toLowerCase() === normalized && saveButtonEl) {
-          setSaveButtonState(Boolean(book[normalized]))
-        }
-      })
-    } catch {
-      // Ignore read errors; the Save button still works normally.
-    }
+    void chromeStorageGet(ADDRESS_BOOK_STORAGE_KEY).then((result) => {
+      const normalized = address.toLowerCase()
+      const raw = result[ADDRESS_BOOK_STORAGE_KEY]
+      const book = normalizeStoredBook(raw)
+      if (raw != null && Object.keys(book).length === 0) {
+        void chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
+      }
+      if (currentAddress.toLowerCase() === normalized && saveButtonEl) {
+        setSaveButtonState(Boolean(book[normalized]))
+      }
+    })
 
     card.style.display = 'block'
     card.style.visibility = 'hidden'

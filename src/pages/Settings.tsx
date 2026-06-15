@@ -27,6 +27,7 @@ import {
   removeReminder,
   type Reminder,
 } from '@/lib/reminders'
+import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
@@ -36,9 +37,8 @@ interface SettingsProps {
   onBack: () => void
 }
 
-function readStoredBoolean(key: string, value: unknown, fallback: boolean): boolean {
+function readStoredBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value
-  void chrome.storage.local.remove(key)
   return fallback
 }
 
@@ -67,21 +67,26 @@ export function Settings({ onBack }: SettingsProps) {
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
 
   useEffect(() => {
+    let active = true
+
     void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts()]).then(([geminiKey, twitterKey, searchQuery, officialList]) => {
+      if (!active) return
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
       setTwitterSearchQueryState(searchQuery)
       setOfficialAccountsState(officialList)
     })
 
-    chrome.storage.local.get([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY], (result) => {
-      setIncomingAlerts(readStoredBoolean(NOTIF_INCOMING_STORAGE_KEY, result[NOTIF_INCOMING_STORAGE_KEY], true))
-      setBalanceAlerts(readStoredBoolean(NOTIF_BALANCE_STORAGE_KEY, result[NOTIF_BALANCE_STORAGE_KEY], true))
+    void chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY]).then((result) => {
+      if (!active) return
+      setIncomingAlerts(readStoredBoolean(result[NOTIF_INCOMING_STORAGE_KEY], true))
+      setBalanceAlerts(readStoredBoolean(result[NOTIF_BALANCE_STORAGE_KEY], true))
+      setVoiceResponsesEnabled(readStoredBoolean(result[VOICE_RESPONSES_STORAGE_KEY], false))
     })
 
-    chrome.storage.local.get([VOICE_RESPONSES_STORAGE_KEY], (result) => {
-      setVoiceResponsesEnabled(readStoredBoolean(VOICE_RESPONSES_STORAGE_KEY, result[VOICE_RESPONSES_STORAGE_KEY], false))
-    })
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -125,19 +130,19 @@ export function Settings({ onBack }: SettingsProps) {
   const handleToggleIncomingAlerts = async () => {
     const nextValue = !incomingAlerts
     setIncomingAlerts(nextValue)
-    await chrome.storage.local.set({ [NOTIF_INCOMING_STORAGE_KEY]: nextValue })
+    await chromeStorageSet({ [NOTIF_INCOMING_STORAGE_KEY]: nextValue })
   }
 
   const handleToggleBalanceAlerts = async () => {
     const nextValue = !balanceAlerts
     setBalanceAlerts(nextValue)
-    await chrome.storage.local.set({ [NOTIF_BALANCE_STORAGE_KEY]: nextValue })
+    await chromeStorageSet({ [NOTIF_BALANCE_STORAGE_KEY]: nextValue })
   }
 
   const handleToggleVoiceResponses = async () => {
     const nextValue = !voiceResponsesEnabled
     setVoiceResponsesEnabled(nextValue)
-    await chrome.storage.local.set({ [VOICE_RESPONSES_STORAGE_KEY]: nextValue })
+    await chromeStorageSet({ [VOICE_RESPONSES_STORAGE_KEY]: nextValue })
   }
 
   const handleClearGeminiKey = async () => {

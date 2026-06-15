@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
+import { fetchWithTimeout } from '@/lib/external'
+import { getExternalErrorMessage } from '@/lib/externalErrors'
 const REFRESH_INTERVAL_MS = 60_000
 
 interface BlockscoutStatsResponse {
@@ -19,10 +21,6 @@ export interface EcosystemStatsState {
   isLoading: boolean
   error: string
   refresh: () => Promise<void>
-}
-
-function normalizeError(error: unknown): string {
-  return "Couldn't load ecosystem stats"
 }
 
 function formatCompactNumber(raw: string | number): string {
@@ -84,7 +82,7 @@ export function useEcosystemStats(): EcosystemStatsState {
     setError('')
 
     try {
-      const response = await fetch(`${BLOCKSCOUT_API_BASE}/stats`, {
+      const response = await fetchWithTimeout(`${BLOCKSCOUT_API_BASE}/stats`, {
         headers: { accept: 'application/json' },
       })
 
@@ -96,6 +94,7 @@ export function useEcosystemStats(): EcosystemStatsState {
         setActiveWallets('')
         setTotalTxs('')
         setAverageBlockTimeLabel('')
+        setError(getExternalErrorMessage(new Error(`HTTP ${response.status}`), 'discover.couldNotLoadStats'))
         return
       }
 
@@ -114,7 +113,7 @@ export function useEcosystemStats(): EcosystemStatsState {
       setActiveWallets(nextActiveWallets)
       setTotalTxs(nextTotalTxs)
       setAverageBlockTimeLabel(nextAverageBlockTimeLabel)
-    } catch {
+    } catch (error) {
       if (requestId !== requestIdRef.current) return
       hasLoadedRef.current = true
       setDataComplete(false)
@@ -122,6 +121,7 @@ export function useEcosystemStats(): EcosystemStatsState {
       setActiveWallets('')
       setTotalTxs('')
       setAverageBlockTimeLabel('')
+      setError(getExternalErrorMessage(error, 'discover.couldNotLoadStats'))
     } finally {
       if (requestId === requestIdRef.current && shouldShowLoading) {
         setIsLoading(false)

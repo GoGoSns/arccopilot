@@ -14,6 +14,7 @@ import {
   TWITTER_FEED_RETRY_BACKOFF_MS,
 } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
 export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
@@ -77,12 +78,12 @@ async function readTwitterFeedCache(kind: TwitterFeedKind, query: string): Promi
   if (!canUseChromeStorage()) return null
 
   const cacheKey = buildTwitterFeedCacheKey(kind, query)
-  const result = await chrome.storage.local.get(cacheKey) as Record<string, unknown>
+  const result = await chromeStorageGet(cacheKey)
   const cached = result[cacheKey]
 
   if (!isTwitterFeedCacheEntry(cached)) {
     if (typeof cached !== 'undefined') {
-      await chrome.storage.local.remove(cacheKey)
+      await chromeStorageRemove(cacheKey)
     }
     return null
   }
@@ -94,7 +95,7 @@ async function writeTwitterFeedCache(kind: TwitterFeedKind, query: string, entry
   if (!canUseChromeStorage()) return
 
   const cacheKey = buildTwitterFeedCacheKey(kind, query)
-  await chrome.storage.local.set({ [cacheKey]: entry })
+  await chromeStorageSet({ [cacheKey]: entry })
 }
 
 function delay(ms: number): Promise<void> {
@@ -249,21 +250,23 @@ export type TwitterTweet = {
 export async function getTwitterApiKey(): Promise<string | null> {
   if (!canUseChromeStorage()) return null
 
-  const res = await chrome.storage.local.get([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY]) as Record<string, string | undefined>
+  const res = await chromeStorageGet([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+  const hasPrimary = Object.prototype.hasOwnProperty.call(res, TWITTERAPI_KEY)
+  const hasLegacy = Object.prototype.hasOwnProperty.call(res, LEGACY_TWITTERAPI_KEY)
   const key = typeof res[TWITTERAPI_KEY] === 'string' && res[TWITTERAPI_KEY].trim()
     ? res[TWITTERAPI_KEY]
     : typeof res[LEGACY_TWITTERAPI_KEY] === 'string' && res[LEGACY_TWITTERAPI_KEY].trim()
       ? res[LEGACY_TWITTERAPI_KEY]
       : null
 
-  if (!key) {
-    await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+  if (!key && (hasPrimary || hasLegacy)) {
+    await chromeStorageRemove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
     return null
   }
 
   if (key && !res[TWITTERAPI_KEY]) {
-    await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
-    await chrome.storage.local.remove(LEGACY_TWITTERAPI_KEY)
+    await chromeStorageSet({ [TWITTERAPI_KEY]: key })
+    await chromeStorageRemove(LEGACY_TWITTERAPI_KEY)
   }
 
   return key
@@ -272,35 +275,36 @@ export async function getTwitterApiKey(): Promise<string | null> {
 export async function setTwitterApiKey(key: string): Promise<void> {
   if (!canUseChromeStorage()) return
 
-  await chrome.storage.local.set({ [TWITTERAPI_KEY]: key })
-  await chrome.storage.local.remove(LEGACY_TWITTERAPI_KEY)
+  await chromeStorageSet({ [TWITTERAPI_KEY]: key })
+  await chromeStorageRemove(LEGACY_TWITTERAPI_KEY)
 }
 
 export async function clearTwitterApiKey(): Promise<void> {
   if (!canUseChromeStorage()) return
 
-  await chrome.storage.local.remove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
+  await chromeStorageRemove([TWITTERAPI_KEY, LEGACY_TWITTERAPI_KEY])
 }
 
 export async function getOfficialAccounts(): Promise<string> {
   if (!canUseChromeStorage()) return DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
 
-  const res = await chrome.storage.local.get([TWITTER_OFFICIAL_ACCOUNTS]) as Record<string, string | undefined>
+  const res = await chromeStorageGet([TWITTER_OFFICIAL_ACCOUNTS])
+  const hasStoredValue = Object.prototype.hasOwnProperty.call(res, TWITTER_OFFICIAL_ACCOUNTS)
   const stored = typeof res[TWITTER_OFFICIAL_ACCOUNTS] === 'string'
     ? res[TWITTER_OFFICIAL_ACCOUNTS]!.trim()
     : ''
   const handles = parseTwitterHandleList(stored)
 
   if (handles.length === 0) {
-    if (stored) {
-      await chrome.storage.local.remove(TWITTER_OFFICIAL_ACCOUNTS)
+    if (stored && hasStoredValue) {
+      await chromeStorageRemove(TWITTER_OFFICIAL_ACCOUNTS)
     }
     return DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
   }
 
   const normalized = formatTwitterHandleList(handles)
   if (normalized !== stored) {
-    await chrome.storage.local.set({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
+    await chromeStorageSet({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
   }
 
   return normalized
@@ -314,7 +318,7 @@ export async function setOfficialAccounts(accounts: string): Promise<string> {
 
   await clearOfficialTweetsCache()
   if (canUseChromeStorage()) {
-    await chrome.storage.local.set({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
+    await chromeStorageSet({ [TWITTER_OFFICIAL_ACCOUNTS]: normalized })
   }
 
   return normalized
@@ -347,7 +351,7 @@ export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterT
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -382,11 +386,14 @@ export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterT
 export async function getSearchQuery(): Promise<string> {
   if (!canUseChromeStorage()) return DEFAULT_TWITTER_SEARCH_QUERY
 
-  const res = await chrome.storage.local.get([TWITTER_SEARCH_QUERY]) as Record<string, string | undefined>
+  const res = await chromeStorageGet([TWITTER_SEARCH_QUERY])
+  const hasStoredValue = Object.prototype.hasOwnProperty.call(res, TWITTER_SEARCH_QUERY)
   const stored = typeof res[TWITTER_SEARCH_QUERY] === 'string' ? res[TWITTER_SEARCH_QUERY]!.trim() : ''
 
   if (!stored) {
-    await chrome.storage.local.remove(TWITTER_SEARCH_QUERY)
+    if (hasStoredValue) {
+      await chromeStorageRemove(TWITTER_SEARCH_QUERY)
+    }
     return DEFAULT_TWITTER_SEARCH_QUERY
   }
 
@@ -400,9 +407,9 @@ export async function setSearchQuery(query: string): Promise<void> {
     await clearTweetsCache()
     if (canUseChromeStorage()) {
       if (normalized) {
-        await chrome.storage.local.set({ [TWITTER_SEARCH_QUERY]: normalized })
+        await chromeStorageSet({ [TWITTER_SEARCH_QUERY]: normalized })
       } else {
-        await chrome.storage.local.remove(TWITTER_SEARCH_QUERY)
+        await chromeStorageRemove(TWITTER_SEARCH_QUERY)
       }
     }
   } finally {
@@ -434,7 +441,7 @@ async function fetchTweetsByQueryWithCache(
   searchUrl.searchParams.set('query', normalizedQuery)
   searchUrl.searchParams.set('queryType', 'Latest')
 
-  const executeFetch = async (): Promise<Response> => fetch(searchUrl.toString(), {
+  const executeFetch = async (): Promise<Response> => fetchWithTimeout(searchUrl.toString(), {
     headers: { 'X-API-Key': apiKey },
   })
 

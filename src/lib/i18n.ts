@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 
 export type Locale = 'en' | 'tr'
 export type LocalePreference = 'auto' | Locale
@@ -37,6 +38,7 @@ const EN = {
   'common.retry': 'Retry',
   'common.never': 'Never',
   'common.unknown': 'Unknown',
+  'common.requestTimedOut': 'Request timed out',
   'common.new': 'New',
   'common.done': 'Done',
   'common.confirm': 'Confirm',
@@ -101,6 +103,7 @@ const EN = {
   'portfolio.loading': 'Loading portfolio...',
   'portfolio.otherTokensNote': 'Other tokens will appear here',
   'portfolio.emptyDescription': 'Token balances will appear here once available.',
+  'portfolio.couldNotLoad': 'Couldn’t load portfolio data',
 
   'actions.send': 'Send',
   'actions.receive': 'Receive',
@@ -565,6 +568,7 @@ const TR = {
   'common.retry': 'Tekrar dene',
   'common.never': 'Hiçbir zaman',
   'common.unknown': 'Bilinmiyor',
+  'common.requestTimedOut': 'İstek zaman aşımına uğradı',
   'common.new': 'Yeni',
   'common.done': 'Bitti',
   'common.confirm': 'Onayla',
@@ -629,6 +633,7 @@ const TR = {
   'portfolio.loading': 'Portföy yükleniyor...',
   'portfolio.otherTokensNote': 'Diğer tokenlar burada görünecek',
   'portfolio.emptyDescription': 'Token bakiyeleri hazır olduğunda burada görünecek.',
+  'portfolio.couldNotLoad': 'Portföy verileri yüklenemedi',
 
   'actions.send': 'Gönder',
   'actions.receive': 'Al',
@@ -1085,31 +1090,6 @@ let initialized = false
 let initPromise: Promise<Locale> | null = null
 let storageListenerAttached = false
 
-function chromeStorageAvailable(): boolean {
-  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
-}
-
-function chromeGet(keys: string | string[]): Promise<Record<string, unknown>> {
-  if (!chromeStorageAvailable()) return Promise.resolve({})
-  return new Promise((resolve) => {
-    chrome.storage.local.get(keys, (result) => resolve(result as Record<string, unknown>))
-  })
-}
-
-function chromeSet(items: Record<string, unknown>): Promise<void> {
-  if (!chromeStorageAvailable()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.set(items, () => resolve())
-  })
-}
-
-function chromeRemove(keys: string | string[]): Promise<void> {
-  if (!chromeStorageAvailable()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.remove(keys, () => resolve())
-  })
-}
-
 function emitChange(): void {
   for (const listener of listeners) {
     listener()
@@ -1132,7 +1112,7 @@ function attachStorageListener(): void {
       activePreference = 'auto'
       activeLocale = detectNavigatorLocale()
       if (change.newValue != null) {
-        void chromeRemove(LOCALE_STORAGE_KEY)
+        void chromeStorageRemove(LOCALE_STORAGE_KEY)
       }
     }
 
@@ -1147,13 +1127,13 @@ async function hydrateLocale(): Promise<Locale> {
   activePreference = 'auto'
 
   try {
-    const stored = await chromeGet(LOCALE_STORAGE_KEY)
+    const stored = await chromeStorageGet(LOCALE_STORAGE_KEY)
     const preference = normalizePreference(stored[LOCALE_STORAGE_KEY])
     if (preference) {
       activePreference = preference
       activeLocale = resolveLocale(preference)
     } else if (stored[LOCALE_STORAGE_KEY] != null) {
-      await chromeRemove(LOCALE_STORAGE_KEY)
+      await chromeStorageRemove(LOCALE_STORAGE_KEY)
     }
   } catch {
     activePreference = 'auto'
@@ -1208,7 +1188,7 @@ export async function setLocale(locale: LocalePreference): Promise<void> {
   activePreference = locale
   activeLocale = resolveLocale(locale)
   emitChange()
-  await chromeSet({ [LOCALE_STORAGE_KEY]: locale })
+  await chromeStorageSet({ [LOCALE_STORAGE_KEY]: locale })
 }
 
 export function useLocale(): Locale {

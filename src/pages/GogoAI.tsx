@@ -30,6 +30,7 @@ import {
 import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
+import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import {
   addReminder,
   buildReminderFromAction,
@@ -443,19 +444,12 @@ function getMultiStepActionTitle(
 }
 
 async function persistPendingSend(recipient?: string, amount?: string): Promise<void> {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local) return
-
-  await new Promise<void>((resolve) => {
-    chrome.storage.local.set(
-      {
-        [PENDING_SEND_STORAGE_KEY]: {
-          recipient,
-          amount,
-          ts: Date.now(),
-        },
-      },
-      () => resolve(),
-    )
+  await chromeStorageSet({
+    [PENDING_SEND_STORAGE_KEY]: {
+      recipient,
+      amount,
+      ts: Date.now(),
+    },
   })
 }
 
@@ -702,11 +696,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
   }, [])
 
   useEffect(() => {
-    if (typeof chrome === 'undefined' || !chrome.storage?.local) return
-
     let active = true
 
-    chrome.storage.local.get([VOICE_RESPONSES_STORAGE_KEY], (result) => {
+    void chromeStorageGet([VOICE_RESPONSES_STORAGE_KEY]).then((result) => {
       if (!active) return
       setVoiceResponsesEnabled(result[VOICE_RESPONSES_STORAGE_KEY] === true)
     })
@@ -878,7 +870,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     }
 
     try {
-      await chrome.storage.local.set({ [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai' })
+      await chromeStorageSet({ [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai' })
     } catch (error) {
       debugWarn('[GogoAI] failed to persist pending Gogo view:', error)
     }

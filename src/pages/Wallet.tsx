@@ -11,9 +11,11 @@ import { ActivityTab } from '@/components/ActivityTab'
 import { DiscoverTab } from '@/components/DiscoverTab'
 import { BottomStatus } from '@/components/BottomStatus'
 import { Card } from '@/components/ui/Card'
+import { ErrorState } from '@/components/ErrorState'
 import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
+import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { copyToClipboard, formatAddress } from '@/lib/utils'
 import { ONBOARDING_SEEN } from '@/lib/storageKeys'
 
@@ -22,13 +24,16 @@ type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
 interface PortfolioSectionProps {
   tokens: PortfolioTokenBalance[]
   isLoading: boolean
+  error: string | null
+  onRetry: () => void
 }
 
-function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
+function PortfolioSection({ tokens, isLoading, error, onRetry }: PortfolioSectionProps) {
   const showSkeleton = isLoading && tokens.length === 0
   const showRefreshing = isLoading && tokens.length > 0
   const hasUsdcOnly = tokens.length === 1 && tokens[0].isUsdc
-  const showEmptyState = !isLoading && tokens.length === 0
+  const showErrorState = Boolean(error) && tokens.length === 0 && !isLoading
+  const showEmptyState = !isLoading && tokens.length === 0 && !error
 
   return (
     <Card className="mx-4 mt-3 overflow-hidden">
@@ -40,7 +45,16 @@ function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
       </div>
 
       <div className="px-4 py-2">
-        {showSkeleton ? (
+        {showErrorState ? (
+          <div className="py-2">
+            <ErrorState
+              title={t('portfolio.title')}
+              description={error ?? t('portfolio.couldNotLoad')}
+              actionLabel={t('state.retry')}
+              onAction={onRetry}
+            />
+          </div>
+        ) : showSkeleton ? (
           <div className="space-y-3 py-1">
             <div className="flex items-center gap-3 animate-pulse">
               <div className="h-9 w-9 rounded-full bg-arc-bg/60" />
@@ -115,13 +129,20 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   const streak = useStore((s) => s.streak)
   const setCurrentView = useStore((s) => s.setCurrentView)
   const { balance, isLoading } = useUSDCBalance()
-  const { tokens: portfolioTokens, isLoading: isPortfolioLoading } = usePortfolioBalances(address)
+  const { tokens: portfolioTokens, isLoading: isPortfolioLoading, error: portfolioError, refresh: refreshPortfolio } = usePortfolioBalances(address)
 
   useEffect(() => {
-    chrome.storage.local.get(ONBOARDING_SEEN, (result) => {
+    let active = true
+
+    void chromeStorageGet(ONBOARDING_SEEN).then((result) => {
+      if (!active) return
       setShowOnboarding(result[ONBOARDING_SEEN] !== true)
       setOnboardingReady(true)
     })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const level = Math.max(1, Math.floor(xp / 100))
@@ -140,7 +161,7 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
 
   const dismissOnboarding = () => {
     setShowOnboarding(false)
-    void chrome.storage.local.set({ [ONBOARDING_SEEN]: true })
+    void chromeStorageSet({ [ONBOARDING_SEEN]: true })
   }
 
   return (
@@ -212,7 +233,12 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
         isLoading={isLoading}
       />
 
-      <PortfolioSection tokens={portfolioTokens} isLoading={isPortfolioLoading} />
+      <PortfolioSection
+        tokens={portfolioTokens}
+        isLoading={isPortfolioLoading}
+        error={portfolioError}
+        onRetry={() => void refreshPortfolio()}
+      />
 
       <ActionButtons onSend={onSend} onReceive={onReceive} onScan={() => {}} onBuy={() => {}} />
 

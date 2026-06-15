@@ -2,6 +2,7 @@ import { formatAddress, formatBalance } from '@/lib/utils'
 import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 import { formatText, getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import {
@@ -135,7 +136,7 @@ type BlockscoutFetchResult<T> = {
 type PromptContext = {
   wallet: {
     address: string
-    balance: string
+    balance: string | null
     network: 'Arc Testnet'
   }
   addressBook: AddressBookSummary[]
@@ -149,7 +150,7 @@ type PromptContext = {
 
 export interface GogoContext {
   walletAddress: string
-  balance: string
+  balance: string | null
   addressBook: Record<string, AddressBookEntry>
   whales: WhaleSummary[]
   portfolio: PortfolioSummary[]
@@ -232,24 +233,15 @@ function canUseChromeStorage(): boolean {
 }
 
 function chromeGet(keys: string | string[]): Promise<Record<string, unknown>> {
-  if (!canUseChromeStorage()) return Promise.resolve({})
-  return new Promise((resolve) => {
-    chrome.storage.local.get(keys, (result) => resolve(result as Record<string, unknown>))
-  })
+  return chromeStorageGet(keys)
 }
 
 function chromeSet(items: Record<string, unknown>): Promise<void> {
-  if (!canUseChromeStorage()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.set(items, () => resolve())
-  })
+  return chromeStorageSet(items)
 }
 
 function chromeRemove(keys: string | string[]): Promise<void> {
-  if (!canUseChromeStorage()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.remove(keys, () => resolve())
-  })
+  return chromeStorageRemove(keys)
 }
 
 function readLocalCache<T>(key: string): T | null {
@@ -656,7 +648,7 @@ function buildGogoContextFromStore(): GogoContext {
 
   return {
     walletAddress: state.walletAddress ?? '',
-    balance: state.usdcBalance ?? '0.00',
+    balance: state.usdcBalance ?? null,
     addressBook,
     whales,
     portfolio: getFreshPortfolioSummaries(),
@@ -931,7 +923,7 @@ Respond in ${likelyLanguage}.
 If a suggestion is not relevant, keep the action as none.
 
 COUNTS:
-${JSON.stringify({ ...counts, balance: `${context.wallet.balance} USDC` })}
+${JSON.stringify({ ...counts, balance: context.wallet.balance ? `${context.wallet.balance} USDC` : 'unknown' })}
 
 LIVE CONTEXT (JSON):
 ${JSON.stringify(context)}`
@@ -978,7 +970,9 @@ export async function loadGogoHistory(): Promise<Message[]> {
     const stored = await chromeGet(GOGO_HISTORY)
     const raw = stored[GOGO_HISTORY]
     if (!Array.isArray(raw)) {
-      await chromeRemove(GOGO_HISTORY)
+      if (Object.prototype.hasOwnProperty.call(stored, GOGO_HISTORY)) {
+        await chromeRemove(GOGO_HISTORY)
+      }
       return []
     }
 
@@ -1019,11 +1013,12 @@ export async function clearGogoHistory(): Promise<void> {
 
 export async function getApiKey(): Promise<string | null> {
   const res = await chromeGet(GEMINI_API_KEY_STORAGE_KEY)
+  const hasKey = Object.prototype.hasOwnProperty.call(res, GEMINI_API_KEY_STORAGE_KEY)
   const key = typeof res[GEMINI_API_KEY_STORAGE_KEY] === 'string' && res[GEMINI_API_KEY_STORAGE_KEY].trim()
     ? (res[GEMINI_API_KEY_STORAGE_KEY] as string)
     : null
 
-  if (!key) {
+  if (!key && hasKey) {
     await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
   }
 
@@ -1040,7 +1035,7 @@ export async function clearApiKey(): Promise<void> {
 
 async function fetchBlockscoutJsonResult<T>(path: string): Promise<BlockscoutFetchResult<T>> {
   try {
-    const res = await fetch(`${BLOCKSCOUT_API_URL}${path}`, {
+    const res = await fetchWithTimeout(`${BLOCKSCOUT_API_URL}${path}`, {
       headers: { accept: 'application/json' },
     })
 
@@ -1074,18 +1069,6 @@ async function fetchBlockscoutJsonResult<T>(path: string): Promise<BlockscoutFet
       data: null,
     }
   }
-}
-
-async function fetchBlockscoutJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${BLOCKSCOUT_API_URL}${path}`, {
-    headers: { accept: 'application/json' },
-  })
-
-  if (!res.ok) {
-    throw new Error("Couldn't load activity")
-  }
-
-  return (await res.json()) as T
 }
 
 function resolveTxCount(addressInfo: BlockscoutAddressInfo, txInfo: BlockscoutTransactionsResponse): number {
@@ -1338,7 +1321,7 @@ export async function getProactiveGreeting(): Promise<{ reply: string; action?: 
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -1408,7 +1391,7 @@ export async function askGogo(
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

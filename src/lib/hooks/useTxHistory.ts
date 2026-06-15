@@ -3,6 +3,8 @@ import { EXPLORER_URL } from '@/lib/arc'
 import { BLOCKSCOUT_API_BASE, USDC_CONTRACT } from '@/lib/constants'
 import { timeAgo } from '@/lib/utils'
 import { useStore } from '@/lib/store'
+import { fetchWithTimeout } from '@/lib/external'
+import { getExternalErrorMessage } from '@/lib/externalErrors'
 const POLL_INTERVAL_MS = 30_000
 
 interface BlockscoutAddressRef {
@@ -63,10 +65,6 @@ function formatUnits(value: bigint, decimals: number): string {
   return `${whole.toString()}.${fractionStr}`
 }
 
-function normalizeError(_error: unknown): string {
-  return "Couldn't load activity"
-}
-
 export function useTxHistory(address: string | null | undefined): UseTxHistoryResult {
   const [transactions, setTransactions] = useState<TxHistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -100,7 +98,7 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
       url.searchParams.set('type', 'ERC-20')
       url.searchParams.set('token', USDC_CONTRACT)
 
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithTimeout(url.toString(), {
         headers: { accept: 'application/json' },
       })
 
@@ -109,6 +107,7 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
         if (transactionsRef.current.length === 0) {
           setTransactions([])
           transactionsRef.current = []
+          setError(getExternalErrorMessage(new Error(`HTTP ${response.status}`), 'activity.couldNotLoad'))
         }
         return
       }
@@ -160,11 +159,12 @@ export function useTxHistory(address: string | null | undefined): UseTxHistoryRe
 
       transactionsRef.current = nextTransactions
       setTransactions(nextTransactions)
-    } catch {
+    } catch (error) {
       if (requestIdRef.current !== requestId) return
       if (transactionsRef.current.length === 0) {
         setTransactions([])
         transactionsRef.current = []
+        setError(getExternalErrorMessage(error, 'activity.couldNotLoad'))
       }
     } finally {
       if (requestIdRef.current === requestId && shouldShowLoading) {

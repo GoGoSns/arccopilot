@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { ADDRESS_BOOK_STORAGE_KEY, WALLET_ADDRESS_STORAGE_KEY } from '@/lib/storageKeys'
 import { debugLog, debugWarn } from '@/lib/debug'
+import { chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 
 export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail' | 'daily-brief' | 'gogo-ai'
 
@@ -33,7 +34,7 @@ interface AppState {
   currentView: View
   previousView: View | null
   walletAddress: string | null
-  usdcBalance: string
+  usdcBalance: string | null
   portfolioAddress: string | null
   portfolioTokens: PortfolioTokenBalance[]
   portfolioUpdatedAt: number | null
@@ -92,11 +93,11 @@ async function syncWalletAddressToChrome(address: string | null): Promise<void> 
 
   try {
     if (address && address.trim()) {
-      await chrome.storage.local.set({
+      await chromeStorageSet({
         [WALLET_ADDRESS_STORAGE_KEY]: address.trim().toLowerCase(),
-      })
+      }, undefined, 'wallet address sync')
     } else {
-      await chrome.storage.local.remove(WALLET_ADDRESS_STORAGE_KEY)
+      await chromeStorageRemove(WALLET_ADDRESS_STORAGE_KEY, undefined, 'wallet address clear')
     }
   } catch (error) {
     debugWarn('[ArcCopilot] wallet address sync failed:', error)
@@ -107,9 +108,9 @@ async function syncAddressBookToChrome(memories: Record<string, AddressMemory>):
   if (!canUseChromeStorage()) return
 
   try {
-    await chrome.storage.local.set({
+    await chromeStorageSet({
       [ADDRESS_BOOK_STORAGE_KEY]: normalizeAddressBook(memories),
-    })
+    }, undefined, 'address book sync')
   } catch (error) {
     debugWarn('[ArcCopilot] address book sync failed:', error)
   }
@@ -122,7 +123,7 @@ export const useStore = create<AppState>()(
       currentView: 'welcome',
       previousView: null,
       walletAddress: null,
-      usdcBalance: '0.00',
+      usdcBalance: null,
       portfolioAddress: null,
       portfolioTokens: [],
       portfolioUpdatedAt: null,

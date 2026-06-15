@@ -19,6 +19,7 @@ import {
 } from '@/lib/storageKeys'
 import { ARC_RPC_URL, BLOCKSCOUT_BASE, USDC_CONTRACT } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import {
   getDueReminders,
   getLocalDateKey,
@@ -87,24 +88,6 @@ function shortAddress(address: string): string {
   return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`
 }
 
-function chromeGet(keys: string | string[]): Promise<Record<string, unknown>> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get(keys, (result) => resolve(result as Record<string, unknown>))
-  })
-}
-
-function chromeSet(items: Record<string, unknown>): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.set(items, () => resolve())
-  })
-}
-
-function chromeRemove(keys: string | string[]): Promise<void> {
-  return new Promise((resolve) => {
-    chrome.storage.local.remove(keys, () => resolve())
-  })
-}
-
 function formatAddressLabel(address: string, addressBook?: Record<string, AddressMemory>): string {
   const normalized = address.toLowerCase()
   const label = addressBook?.[normalized]?.label?.trim()
@@ -131,7 +114,7 @@ async function fetchCurrentUsdcBalance(address: string): Promise<string> {
   const padded = address.slice(2).toLowerCase().padStart(64, '0')
   const data = '0x70a08231' + padded
 
-  const res = await fetch(ARC_RPC_URL, {
+  const res = await fetchWithTimeout(ARC_RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -159,7 +142,7 @@ async function fetchCurrentUsdcBalance(address: string): Promise<string> {
 
 async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer | null> {
   const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20&token=${USDC_CONTRACT}`
-  const res = await fetch(url, { headers: { accept: 'application/json' } })
+  const res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } })
   if (!res.ok) return null
 
   const data = await res.json() as { items?: RawTransfer[] }
@@ -170,7 +153,7 @@ async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer
 }
 
 async function loadNotificationPrefs(): Promise<{ incoming: boolean; balance: boolean }> {
-  const result = await chromeGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY])
+  const result = await chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY])
 
   return {
     incoming: result[NOTIF_INCOMING_STORAGE_KEY] !== false,
@@ -207,12 +190,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 })
 
-  chrome.notifications.onClicked.addListener((notifId) => {
+chrome.notifications.onClicked.addListener((notifId) => {
   chrome.notifications.clear(notifId)
-  void chrome.storage.local.set({ [PENDING_VIEW_STORAGE_KEY]: 'daily-brief' })
-  try {
-    void (chrome.action as any).openPopup()
-  } catch {}
+  void (async () => {
+    await chromeStorageSet({ [PENDING_VIEW_STORAGE_KEY]: 'daily-brief' })
+    try {
+      void (chrome.action as any).openPopup()
+    } catch {}
+  })()
 })
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -252,13 +237,13 @@ async function runRecurringChecks(): Promise<void> {
 async function checkWhales(): Promise<void> {
   debugLog('[ArcCopilot SW] checking whales...')
 
-  const bookResult = await chrome.storage.local.get(ADDRESS_BOOK_STORAGE_KEY)
+  const bookResult = await chromeStorageGet(ADDRESS_BOOK_STORAGE_KEY)
   const rawBook = bookResult[ADDRESS_BOOK_STORAGE_KEY]
   const book = normalizeAddressBook(bookResult[ADDRESS_BOOK_STORAGE_KEY])
 
   if (Object.keys(book).length === 0) {
     if (rawBook != null) {
-      await chrome.storage.local.remove(ADDRESS_BOOK_STORAGE_KEY)
+      await chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
     }
     debugLog('[ArcCopilot SW] no address book in storage')
     return
@@ -273,7 +258,7 @@ async function checkWhales(): Promise<void> {
   debugLog('[ArcCopilot SW] tracking', whales.length, 'whale(s)')
 
   const lastSeenKeys = whales.map((w) => LAST_SEEN_PREFIX + w.address.toLowerCase())
-  const lastSeenResult = await chrome.storage.local.get(lastSeenKeys)
+  const lastSeenResult = await chromeStorageGet(lastSeenKeys)
   const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
 
   let newActivity = false
@@ -288,7 +273,7 @@ async function checkWhales(): Promise<void> {
 
       try {
         const url = `${BLOCKSCOUT_BASE}/api/v2/addresses/${normalized}/token-transfers?type=ERC-20`
-        const res = await fetch(url, { headers: { accept: 'application/json' } })
+        const res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } })
         if (!res.ok) return
 
         const data = await res.json() as { items?: RawTransfer[] }
@@ -302,7 +287,7 @@ async function checkWhales(): Promise<void> {
 
         if (lastSeenHash && lastSeenHash === txHash) return
 
-        await chrome.storage.local.set({ [lastSeenKey]: txHash })
+        await chromeStorageSet({ [lastSeenKey]: txHash })
 
         if (!lastSeenHash) {
           debugLog('[ArcCopilot SW] initialized last-seen for', normalized)
@@ -341,7 +326,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
   debugLog('[ArcCopilot SW] checking balance and incoming transfers...')
 
   try {
-    const storage = await chromeGet([
+    const storage = await chromeStorageGet([
       ADDRESS_BOOK_STORAGE_KEY,
       LAST_KNOWN_BALANCE_KEY,
       LAST_KNOWN_BALANCE_WALLET_KEY,
@@ -390,7 +375,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
         })
       }
 
-      await chromeSet({
+      await chromeStorageSet({
         [LAST_KNOWN_BALANCE_KEY]: currentBalance,
         [LAST_KNOWN_BALANCE_WALLET_KEY]: walletAddress,
       })
@@ -420,7 +405,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
         })
       }
 
-      await chromeSet({
+      await chromeStorageSet({
         [LAST_SEEN_INCOMING_KEY]: incomingKey,
         [LAST_SEEN_INCOMING_WALLET_KEY]: walletAddress,
       })
@@ -441,7 +426,7 @@ async function checkReminders(): Promise<void> {
 
     const todayKey = getLocalDateKey()
     const notifiedKeys = dueReminders.map((reminder) => `${REMINDER_NOTIFIED_PREFIX}${reminder.id}`)
-    const stored = await chromeGet(notifiedKeys)
+    const stored = await chromeStorageGet(notifiedKeys)
     const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
     const updates: Record<string, unknown> = {}
     let notifiedCount = 0
@@ -465,7 +450,7 @@ async function checkReminders(): Promise<void> {
     }
 
     if (Object.keys(updates).length > 0) {
-      await chromeSet(updates)
+      await chromeStorageSet(updates)
     }
 
     if (notifiedCount > 0) {
@@ -478,7 +463,7 @@ async function checkReminders(): Promise<void> {
 
 async function handleOpenSend(recipient: string): Promise<void> {
   const payload: PendingSend = { recipient: recipient.toLowerCase(), ts: Date.now() }
-  await chrome.storage.local.set({ [PENDING_SEND_STORAGE_KEY]: payload })
+  await chromeStorageSet({ [PENDING_SEND_STORAGE_KEY]: payload })
 
   try {
     if (typeof (chrome.action as any)?.openPopup !== 'function') {

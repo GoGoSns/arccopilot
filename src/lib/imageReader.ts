@@ -1,5 +1,6 @@
 import { GEMINI_MODEL } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
+import { fetchWithTimeout } from '@/lib/external'
 import { getApiKey } from '@/lib/gogoAI'
 import { isValidAddress } from '@/lib/validation'
 
@@ -164,7 +165,7 @@ export async function extractAddressWithVision(base64: string, mimeType: string)
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

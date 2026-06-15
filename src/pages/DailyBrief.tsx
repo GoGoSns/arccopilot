@@ -2,6 +2,7 @@
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
+import { ErrorState } from '@/components/ErrorState'
 import {
   BLOCKSCOUT_API_BASE,
   BRIEF_STATS_CACHE_TTL_MS,
@@ -25,6 +26,7 @@ import {
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import {
   categorizeTweets,
   fetchArcTweetFeed,
@@ -37,6 +39,7 @@ import {
   markReminderTriggered,
   type Reminder,
 } from '@/lib/reminders'
+import { getExternalErrorMessage } from '@/lib/externalErrors'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
 
 // --- constants ---------------------------------------------------------------
@@ -254,16 +257,10 @@ function formatFeedRefreshLabel(fetchedAt: number): string {
 
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
   const url = `${BLOCKSCOUT_API_BASE}/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20`
-
-  try {
-    const res = await fetch(url, { headers: { accept: 'application/json' } })
-    if (res.status === 422) return []
-    if (!res.ok) return []
-    const data = await res.json() as { items?: RawTransfer[] }
-    return (data.items ?? []).filter(isUsdcTransfer)
-  } catch {
-    return []
-  }
+  const res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json() as { items?: RawTransfer[] }
+  return (data.items ?? []).filter(isUsdcTransfer)
 }
 
 function deriveBalanceChange(transfers: RawTransfer[], address: string): string | null {
@@ -297,20 +294,18 @@ function hasRecentActivity(transfers: RawTransfer[]): boolean {
 }
 
 async function fetchStats(): Promise<EcosystemStats | null> {
-  try {
-    const res = await fetch(`${BLOCKSCOUT_API_BASE}/stats`, { headers: { accept: 'application/json' } })
-    if (!res.ok) return null
-    const d = await res.json() as {
-      average_block_time?: number
-      total_transactions?: string
-      total_addresses?:    string
-    }
-    return {
-      blockTime:      d.average_block_time != null ? `${Math.round(d.average_block_time)}ms` : '-',
-      totalTx:        d.total_transactions ? formatCompact(parseInt(d.total_transactions, 10)) : '-',
-      totalAddresses: d.total_addresses    ? formatCompact(parseInt(d.total_addresses, 10))    : '-',
-    }
-  } catch { return null }
+  const res = await fetchWithTimeout(`${BLOCKSCOUT_API_BASE}/stats`, { headers: { accept: 'application/json' } })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const d = await res.json() as {
+    average_block_time?: number
+    total_transactions?: string
+    total_addresses?:    string
+  }
+  return {
+    blockTime:      d.average_block_time != null ? `${Math.round(d.average_block_time)}ms` : '-',
+    totalTx:        d.total_transactions ? formatCompact(parseInt(d.total_transactions, 10)) : '-',
+    totalAddresses: d.total_addresses    ? formatCompact(parseInt(d.total_addresses, 10))    : '-',
+  }
 }
 
 type CachedWhaleTx = { amount: string; direction: 'in' | 'out'; timestamp: string; hasRecent: boolean }
@@ -320,24 +315,22 @@ async function fetchWhaleLastTx(whaleAddr: string, label: string): Promise<Whale
   const cached   = readCache<CachedWhaleTx>(cacheKey)
   if (cached) return { address: whaleAddr, label, ...cached }
 
-  try {
-    const url = `${BLOCKSCOUT_API_BASE}/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20`
-    const res = await fetch(url, { headers: { accept: 'application/json' } })
-    if (!res.ok) return null
-    const data  = await res.json() as { items?: RawTransfer[] }
-    const items = (data.items ?? []).filter(isUsdcTransfer)
-    if (!items.length) return null
+  const url = `${BLOCKSCOUT_API_BASE}/addresses/${whaleAddr.toLowerCase()}/token-transfers?type=ERC-20`
+  const res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data  = await res.json() as { items?: RawTransfer[] }
+  const items = (data.items ?? []).filter(isUsdcTransfer)
+  if (!items.length) return null
 
-    const latest  = items[0]
-    const wNorm   = whaleAddr.toLowerCase()
-    const direction: 'in' | 'out' = latest.to.hash.toLowerCase() === wNorm ? 'in' : 'out'
-    const amount   = formatBalance(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
-    const hasRecent = Date.now() - new Date(latest.timestamp).getTime() < 24 * 60 * 60 * 1000
+  const latest  = items[0]
+  const wNorm   = whaleAddr.toLowerCase()
+  const direction: 'in' | 'out' = latest.to.hash.toLowerCase() === wNorm ? 'in' : 'out'
+  const amount   = formatBalance(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
+  const hasRecent = Date.now() - new Date(latest.timestamp).getTime() < 24 * 60 * 60 * 1000
 
-    const txData: CachedWhaleTx = { amount, direction, timestamp: latest.timestamp, hasRecent }
-    writeCache(cacheKey, txData, BRIEF_WHALE_CACHE_TTL_MS)
-    return { address: whaleAddr, label, ...txData }
-  } catch { return null }
+  const txData: CachedWhaleTx = { amount, direction, timestamp: latest.timestamp, hasRecent }
+  writeCache(cacheKey, txData, BRIEF_WHALE_CACHE_TTL_MS)
+  return { address: whaleAddr, label, ...txData }
 }
 
 // --- component ---------------------------------------------------------------
@@ -372,11 +365,16 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [activityLoading,setActivityLoading]= useState(true)
   const [stats,          setStats]          = useState<EcosystemStats | null>(null)
   const [statsLoading,   setStatsLoading]   = useState(true)
+  const [statsError,     setStatsError]     = useState<string | null>(null)
   const [whaleEntries,   setWhaleEntries]   = useState<WhaleEntry[]>([])
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
+  const [whaleError,     setWhaleError]     = useState<string | null>(null)
   const [dueReminders,   setDueReminders]   = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
+  const [transferError,  setTransferError]  = useState<string | null>(null)
+  const [officialTweetsError, setOfficialTweetsError] = useState<string | null>(null)
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   // -- Twitter State --
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
@@ -421,6 +419,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       setChangeLoading(false)
       setActivityLoading(false)
       setPatternLoading(false)
+      setTransferError(null)
       return
     }
     const cacheKey = `arccopilot:brief:transfers:${address.toLowerCase()}`
@@ -430,6 +429,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       setRawTransfers(items)
       setBalanceChange(deriveBalanceChange(items, address))
       setActivity(deriveActivity(items, address))
+      setTransferError(null)
       setChangeLoading(false)
       setActivityLoading(false)
       setPatternLoading(false)
@@ -444,20 +444,31 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         writeCache(cacheKey, items, BRIEF_TRANSFER_CACHE_TTL_MS)
         process(items)
       })
-      .catch(() => {
+      .catch((error) => {
+        debugWarn('[DailyBrief] transfers load failed:', error)
+        setRawTransfers([])
+        setBalanceChange(null)
+        setActivity([])
+        setTransferError(getExternalErrorMessage(error, 'activity.couldNotLoad'))
         setChangeLoading(false)
         setActivityLoading(false)
         setPatternLoading(false)
       })
-  }, [address])
+  }, [address, refreshNonce])
 
   // -- effect: dismissed patterns ------------------------------------------
   useEffect(() => {
-    chrome.storage.local.get(DISMISSED_PATTERNS_KEY, (res) => {
+    let active = true
+
+    void chromeStorageGet(DISMISSED_PATTERNS_KEY).then((res) => {
+      const hasStoredDismissals = Object.prototype.hasOwnProperty.call(res, DISMISSED_PATTERNS_KEY)
+      if (!active) return
       const raw = res[DISMISSED_PATTERNS_KEY]
       if (!Array.isArray(raw)) {
         setDismissed([])
-        chrome.storage.local.remove(DISMISSED_PATTERNS_KEY)
+        if (hasStoredDismissals) {
+          void chromeStorageRemove(DISMISSED_PATTERNS_KEY)
+        }
         return
       }
 
@@ -470,11 +481,15 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       ))
 
       if (next.length !== raw.length) {
-        chrome.storage.local.set({ [DISMISSED_PATTERNS_KEY]: next })
+        void chromeStorageSet({ [DISMISSED_PATTERNS_KEY]: next })
       }
 
       setDismissed(next)
     })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const dismissPattern = (p: Pattern) => {
@@ -482,7 +497,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     const newEntry: DismissedPattern = { kind: p.kind, key, dismissedAt: Date.now() }
     const next = [...dismissed, newEntry]
     setDismissed(next)
-    chrome.storage.local.set({ [DISMISSED_PATTERNS_KEY]: next })
+    void chromeStorageSet({ [DISMISSED_PATTERNS_KEY]: next })
   }
 
   const handlePatternAction = (p: Pattern) => {
@@ -498,7 +513,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       ts: Date.now(),
     }
 
-    chrome.storage.local.set({ [PENDING_SEND_STORAGE_KEY]: pending }, () => {
+    void chromeStorageSet({ [PENDING_SEND_STORAGE_KEY]: pending }).finally(() => {
       setCurrentView('send')
     })
   }
@@ -507,25 +522,65 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   useEffect(() => {
     const cacheKey = 'arccopilot:brief:stats'
     const cached   = readCache<EcosystemStats>(cacheKey)
-    if (cached) { setStats(cached); setStatsLoading(false); return }
+    if (cached) {
+      setStats(cached)
+      setStatsError(null)
+      setStatsLoading(false)
+      return
+    }
     fetchStats()
-      .then((s) => { if (s) { writeCache(cacheKey, s, BRIEF_STATS_CACHE_TTL_MS); setStats(s) } })
-      .catch(() => {})
+      .then((s) => {
+        if (s) {
+          writeCache(cacheKey, s, BRIEF_STATS_CACHE_TTL_MS)
+          setStats(s)
+          setStatsError(null)
+        }
+      })
+      .catch((error) => {
+        debugWarn('[DailyBrief] stats load failed:', error)
+        setStats(null)
+        setStatsError(getExternalErrorMessage(error, 'discover.couldNotLoadStats'))
+      })
       .finally(() => setStatsLoading(false))
-  }, [])
+  }, [refreshNonce])
 
   // -- effect: whale movements -----------------------------------------------
   useEffect(() => {
     setWhaleReady(false)
-    if (whales.length === 0) { setWhaleEntries([]); setWhaleReady(true); return }
+    setWhaleError(null)
+    if (whales.length === 0) {
+      setWhaleEntries([])
+      setWhaleReady(true)
+      return
+    }
     setWhaleLoading(true)
-    Promise.all(
-      whales.map(w => fetchWhaleLastTx(w.address, w.label ?? formatAddress(w.address, 4)))
+    Promise.allSettled(
+      whales.map((w) => fetchWhaleLastTx(w.address, w.label ?? formatAddress(w.address, 4))),
     )
-      .then((results) => setWhaleEntries(results.filter(Boolean) as WhaleEntry[]))
-      .catch(() => {})
-      .finally(() => { setWhaleLoading(false); setWhaleReady(true) })
-  }, [whales])
+      .then((results) => {
+        const entries = results
+          .filter((result): result is PromiseFulfilledResult<WhaleEntry | null> => result.status === 'fulfilled')
+          .map((result) => result.value)
+          .filter((item): item is WhaleEntry => Boolean(item))
+
+        setWhaleEntries(entries)
+
+        if (results.some((result) => result.status === 'rejected') && entries.length === 0) {
+          setWhaleError(t('activity.couldNotLoad'))
+        } else {
+          setWhaleError(null)
+        }
+      })
+      .catch((error) => {
+        debugWarn('[DailyBrief] whale load failed:', error)
+        setWhaleEntries([])
+        setWhaleError(getExternalErrorMessage(error, 'activity.couldNotLoad'))
+      })
+      .finally(() => {
+        setWhaleLoading(false)
+        setWhaleReady(true)
+      })
+  }, [whales, refreshNonce])
 
   useEffect(() => {
     let cancelled = false
@@ -577,20 +632,31 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         if (cancelled || currentVersion !== requestVersion) return
         setOfficialTweets(cached.slice(0, 3))
         setOfficialTweetsStaleAt(null)
+        setOfficialTweetsError(null)
         return
       }
 
-      const fetched = await fetchOfficialTweetFeed()
-      if (cancelled || currentVersion !== requestVersion) return
-      if (!fetched) {
+      try {
+        const fetched = await fetchOfficialTweetFeed()
+        if (cancelled || currentVersion !== requestVersion) return
+        if (!fetched) {
+          setOfficialTweets([])
+          setOfficialTweetsStaleAt(null)
+          setOfficialTweetsError(t('activity.couldNotLoad'))
+          return
+        }
+
+        writeCache(TWITTER_OFFICIAL_TWEETS_CACHE_KEY, fetched.tweets, TWITTER_FEED_CACHE_TTL_MS, fetched.fetchedAt)
+        setOfficialTweets(fetched.tweets.slice(0, 3))
+        setOfficialTweetsStaleAt(fetched.cacheStatus === 'stale-cache' ? fetched.fetchedAt : null)
+        setOfficialTweetsError(null)
+      } catch (error) {
+        if (cancelled || currentVersion !== requestVersion) return
+        debugWarn('[DailyBrief] official tweets load failed:', error)
         setOfficialTweets([])
         setOfficialTweetsStaleAt(null)
-        return
+        setOfficialTweetsError(getExternalErrorMessage(error, 'activity.couldNotLoad'))
       }
-
-      writeCache(TWITTER_OFFICIAL_TWEETS_CACHE_KEY, fetched.tweets, TWITTER_FEED_CACHE_TTL_MS, fetched.fetchedAt)
-      setOfficialTweets(fetched.tweets.slice(0, 3))
-      setOfficialTweetsStaleAt(fetched.cacheStatus === 'stale-cache' ? fetched.fetchedAt : null)
     }
 
     const loadCommunityTweets = async (currentVersion: number): Promise<void> => {
@@ -626,6 +692,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       const currentVersion = ++requestVersion
       setTweetsLoading(true)
       setTweetsError(null)
+      setOfficialTweetsError(null)
       setTweets([])
       setTweetsStaleAt(null)
       setOfficialTweets([])
@@ -661,7 +728,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       cancelled = true
       chrome.storage.onChanged.removeListener(onStorageChanged)
     }
-  }, [])
+  }, [refreshNonce])
 
   const isPositive     = balanceChange?.startsWith('+')
   const isNegative     = balanceChange?.startsWith('-')
@@ -676,6 +743,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const summaryLine = (() => {
     if (tweetsLoading || activityLoading || !whaleReady) {
       return t('dailyBrief.emptyBrief')
+    }
+
+    if (transferError || statsError || whaleError || officialTweetsError || tweetsError) {
+      return t('activity.couldNotLoad')
     }
 
     const tweetCount = tweets.length
@@ -705,12 +776,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const hasOfficialTweets = safeOfficialTweets.length > 0
 
   const openSendWithPending = (pending: { recipient?: string; amount?: string }) => {
-    chrome.storage.local.set({
+    void chromeStorageSet({
       [PENDING_SEND_STORAGE_KEY]: {
         ...pending,
         ts: Date.now(),
       },
-    }, () => {
+    }).finally(() => {
       setCurrentView('send')
     })
   }
@@ -738,6 +809,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
   const scrollToRecentActivity = () => {
     recentActivityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const retryBrief = () => {
+    setRefreshNonce((value) => value + 1)
   }
 
   if (activePattern && address) {
@@ -978,7 +1053,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div ref={recentActivityRef} className="space-y-1 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="mb-3 font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.recentActivity')}</p>
-          {activityLoading ? (
+          {transferError ? (
+            <ErrorState
+              title={t('activity.couldNotLoad')}
+              description={transferError}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : activityLoading ? (
             <div className="space-y-2">
               {[0, 100, 200].map((d) => (
                 <div key={d} className="h-10 animate-pulse rounded-xl bg-arc-border/70" style={{ animationDelay: `${d}ms` }} />
@@ -1014,7 +1096,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcEcosystem')}</p>
-          {statsLoading ? (
+          {statsError ? (
+            <ErrorState
+              title={t('discover.couldNotLoadStats')}
+              description={statsError}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : statsLoading ? (
             <div className="grid grid-cols-3 gap-2">
               {[0, 1, 2].map((index) => (
                 <div key={index} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
@@ -1051,11 +1140,18 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.whaleMovements')}</p>
           </div>
 
-          {whaleLoading && (
+          {whaleError ? (
+            <ErrorState
+              title={t('activity.couldNotLoad')}
+              description={whaleError}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : whaleLoading && (
             <div className="h-10 animate-pulse rounded-xl bg-arc-border/70" />
           )}
 
-          {!whaleLoading && whaleReady && whales.length === 0 && (
+          {!whaleError && !whaleLoading && whaleReady && whales.length === 0 && (
             <div className="space-y-2 py-1 text-center">
               <p className="text-xs text-arc-text-dim">{t('dailyBrief.noWhalesTrackedYet')}</p>
               <p className="text-[10px] text-arc-text-dim">{t('dailyBrief.markWhaleInAddressBook')}</p>
@@ -1068,7 +1164,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           )}
 
-          {!whaleLoading && whaleReady && safeWhaleEntries.length > 0 && (
+          {!whaleError && !whaleLoading && whaleReady && safeWhaleEntries.length > 0 && (
             <div className="space-y-px">
               {safeWhaleEntries.map((entry, i) => (
                 <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-gold/5' : ''}`}>
@@ -1087,7 +1183,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           )}
 
-          {!whaleLoading && whaleReady && whales.length > 0 && whaleEntries.length === 0 && (
+          {!whaleError && !whaleLoading && whaleReady && whales.length > 0 && whaleEntries.length === 0 && (
             <p className="py-1 text-center text-xs text-arc-text-dim">{t('dailyBrief.noRecentWhaleActivity')}</p>
           )}
         </div>
@@ -1098,7 +1194,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
-          {hasOfficialTweets && (
+          {officialTweetsError ? (
+            <ErrorState
+              title={t('activity.couldNotLoad')}
+              description={officialTweetsError}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : hasOfficialTweets && (
             <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">
                 {t('dailyBrief.official')}

@@ -1,5 +1,6 @@
 import { formatAddress } from '@/lib/utils'
 import { REMINDERS } from '@/lib/storageKeys'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 
 export type Reminder = {
   id: string
@@ -20,24 +21,15 @@ function canUseChromeStorage(): boolean {
 }
 
 function chromeGet(keys: string | string[]): Promise<Record<string, unknown>> {
-  if (!canUseChromeStorage()) return Promise.resolve({})
-  return new Promise((resolve) => {
-    chrome.storage.local.get(keys, (result) => resolve(result as Record<string, unknown>))
-  })
+  return chromeStorageGet(keys)
 }
 
 function chromeSet(items: Record<string, unknown>): Promise<void> {
-  if (!canUseChromeStorage()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.set(items, () => resolve())
-  })
+  return chromeStorageSet(items)
 }
 
 function chromeRemove(keys: string | string[]): Promise<void> {
-  if (!canUseChromeStorage()) return Promise.resolve()
-  return new Promise((resolve) => {
-    chrome.storage.local.remove(keys, () => resolve())
-  })
+  return chromeStorageRemove(keys)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -140,7 +132,9 @@ export async function getReminders(): Promise<Reminder[]> {
   const raw = stored[REMINDERS]
 
   if (!Array.isArray(raw)) {
-    await chromeRemove(REMINDERS)
+    if (Object.prototype.hasOwnProperty.call(stored, REMINDERS)) {
+      await chromeRemove(REMINDERS)
+    }
     return []
   }
 

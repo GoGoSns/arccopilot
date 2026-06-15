@@ -13,6 +13,7 @@ import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
 import { GogoAI } from '@/pages/GogoAI'
 import { useLocale } from '@/lib/i18n'
+import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
 
 const VALID_VIEWS: View[] = [
   'welcome',
@@ -51,26 +52,25 @@ export default function App() {
   const go = (v: View) => setCurrentView(v)
 
   useEffect(() => {
-    chrome.storage.local.get(
-      [PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY],
-      (result) => {
-        const pendingView = result[PENDING_VIEW_STORAGE_KEY]
-        if (isView(pendingView) && isOnboarded) {
-          go(pendingView)
-          void chrome.storage.local.remove(PENDING_VIEW_STORAGE_KEY)
-          return
-        } else if (pendingView != null && !isView(pendingView)) {
-          void chrome.storage.local.remove(PENDING_VIEW_STORAGE_KEY)
-        }
+    void chromeStorageGet([PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY]).then((result) => {
+      const hasPendingView = Object.prototype.hasOwnProperty.call(result, PENDING_VIEW_STORAGE_KEY)
+      const hasPendingSend = Object.prototype.hasOwnProperty.call(result, PENDING_SEND_STORAGE_KEY)
+      const pendingView = result[PENDING_VIEW_STORAGE_KEY]
+      if (isView(pendingView) && isOnboarded) {
+        go(pendingView)
+        void chromeStorageRemove(PENDING_VIEW_STORAGE_KEY)
+        return
+      } else if (hasPendingView && pendingView != null && !isView(pendingView)) {
+        void chromeStorageRemove(PENDING_VIEW_STORAGE_KEY)
+      }
 
-        const pending = result[PENDING_SEND_STORAGE_KEY]
-        if (isPendingSend(pending) && Date.now() - pending.ts < 5_000) {
-          go('send')
-        } else {
-          void chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
-        }
-      },
-    )
+      const pending = result[PENDING_SEND_STORAGE_KEY]
+      if (isPendingSend(pending) && Date.now() - pending.ts < 5_000) {
+        go('send')
+      } else if (hasPendingSend) {
+        void chromeStorageRemove(PENDING_SEND_STORAGE_KEY)
+      }
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const view: View = !isOnboarded ? 'welcome' : currentView === 'welcome' ? 'wallet' : currentView

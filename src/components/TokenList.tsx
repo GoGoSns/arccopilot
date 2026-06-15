@@ -2,26 +2,28 @@ import { Plus } from 'lucide-react'
 import { t } from '@/lib/i18n'
 
 interface TokenListProps {
-  usdcBalance?: string
+  usdcBalance?: string | null
 }
 
-export function TokenList({ usdcBalance = '0.00' }: TokenListProps) {
+export function TokenList({ usdcBalance = null }: TokenListProps) {
+  const displayBalance = usdcBalance ?? t('common.unknown')
+
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-3 hover:bg-arc-card/50 transition-colors cursor-pointer">
-        <div className="w-9 h-9 rounded-full bg-arc-gold/10 border border-arc-gold/20 flex items-center justify-center text-arc-gold text-sm font-bold">
+      <div className="hover:bg-arc-card/50 flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-sm font-bold text-arc-gold">
           $
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-arc-text">USDC</p>
           <p className="text-xs text-arc-text-dim">{t('tokenList.usdcNative')}</p>
         </div>
         <div className="text-right">
-          <p className="text-sm font-medium text-arc-text">{usdcBalance}</p>
+          <p className="text-sm font-medium text-arc-text">{displayBalance}</p>
         </div>
       </div>
 
-      <button className="flex items-center gap-2 px-4 py-3 mx-4 my-1 rounded-xl border border-dashed border-arc-border text-xs text-arc-text-dim hover:text-arc-text hover:border-arc-gold/30 transition-colors">
+      <button className="mx-4 my-1 flex items-center gap-2 rounded-xl border border-dashed border-arc-border px-4 py-3 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text">
         <Plus size={14} />
         {t('tokenList.addToken')}
       </button>

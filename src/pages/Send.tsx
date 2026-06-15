@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { useStore } from '@/lib/store'
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { formatText, t } from '@/lib/i18n'
+import { chromeStorageGet, chromeStorageRemove, fetchWithTimeout } from '@/lib/external'
 import {
   ARC_CHAIN_ID,
   ensureMetaMaskAccounts,
@@ -110,7 +111,11 @@ export function Send({ onBack }: SendProps) {
   }, [addressMemories, recipient])
 
   useEffect(() => {
-    chrome.storage.local.get(PENDING_SEND_STORAGE_KEY, (result) => {
+    let active = true
+
+    void chromeStorageGet(PENDING_SEND_STORAGE_KEY).then((result) => {
+      if (!active) return
+      const hasPendingSend = Object.prototype.hasOwnProperty.call(result, PENDING_SEND_STORAGE_KEY)
       const pending = result[PENDING_SEND_STORAGE_KEY]
       // 30s TTL for inter-page navigation
       if (isPendingSend(pending) && Date.now() - pending.ts < 30_000) {
@@ -142,12 +147,20 @@ export function Send({ onBack }: SendProps) {
           setTimeout(() => amountRef.current?.focus(), 50)
         }
 
-        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
+        if (hasPendingSend) {
+          void chromeStorageRemove(PENDING_SEND_STORAGE_KEY)
+        }
       } else {
         setFromUniversalTip(false)
-        chrome.storage.local.remove(PENDING_SEND_STORAGE_KEY)
+        if (hasPendingSend) {
+          void chromeStorageRemove(PENDING_SEND_STORAGE_KEY)
+        }
       }
     })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const syncMetaMaskAccount = (account: string): string => {
@@ -236,7 +249,7 @@ export function Send({ onBack }: SendProps) {
 
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(`${EXPLORER_URL}/api/v2/addresses/${trimmedRecipient}`, {
+        const response = await fetchWithTimeout(`${EXPLORER_URL}/api/v2/addresses/${trimmedRecipient}`, {
           headers: { accept: 'application/json' },
           signal: controller.signal,
         })
@@ -754,7 +767,9 @@ export function Send({ onBack }: SendProps) {
 
         <div className="flex items-center justify-between text-xs text-arc-text-dim">
           <span>{t('send.availableBalance')}</span>
-          <span className="text-arc-gold">{balance} USDC</span>
+          <span className="text-arc-gold">
+            {balance != null ? `${balance} USDC` : t('common.unknown')}
+          </span>
         </div>
 
         <div className="p-3 rounded-xl bg-arc-card border border-arc-border text-xs text-arc-text-dim space-y-1">
