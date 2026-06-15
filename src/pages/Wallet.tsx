@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Copy } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Copy, Sparkles, Wallet as WalletIcon } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import { t } from '@/lib/i18n'
 import { WalletHeader } from '@/components/WalletHeader'
 import { BalanceCard } from '@/components/BalanceCard'
@@ -14,6 +15,7 @@ import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
 import { copyToClipboard, formatAddress } from '@/lib/utils'
+import { ONBOARDING_SEEN } from '@/lib/storageKeys'
 
 type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
 
@@ -26,6 +28,7 @@ function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
   const showSkeleton = isLoading && tokens.length === 0
   const showRefreshing = isLoading && tokens.length > 0
   const hasUsdcOnly = tokens.length === 1 && tokens[0].isUsdc
+  const showEmptyState = !isLoading && tokens.length === 0
 
   return (
     <Card className="mx-4 mt-3 overflow-hidden">
@@ -73,6 +76,16 @@ function PortfolioSection({ tokens, isLoading }: PortfolioSectionProps) {
               </div>
             ))}
           </div>
+        ) : showEmptyState ? (
+          <div className="flex flex-col items-center gap-3 px-3 py-5 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+              <WalletIcon size={20} />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
+              <p className="text-xs leading-relaxed text-arc-text-dim">{t('portfolio.emptyDescription')}</p>
+            </div>
+          </div>
         ) : null}
 
         {!isLoading && hasUsdcOnly ? (
@@ -94,6 +107,8 @@ interface WalletProps {
 export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: WalletProps) {
   const [activeTab, setActiveTab] = useState<Tab>('tokens')
   const [copied, setCopied] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingReady, setOnboardingReady] = useState(false)
 
   const address = useStore((s) => s.walletAddress)
   const xp = useStore((s) => s.xp)
@@ -101,6 +116,13 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   const setCurrentView = useStore((s) => s.setCurrentView)
   const { balance, isLoading } = useUSDCBalance()
   const { tokens: portfolioTokens, isLoading: isPortfolioLoading } = usePortfolioBalances(address)
+
+  useEffect(() => {
+    chrome.storage.local.get(ONBOARDING_SEEN, (result) => {
+      setShowOnboarding(result[ONBOARDING_SEEN] !== true)
+      setOnboardingReady(true)
+    })
+  }, [])
 
   const level = Math.max(1, Math.floor(xp / 100))
 
@@ -114,6 +136,11 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
     await copyToClipboard(address)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const dismissOnboarding = () => {
+    setShowOnboarding(false)
+    void chrome.storage.local.set({ [ONBOARDING_SEEN]: true })
   }
 
   return (
@@ -143,6 +170,41 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
           </span>
         )}
       </div>
+
+      {onboardingReady && showOnboarding && (
+        <Card className="mx-4 mt-3 overflow-hidden border-arc-gold/20 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-arc-gold/25 bg-arc-gold/10 text-arc-gold">
+              <Sparkles size={18} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-arc-text">{t('onboarding.title')}</p>
+                <p className="text-xs leading-relaxed text-arc-text-dim">{t('onboarding.subtitle')}</p>
+              </div>
+              <ul className="space-y-2 text-xs leading-relaxed text-arc-text-dim">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
+                  <span>{t('onboarding.point1')}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
+                  <span>{t('onboarding.point2')}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-arc-gold" />
+                  <span>{t('onboarding.point3')}</span>
+                </li>
+              </ul>
+              <div className="flex justify-end">
+                <Button type="button" size="sm" onClick={dismissOnboarding}>
+                  {t('onboarding.getStarted')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <BalanceCard
         address={address ?? ''}

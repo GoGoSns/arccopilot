@@ -681,7 +681,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     const tweetCount = tweets.length
     const whaleCount = trackedWhales.length
     if (tweetCount === 0 && whaleCount === 0 && !has24hActivity) {
-      return t('dailyBrief.emptyBrief')
+      return t('activity.noActivityYet')
     }
 
     const activityClause = has24hActivity
@@ -1014,21 +1014,35 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcEcosystem')}</p>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: t('dailyBrief.blockTime'), value: stats?.blockTime },
-              { label: t('dailyBrief.totalTx'), value: stats?.totalTx },
-              { label: t('dailyBrief.wallets'), value: stats?.totalAddresses },
-            ].map(({ label, value }) => (
-              <div key={label} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
-                <p className="text-[9px] text-arc-text-dim">{label}</p>
-                {statsLoading || !value
-                  ? <div className="h-4 animate-pulse rounded bg-arc-border/70" />
-                  : <p className="text-sm font-bold text-arc-text">{value}</p>
-                }
-              </div>
-            ))}
-          </div>
+          {statsLoading ? (
+            <div className="grid grid-cols-3 gap-2">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
+                  <div className="h-2.5 w-16 animate-pulse rounded bg-arc-border/70" />
+                  <div className="h-4 animate-pulse rounded bg-arc-border/70" />
+                </div>
+              ))}
+            </div>
+          ) : stats ? (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: t('dailyBrief.blockTime'), value: stats.blockTime },
+                { label: t('dailyBrief.totalTx'), value: stats.totalTx },
+                { label: t('dailyBrief.wallets'), value: stats.totalAddresses },
+              ].map(({ label, value }) => (
+                <div key={label} className="space-y-1.5 rounded-xl border border-arc-border bg-arc-bg p-2">
+                  <p className="text-[9px] text-arc-text-dim">{label}</p>
+                  <p className="text-sm font-bold text-arc-text">{value}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-arc-border bg-arc-bg/70 px-3 py-4 text-center">
+              <Activity size={16} className="text-arc-gold" />
+              <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
+              <p className="text-xs leading-relaxed text-arc-text-dim">{t('dailyBrief.noEcosystemStats')}</p>
+            </div>
+          )}
         </div>
 
         <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-gold/60' : 'border-arc-border'}`}>

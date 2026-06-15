@@ -1,10 +1,11 @@
 import { defineManifest } from '@crxjs/vite-plugin'
 import { ARC_RPC_URL, BLOCKSCOUT_BASE, TWITTERAPI_BASE } from './lib/constants'
+import { APP_NAME, APP_VERSION } from './lib/appMeta'
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'ArcCopilot',
-  version: '0.2.0',
+  name: APP_NAME,
+  version: APP_VERSION,
   description: 'Your copilot for the Arc economy - wallet, dashboard, social, and AI in one extension',
   action: {
     default_popup: 'src/popup/index.html',

@@ -100,6 +100,7 @@ const EN = {
   'portfolio.title': 'Portfolio',
   'portfolio.loading': 'Loading portfolio...',
   'portfolio.otherTokensNote': 'Other tokens will appear here',
+  'portfolio.emptyDescription': 'Token balances will appear here once available.',
 
   'actions.send': 'Send',
   'actions.receive': 'Receive',
@@ -122,6 +123,13 @@ const EN = {
   'welcome.connectionFailed': 'Connection failed.',
   'welcome.metamaskMissing': 'MetaMask not installed or not active on this page.',
   'welcome.getStarted': 'Get started',
+
+  'onboarding.title': 'Welcome to ArcCopilot',
+  'onboarding.subtitle': 'A quick tour before you start.',
+  'onboarding.point1': 'Watches your onchain life',
+  'onboarding.point2': 'Daily Brief and Arc on X',
+  'onboarding.point3': 'Ask Gogo AI anything',
+  'onboarding.getStarted': 'Get started',
 
   'send.title': 'Send USDC',
   'send.recipientAddress': 'Recipient address',
@@ -333,6 +341,7 @@ const EN = {
   'settings.auto': 'Auto',
   'settings.english': 'English',
   'settings.turkish': 'Türkçe',
+  'settings.aboutTagline': 'Wallet, Daily Brief, and Gogo AI in one place.',
 
   'gogo.title': 'Gogo AI',
   'gogo.back': 'Back',
@@ -484,6 +493,7 @@ const EN = {
   'dailyBrief.insight': 'Insight',
   'dailyBrief.buildingPatterns': 'Building patterns from your activity...',
   'dailyBrief.noNewPatterns': 'No new patterns detected today.',
+  'dailyBrief.noEcosystemStats': 'Arc ecosystem stats will appear here once available.',
   'dailyBrief.needAtLeast3Tx': 'Need at least 3 transactions',
   'dailyBrief.sendAgain': 'Send again',
   'dailyBrief.gotIt': 'Got it',
@@ -618,6 +628,7 @@ const TR = {
   'portfolio.title': 'Portföy',
   'portfolio.loading': 'Portföy yükleniyor...',
   'portfolio.otherTokensNote': 'Diğer tokenlar burada görünecek',
+  'portfolio.emptyDescription': 'Token bakiyeleri hazır olduğunda burada görünecek.',
 
   'actions.send': 'Gönder',
   'actions.receive': 'Al',
@@ -634,6 +645,13 @@ const TR = {
   'welcome.connectionFailed': 'Bağlantı başarısız.',
   'welcome.metamaskMissing': 'MetaMask yüklü değil veya bu sayfada etkin değil.',
   'welcome.getStarted': 'Başlayalım',
+
+  'onboarding.title': 'ArcCopilot’a hoş geldin',
+  'onboarding.subtitle': 'Başlamadan önce kısa bir tur.',
+  'onboarding.point1': 'Zincir üstü hayatını izler',
+  'onboarding.point2': 'Günlük Özet ve X’te Arc',
+  'onboarding.point3': 'Gogo AI’ya istediğini sor',
+  'onboarding.getStarted': 'Başla',
 
   'send.title': 'USDC Gönder',
   'send.recipientAddress': 'Alıcı adresi',
@@ -845,6 +863,7 @@ const TR = {
   'settings.auto': 'Otomatik',
   'settings.english': 'İngilizce',
   'settings.turkish': 'Türkçe',
+  'settings.aboutTagline': 'Cüzdan, Günlük Özet ve Gogo AI tek yerde.',
 
   'gogo.title': 'Gogo AI',
   'gogo.back': 'Geri',
@@ -996,6 +1015,7 @@ const TR = {
   'dailyBrief.insight': 'İçgörü',
   'dailyBrief.buildingPatterns': 'Aktiviten üzerinden paternler oluşturuluyor...',
   'dailyBrief.noNewPatterns': 'Bugün yeni bir patern bulunamadı.',
+  'dailyBrief.noEcosystemStats': 'Arc ekosistemi istatistikleri hazır olduğunda burada görünecek.',
   'dailyBrief.needAtLeast3Tx': 'En az 3 işleme ihtiyaç var',
   'dailyBrief.sendAgain': 'Tekrar gönder',
   'dailyBrief.gotIt': 'Tamam',

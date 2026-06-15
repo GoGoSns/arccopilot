@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
+import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
 
 interface SettingsProps {
   onBack: () => void
@@ -563,7 +564,6 @@ export function Settings({ onBack }: SettingsProps) {
           { section: t('common.network'), items: [{ label: t('settings.currentNetwork'), value: 'Arc Testnet' }, { label: t('settings.rpcUrl'), value: ARC_RPC_URL.replace(/^https?:\/\//, '') }] },
           { section: t('common.security'), items: [{ label: t('settings.lockExtension'), value: '' }, { label: t('settings.exportPrivateKey'), value: '' }] },
           { section: t('common.preferences'), items: [{ label: t('common.theme'), value: t('common.dark') }, { label: t('common.currency'), value: t('common.usd') }, { label: t('settings.language'), value: '' }] },
-          { section: t('common.about'), items: [{ label: t('common.version'), value: 'v0.2.0' }, { label: t('settings.chainId'), value: String(ARC_CHAIN_ID) }] },
         ].map(({ section, items }) => (
           <div key={section}>
             <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
@@ -613,6 +613,28 @@ export function Settings({ onBack }: SettingsProps) {
             })}
           </div>
         ))}
+
+        <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
+          <div className="rounded-2xl border border-arc-border bg-arc-card p-4">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+              {t('common.about')}
+            </p>
+            <div className="mt-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-arc-text">{APP_NAME}</p>
+                <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{t('settings.aboutTagline')}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('common.version')}</p>
+                <p className="mt-1 text-sm font-semibold text-arc-gold">v{APP_VERSION}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-arc-border/70 pt-3 text-xs text-arc-text-dim">
+              <span>{t('settings.chainId')}</span>
+              <span>{ARC_CHAIN_ID}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
