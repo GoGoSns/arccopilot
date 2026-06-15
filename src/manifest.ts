@@ -41,6 +41,7 @@ export default defineManifest({
   permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'alarms'],
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
+    'https://community.arc.network/*',
     `${ARC_RPC_URL}/*`,
     `${BLOCKSCOUT_BASE}/*`,
     `${TWITTERAPI_BASE}/*`,

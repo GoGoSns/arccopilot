@@ -9,6 +9,7 @@ export const TWITTER_SEARCH_QUERY = 'arccopilot:twitter-search-query'
 export const TWITTER_OFFICIAL_ACCOUNTS = 'arccopilot:twitter-official-accounts'
 export const TWITTER_TWEETS_CACHE_KEY = 'arccopilot:tweets:arc'
 export const TWITTER_OFFICIAL_TWEETS_CACHE_KEY = 'arccopilot:tweets:official'
+export const ARC_COMMUNITY_CACHE_KEY = 'arccopilot:arc-community'
 export type TwitterFeedCacheScope = 'community' | 'official'
 const TWITTER_FEED_CACHE_PREFIX = 'arccopilot:tweets:feed'
 

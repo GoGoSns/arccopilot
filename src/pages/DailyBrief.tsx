@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, MessageCircle, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -27,6 +27,7 @@ import {
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
+import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import {
   categorizeTweets,
   fetchArcTweetFeed,
@@ -198,6 +199,32 @@ function TweetBadgePill({ badge }: { badge: TweetBadge }) {
       {badge.label}
     </span>
   )
+}
+
+function getArcCommunityBadge(type: ArcCommunityItem['type']): TweetBadge {
+  switch (type) {
+    case 'Blog':
+      return {
+        label: t('dailyBrief.arcCommunityBlog'),
+        className: 'border-[#1d9bf0]/35 bg-[#1d9bf0]/12 text-[#8bc7ff]',
+      }
+    case 'External':
+      return {
+        label: t('dailyBrief.arcCommunityExternal'),
+        className: 'border-arc-border/70 bg-arc-border/20 text-arc-text-dim',
+      }
+    case 'Video':
+      return {
+        label: t('dailyBrief.arcCommunityVideo'),
+        className: OFFICIAL_TWEET_BADGE_CLASS,
+      }
+    case 'Announcement':
+    default:
+      return {
+        label: t('dailyBrief.arcCommunityAnnouncement'),
+        className: 'border-[#d4af37]/35 bg-[#d4af37]/10 text-[#f5d87d]',
+      }
+  }
 }
 
 function TweetListItem({
@@ -383,6 +410,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [tweetsStaleAt,  setTweetsStaleAt]  = useState<number | null>(null)
   const [officialTweets, setOfficialTweets] = useState<TwitterTweet[]>([])
   const [officialTweetsStaleAt, setOfficialTweetsStaleAt] = useState<number | null>(null)
+  const [arcCommunityItems, setArcCommunityItems] = useState<ArcCommunityItem[]>([])
+  const [arcCommunityLoading, setArcCommunityLoading] = useState(true)
+  const [arcCommunityError, setArcCommunityError] = useState<string | null>(null)
+  const [arcCommunityStaleAt, setArcCommunityStaleAt] = useState<number | null>(null)
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -727,6 +758,43 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     return () => {
       cancelled = true
       chrome.storage.onChanged.removeListener(onStorageChanged)
+    }
+  }, [refreshNonce])
+
+  // -- effect: Arc community feed -------------------------------------------
+  useEffect(() => {
+    let cancelled = false
+
+    const loadArcCommunity = async () => {
+      setArcCommunityLoading(true)
+      setArcCommunityError(null)
+      setArcCommunityItems([])
+      setArcCommunityStaleAt(null)
+
+      try {
+        const fetched = await fetchArcCommunity()
+        if (cancelled) return
+
+        setArcCommunityItems(fetched.items.slice(0, 6))
+        setArcCommunityStaleAt(fetched.cacheStatus === 'stale-cache' ? fetched.fetchedAt : null)
+        setArcCommunityError(fetched.error ?? null)
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] arc community load failed:', error)
+        setArcCommunityItems([])
+        setArcCommunityStaleAt(null)
+        setArcCommunityError(getExternalErrorMessage(error, 'dailyBrief.arcCommunityCouldNotLoad'))
+      } finally {
+        if (!cancelled) {
+          setArcCommunityLoading(false)
+        }
+      }
+    }
+
+    void loadArcCommunity()
+
+    return () => {
+      cancelled = true
     }
   }, [refreshNonce])
 
@@ -1185,6 +1253,82 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
           {!whaleError && !whaleLoading && whaleReady && whales.length > 0 && whaleEntries.length === 0 && (
             <p className="py-1 text-center text-xs text-arc-text-dim">{t('dailyBrief.noRecentWhaleActivity')}</p>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <MessageCircle size={14} className="text-arc-gold" />
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcCommunity')}</p>
+            </div>
+            <a
+              href="https://discord.gg/buildonarc"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-arc-gold/30 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold transition-colors hover:bg-arc-gold/15"
+            >
+              <MessageCircle size={11} />
+              <span>{t('dailyBrief.arcDiscord')}</span>
+            </a>
+          </div>
+
+          {arcCommunityError ? (
+            <ErrorState
+              title={t('dailyBrief.arcCommunityCouldNotLoad')}
+              description={arcCommunityError}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : arcCommunityLoading ? (
+            <div className="space-y-2">
+              {[0, 110, 220].map((delay) => (
+                <div key={delay} className="flex gap-3 animate-pulse" style={{ animationDelay: `${delay}ms` }}>
+                  <div className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-arc-border/70" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-14 rounded bg-arc-border/70" />
+                      <div className="h-2.5 w-20 rounded bg-arc-border/70" />
+                    </div>
+                    <div className="h-3 w-full rounded bg-arc-border/70" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : arcCommunityItems.length > 0 ? (
+            <div className="space-y-3">
+              {arcCommunityStaleAt && (
+                <p className="text-[10px] text-arc-text-dim/80">
+                  {formatFeedRefreshLabel(arcCommunityStaleAt)}
+                </p>
+              )}
+              <div className="space-y-2">
+                {arcCommunityItems.map((item) => (
+                  <a
+                    key={item.url}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-gold/30 hover:bg-arc-gold/5"
+                  >
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border/50 bg-arc-border/30 text-arc-gold">
+                      <ArrowUpRight size={14} />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <TweetBadgePill badge={getArcCommunityBadge(item.type)} />
+                        <span className="text-[10px] text-arc-text-dim">{formatRelativeTime(item.date)}</span>
+                      </div>
+                      <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
+                        {item.title}
+                      </p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="py-2 text-center text-xs text-arc-text-dim">{t('dailyBrief.arcCommunityCouldNotLoad')}</p>
           )}
         </div>
 
