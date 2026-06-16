@@ -42,6 +42,7 @@ export default defineManifest({
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
     'https://community.arc.network/*',
+    'https://discord.com/*',
     `${ARC_RPC_URL}/*`,
     `${BLOCKSCOUT_BASE}/*`,
     `${TWITTERAPI_BASE}/*`,

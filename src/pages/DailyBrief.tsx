@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Lightbulb, MessageCircle, Send, Sparkles, TrendingDown, TrendingUp, Twitter, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -27,6 +27,7 @@ import {
 } from '@/lib/storageKeys'
 import { Button } from '@/components/ui/Button'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
+import { ARC_DISCORD_INVITE_URL, fetchArcDiscord, type ArcDiscordResult } from '@/lib/arcDiscord'
 import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import {
   categorizeTweets,
@@ -282,6 +283,10 @@ function formatFeedRefreshLabel(fetchedAt: number): string {
   })
 }
 
+function formatLocalizedCount(value: number): string {
+  return new Intl.NumberFormat(getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US').format(value)
+}
+
 async function fetchRawTransfers(address: string): Promise<RawTransfer[]> {
   const url = `${BLOCKSCOUT_API_BASE}/addresses/${address.toLowerCase()}/token-transfers?type=ERC-20`
   const res = await fetchWithTimeout(url, { headers: { accept: 'application/json' } })
@@ -414,6 +419,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [arcCommunityLoading, setArcCommunityLoading] = useState(true)
   const [arcCommunityError, setArcCommunityError] = useState<string | null>(null)
   const [arcCommunityStaleAt, setArcCommunityStaleAt] = useState<number | null>(null)
+  const [arcDiscord, setArcDiscord] = useState<ArcDiscordResult | null>(null)
+  const [arcDiscordLoading, setArcDiscordLoading] = useState(true)
+  const [arcDiscordError, setArcDiscordError] = useState<string | null>(null)
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -798,6 +806,46 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
   }, [refreshNonce])
 
+  // -- effect: Arc Discord counts -------------------------------------------
+  useEffect(() => {
+    let cancelled = false
+
+    const loadArcDiscord = async () => {
+      setArcDiscordLoading(true)
+      setArcDiscordError(null)
+
+      try {
+        const result = await fetchArcDiscord()
+        if (cancelled) return
+
+        setArcDiscord(result)
+        setArcDiscordError(result.error ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] arc discord load failed:', error)
+        setArcDiscord({
+          memberCount: null,
+          onlineCount: null,
+          inviteUrl: ARC_DISCORD_INVITE_URL,
+          fetchedAt: Date.now(),
+          cacheStatus: 'error',
+          error: error instanceof Error ? error.message : 'ARC_DISCORD_FETCH_FAILED',
+        })
+        setArcDiscordError(t('dailyBrief.arcDiscordCouldNotLoad'))
+      } finally {
+        if (!cancelled) {
+          setArcDiscordLoading(false)
+        }
+      }
+    }
+
+    void loadArcDiscord()
+
+    return () => {
+      cancelled = true
+    }
+  }, [refreshNonce])
+
   const isPositive     = balanceChange?.startsWith('+')
   const isNegative     = balanceChange?.startsWith('-')
   const anyWhaleRecent = whaleEntries.some((e) => e.hasRecent)
@@ -963,6 +1011,27 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       actionStyle: 'outline',
       onAction: scrollToRecentActivity,
     })
+  }
+
+  const arcDiscordMemberLabel = arcDiscord?.memberCount != null
+    ? formatText('dailyBrief.arcDiscordMembers', { count: formatLocalizedCount(arcDiscord.memberCount) })
+    : null
+  const arcDiscordOnlineLabel = arcDiscord?.onlineCount != null
+    ? formatText('dailyBrief.arcDiscordOnline', { count: formatLocalizedCount(arcDiscord.onlineCount) })
+    : null
+  const arcDiscordCountsLabel = [arcDiscordMemberLabel, arcDiscordOnlineLabel].filter(Boolean).join(' · ')
+  const arcDiscordDisplayError = arcDiscordError ?? (!arcDiscordLoading && !arcDiscordCountsLabel ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
+
+  const handleArcDiscordJoin = () => {
+    if (!openSafeUrl(arcDiscord?.inviteUrl ?? 'https://discord.gg/buildonarc')) {
+      debugWarn('[DailyBrief] blocked unsafe discord invite url:', arcDiscord?.inviteUrl ?? 'https://discord.gg/buildonarc')
+    }
+  }
+
+  const handleArcDiscordChannelOpen = (url: string) => {
+    if (!openSafeUrl(url)) {
+      debugWarn('[DailyBrief] blocked unsafe discord channel url:', url)
+    }
   }
 
   return (
@@ -1262,15 +1331,6 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <MessageCircle size={14} className="text-arc-gold" />
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcCommunity')}</p>
             </div>
-            <a
-              href="https://discord.gg/buildonarc"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-arc-gold/30 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold transition-colors hover:bg-arc-gold/15"
-            >
-              <MessageCircle size={11} />
-              <span>{t('dailyBrief.arcDiscord')}</span>
-            </a>
           </div>
 
           {arcCommunityError ? (
@@ -1330,6 +1390,67 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           ) : (
             <p className="py-2 text-center text-xs text-arc-text-dim">{t('dailyBrief.arcCommunityCouldNotLoad')}</p>
           )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+              <Users size={14} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcDiscord')}</p>
+                <span className="rounded-full border border-arc-gold/20 bg-arc-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold">
+                  {t('dailyBrief.arcDiscordServerName')}
+                </span>
+              </div>
+
+              {arcDiscordLoading ? (
+                <div className="space-y-2 pt-0.5">
+                  <div className="h-3.5 w-40 animate-pulse rounded bg-arc-border/70" />
+                  <div className="h-3 w-28 animate-pulse rounded bg-arc-border/70" />
+                </div>
+              ) : arcDiscordDisplayError ? (
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-arc-danger/20 bg-arc-danger/10 px-3 py-2">
+                  <p className="text-xs leading-relaxed text-arc-danger">{arcDiscordDisplayError}</p>
+                  <Button variant="outline" size="sm" onClick={retryBrief} className="shrink-0">
+                    {t('state.retry')}
+                  </Button>
+                </div>
+              ) : arcDiscordCountsLabel ? (
+                <p className="text-xs leading-relaxed text-arc-text-dim">{arcDiscordCountsLabel}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Button type="button" fullWidth onClick={handleArcDiscordJoin}>
+              <ArrowUpRight size={14} />
+              {t('dailyBrief.arcDiscordJoin')}
+            </Button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="ghost"
+                fullWidth
+                size="sm"
+                onClick={() => handleArcDiscordChannelOpen('https://discord.com/channels/1423729540160815207/1430952602606112788')}
+              >
+                <Hash size={12} />
+                {t('dailyBrief.arcDiscordTechnicalSupport')}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                fullWidth
+                size="sm"
+                onClick={() => handleArcDiscordChannelOpen('https://discord.com/channels/1423729540160815207/1423729542148788252')}
+              >
+                <Hash size={12} />
+                {t('dailyBrief.arcDiscordEngagement')}
+              </Button>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
