@@ -1,12 +1,13 @@
-import { debugWarn } from '@/lib/debug'
+import { debugLog, debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { ARC_COMMUNITY_CACHE_KEY } from '@/lib/storageKeys'
 
+const ARC_COMMUNITY_SITEMAP_URL = 'https://community.arc.network/sitemap/content/sitemap.xml'
+const ARC_COMMUNITY_ROOT_SITEMAP_URL = 'https://community.arc.network/sitemap.xml'
 const ARC_COMMUNITY_LISTING_URL = 'https://community.arc.network/en/public/content'
-const ARC_COMMUNITY_FALLBACK_URL = 'https://community.arc.network/en/public/blogs/welcome-to-the-arc-hub-an-introduction'
+const ARC_COMMUNITY_ARTICLE_FALLBACK_URL = 'https://community.arc.network/en/public/blogs/welcome-to-the-arc-hub-an-introduction'
 const ARC_COMMUNITY_CACHE_TTL_MS = 15 * 60_000
 const ARC_COMMUNITY_MAX_ITEMS = 6
-const ARC_COMMUNITY_FALLBACK_PATH = '/en/public/blogs/welcome-to-the-arc-hub-an-introduction'
 
 export type ArcCommunityItemType = 'Blog' | 'External' | 'Video' | 'Announcement'
 
@@ -36,6 +37,60 @@ type ParsedArcCommunityItem = ArcCommunityItem & {
   dateMs: number
 }
 
+type FetchedText = {
+  status: number
+  body: string
+  finalUrl: string
+}
+
+const SMALL_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'as',
+  'at',
+  'but',
+  'by',
+  'for',
+  'from',
+  'in',
+  'into',
+  'of',
+  'on',
+  'or',
+  'over',
+  'the',
+  'to',
+  'via',
+  'with',
+])
+
+const ACRONYM_MAP: Record<string, string> = {
+  ai: 'AI',
+  api: 'API',
+  arc: 'Arc',
+  cctp: 'CCTP',
+  crcl: 'CRCL',
+  dao: 'DAO',
+  defi: 'DeFi',
+  eurc: 'EURC',
+  evm: 'EVM',
+  fi: 'Fi',
+  l1: 'L1',
+  l2: 'L2',
+  lifi: 'LI.FI',
+  nft: 'NFT',
+  nfts: 'NFTs',
+  qcad: 'QCAD',
+  rpc: 'RPC',
+  sdk: 'SDK',
+  tradfi: 'TradFi',
+  usdc: 'USDC',
+  usdt: 'USDT',
+  web3: 'Web3',
+  x: 'X',
+}
+
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
 }
@@ -44,20 +99,18 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function stripOrdinalSuffixes(value: string): string {
-  return value.replace(/(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
+function stripHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
 }
 
-function isDateLine(line: string): boolean {
-  if (!line) return true
-  if (/^\d{1,2}:\d{2}$/.test(line)) return true
-  if (/^by\s+/i.test(line)) return true
-  if (line.includes('\u00b7')) return true
-  if (/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|June|July|August|September|October|November|December)\b/i.test(line) && /\b\d{4}\b/.test(line)) {
-    return true
-  }
-  if (/^(Popular|Related|Read more|View more|More|Blog|Video|External|Announcement|Resource|Resources|Podcast|Podcasts|Event|Events|News)$/i.test(line)) return true
-  return false
+function stripOrdinalSuffixes(value: string): string {
+  return value.replace(/(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
 }
 
 function parseIsoDateFromText(value: string): string | null {
@@ -80,83 +133,84 @@ function parseIsoDateFromUrl(url: URL): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
 }
 
-function inferItemType(url: URL): ArcCommunityItemType {
-  const pathname = url.pathname.toLowerCase()
-
-  if (!pathname.startsWith('/en/public/')) {
-    return 'External'
-  }
-
-  if (pathname.includes('/blogs/')) {
-    return 'Blog'
-  }
-
-  if (pathname.includes('/videos/')) {
-    return 'Video'
-  }
-
-  if (pathname.includes('/externals/') || pathname.includes('/external/')) {
-    return 'External'
-  }
-
-  return 'Announcement'
+function parseIsoDate(value: string | null | undefined): string | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
 }
 
-function isPotentialArcCommunityHref(href: string): boolean {
-  return /^https?:\/\//i.test(href) || href.startsWith('/en/public/')
+function getPublicPathSegments(url: URL): string[] {
+  const normalizedPath = url.pathname.replace(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?public\//i, '')
+  return normalizedPath.split('/').filter(Boolean)
 }
 
-function extractMainLink(element: Element, baseUrl: URL): HTMLAnchorElement | null {
-  const anchors = Array.from(element.querySelectorAll<HTMLAnchorElement>('a[href]'))
-  const publicAnchors = anchors.filter((anchor) => {
-    const href = anchor.getAttribute('href')?.trim()
-    if (!href) return false
-    if (!isPotentialArcCommunityHref(href)) return false
+function inferItemType(url: URL): ArcCommunityItemType | null {
+  const [section] = getPublicPathSegments(url)
 
-    try {
-      const resolved = new URL(href, baseUrl)
-      return resolved.pathname.startsWith('/en/public/')
-    } catch {
-      return false
-    }
-  })
-
-  if (publicAnchors.length > 0) {
-    return publicAnchors[0]
+  switch ((section ?? '').toLowerCase()) {
+    case 'blogs':
+      return 'Blog'
+    case 'externals':
+      return 'External'
+    case 'videos':
+      return 'Video'
+    case 'resources':
+      return 'Announcement'
+    default:
+      return null
   }
-
-  const fallbackAnchors = anchors.filter((anchor) => {
-    const href = anchor.getAttribute('href')?.trim()
-    if (!href || !isPotentialArcCommunityHref(href)) return false
-
-    try {
-      const resolved = new URL(href, baseUrl)
-      return resolved.protocol === 'https:'
-    } catch {
-      return false
-    }
-  })
-
-  return fallbackAnchors[0] ?? null
 }
 
-function extractTitleFromElement(element: Element): string | null {
-  const heading = element.querySelector('h1,h2,h3,h4,h5,h6')?.textContent
-  if (heading) {
-    const normalizedHeading = normalizeWhitespace(heading)
-    if (normalizedHeading && !isDateLine(normalizedHeading)) {
-      return normalizedHeading
-    }
+function isArcCommunityItemUrl(url: URL): boolean {
+  return inferItemType(url) != null
+}
+
+function buildTitleFromSlug(slug: string): string {
+  const cleanedSlug = decodeURIComponent(slug.replace(/-\d{4}-\d{2}-\d{2}$/, ''))
+  const words = cleanedSlug
+    .replace(/[-_]+/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean)
+
+  if (words.length === 0) return ''
+
+  return words
+    .map((word, index) => {
+      const lower = word.toLowerCase()
+      const mapped = ACRONYM_MAP[lower]
+      if (mapped) return mapped
+      if (index > 0 && index < words.length - 1 && SMALL_WORDS.has(lower)) {
+        return lower
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+}
+
+function extractTitleFromHtml(innerHtml: string): string | null {
+  const headingMatch = innerHtml.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)
+  if (headingMatch) {
+    const heading = normalizeWhitespace(stripHtml(headingMatch[1]))
+    if (heading) return heading
   }
 
-  const rawText = element.textContent ?? ''
-  const lines = rawText
+  const strongMatch = innerHtml.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i)
+  if (strongMatch) {
+    const strong = normalizeWhitespace(stripHtml(strongMatch[1]))
+    if (strong) return strong
+  }
+
+  const text = normalizeWhitespace(stripHtml(innerHtml))
+  if (!text) return null
+
+  const lines = text
     .split(/\r?\n/)
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean)
 
   for (const line of lines) {
-    if (!isDateLine(line)) {
+    if (!isMetadataLine(line)) {
       return line
     }
   }
@@ -164,53 +218,68 @@ function extractTitleFromElement(element: Element): string | null {
   return null
 }
 
-function extractDateFromElement(element: Element, url: URL): string | null {
-  const timeElement = element.querySelector('time[datetime], [datetime]')
-  const datetime = timeElement?.getAttribute('datetime')
-  if (datetime) {
-    const parsed = new Date(datetime)
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString()
-    }
-  }
+function isMetadataLine(line: string): boolean {
+  if (!line) return true
+  if (/^\d{1,2}:\d{2}$/.test(line)) return true
+  if (/^\d+(?:\.\d+)?[kKmM]?$/.test(line)) return true
+  if (/^by\s+/i.test(line)) return true
+  if (line.includes('\u00b7')) return true
+  if (/^(Popular|Related|Read more|View more|More|Blog|Video|External|Announcement|Resource|Resources|Podcast|Podcasts|Event|Events|News)$/i.test(line)) return true
+  return false
+}
 
-  const rawText = element.textContent ?? ''
-  const fromText = parseIsoDateFromText(rawText)
-  if (fromText) {
-    return fromText
-  }
+function extractDateFromHtml(innerHtml: string, url: URL): string | null {
+  const datetimeMatch = innerHtml.match(/datetime=(["'])([^"']+)\1/i)
+  const datetime = parseIsoDate(datetimeMatch?.[2])
+  if (datetime) return datetime
+
+  const text = normalizeWhitespace(stripHtml(innerHtml))
+  const fromText = parseIsoDateFromText(text)
+  if (fromText) return fromText
 
   return parseIsoDateFromUrl(url)
 }
 
-function parseItemElement(element: Element, baseUrl: URL, order: number): ParsedArcCommunityItem | null {
-  const link = extractMainLink(element, baseUrl)
-  if (!link) return null
-
-  const href = link.getAttribute('href')?.trim()
-  if (!href) return null
-
-  let resolvedUrl: URL
+function parsePublicItemUrl(rawUrl: string, baseUrl: URL): URL | null {
   try {
-    resolvedUrl = new URL(href, baseUrl)
+    const resolved = new URL(rawUrl, baseUrl)
+    if (!isArcCommunityItemUrl(resolved)) return null
+    return resolved
   } catch {
     return null
   }
+}
 
-  if (resolvedUrl.protocol !== 'https:') return null
+function parsePublicLinksFromHtml(html: string, baseUrl: URL): ArcCommunityItem[] {
+  const items: ParsedArcCommunityItem[] = []
+  const seen = new Set<string>()
+  const anchorPattern = /<a\b[^>]*href=(["'])([^"']*(?:\/(?:en\/)?public\/(?:blogs|externals|videos|resources)\/[^"']+))\1[^>]*>([\s\S]*?)<\/a>/gi
+  let match: RegExpExecArray | null = null
 
-  const title = extractTitleFromElement(element)
-  const date = extractDateFromElement(element, resolvedUrl)
-  if (!title || !date) return null
+  while ((match = anchorPattern.exec(html))) {
+    const resolved = parsePublicItemUrl(match[2], baseUrl)
+    if (!resolved) continue
+    const url = resolved.toString()
+    if (seen.has(url)) continue
 
-  return {
-    title,
-    url: resolvedUrl.toString(),
-    type: inferItemType(resolvedUrl),
-    date,
-    order,
-    dateMs: new Date(date).getTime(),
+    const title = extractTitleFromHtml(match[3]) ?? buildTitleFromSlug(getPublicPathSegments(resolved).slice(1).join('-'))
+    const date = extractDateFromHtml(match[3], resolved)
+    const type = inferItemType(resolved)
+
+    if (!title || !date || !type) continue
+
+    seen.add(url)
+    items.push({
+      title,
+      url,
+      type,
+      date,
+      order: items.length,
+      dateMs: new Date(date).getTime(),
+    })
   }
+
+  return dedupeAndSortItems(items)
 }
 
 function dedupeAndSortItems(items: ParsedArcCommunityItem[]): ArcCommunityItem[] {
@@ -218,7 +287,7 @@ function dedupeAndSortItems(items: ParsedArcCommunityItem[]): ArcCommunityItem[]
 
   return items
     .filter((item) => {
-      if (!item.url || seen.has(item.url)) return false
+      if (seen.has(item.url)) return false
       seen.add(item.url)
       return true
     })
@@ -228,6 +297,45 @@ function dedupeAndSortItems(items: ParsedArcCommunityItem[]): ArcCommunityItem[]
     })
     .slice(0, ARC_COMMUNITY_MAX_ITEMS)
     .map(({ order: _order, dateMs: _dateMs, ...item }) => item)
+}
+
+function parseSitemapEntries(xml: string): ArcCommunityItem[] {
+  const items: ParsedArcCommunityItem[] = []
+  const urlBlockPattern = /<url>([\s\S]*?)<\/url>/gi
+  let match: RegExpExecArray | null = null
+
+  while ((match = urlBlockPattern.exec(xml))) {
+    const block = match[1]
+    const locMatch = block.match(/<loc>([^<]+)<\/loc>/i)
+    const lastmodMatch = block.match(/<lastmod>([^<]+)<\/lastmod>/i)
+    if (!locMatch || !lastmodMatch) continue
+
+    let resolved: URL
+    try {
+      resolved = new URL(locMatch[1].trim())
+    } catch {
+      continue
+    }
+
+    const type = inferItemType(resolved)
+    if (!type) continue
+
+    const slug = getPublicPathSegments(resolved).slice(1).join('-')
+    const title = buildTitleFromSlug(slug)
+    const date = parseIsoDate(lastmodMatch[1].trim())
+    if (!title || !date) continue
+
+    items.push({
+      title,
+      url: resolved.toString(),
+      type,
+      date,
+      order: items.length,
+      dateMs: new Date(date).getTime(),
+    })
+  }
+
+  return dedupeAndSortItems(items)
 }
 
 function isArcCommunityCacheEntry(value: unknown): value is ArcCommunityCacheEntry {
@@ -263,95 +371,58 @@ async function writeArcCommunityCache(entry: ArcCommunityCacheEntry): Promise<vo
   await chromeStorageSet({ [ARC_COMMUNITY_CACHE_KEY]: entry })
 }
 
-async function fetchArcCommunityPage(url: string): Promise<{ html: string; finalUrl: string }> {
+async function fetchText(url: string): Promise<FetchedText> {
   const response = await fetchWithTimeout(url, {
     headers: {
-      accept: 'text/html,application/xhtml+xml',
+      accept: 'application/xml,text/xml,text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
     },
   })
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`)
-  }
+  const body = await response.text()
+  debugLog('[ArcCommunity] fetch', {
+    sourceUrl: url,
+    resolvedUrl: response.url || url,
+    status: response.status,
+    bodyLength: body.length,
+  })
 
   return {
-    html: await response.text(),
+    status: response.status,
+    body,
     finalUrl: response.url || url,
   }
 }
 
-function parseArcCommunityHtml(html: string, baseUrl: string, excludePathnames: string[] = []): ArcCommunityItem[] {
-  const pathExcludes = new Set(excludePathnames)
+async function fetchSitemapItems(sourceUrl: string): Promise<ArcCommunityItem[]> {
+  const { body, finalUrl } = await fetchText(sourceUrl)
+  const items = parseSitemapEntries(body)
 
-  const parseWithDom = (): ArcCommunityItem[] => {
-    if (typeof DOMParser === 'undefined') return []
+  debugLog('[ArcCommunity] parsed sitemap', {
+    sourceUrl,
+    finalUrl,
+    parsedCount: items.length,
+  })
 
-    const document = new DOMParser().parseFromString(html, 'text/html')
-    const itemElements = Array.from(document.querySelectorAll('[data-content-item="true"]'))
-    const parsed = itemElements
-      .map((element, index) => parseItemElement(element, new URL(baseUrl), index))
-      .filter((item): item is ParsedArcCommunityItem => Boolean(item))
-      .filter((item) => !pathExcludes.has(new URL(item.url).pathname))
-
-    return dedupeAndSortItems(parsed)
-  }
-
-  const domItems = parseWithDom()
-  if (domItems.length > 0) {
-    return domItems
-  }
-
-  const blockPattern = /<([a-z0-9-]+)[^>]*data-content-item="true"[^>]*>([\s\S]*?)<\/\1>/gi
-  const blocks: ParsedArcCommunityItem[] = []
-  let match: RegExpExecArray | null = null
-
-  while ((match = blockPattern.exec(html))) {
-    const block = match[0]
-    const hrefMatch = block.match(/href=(["'])([^"']+)\1/i)
-    if (!hrefMatch) continue
-
-    let resolvedUrl: URL
-    try {
-      resolvedUrl = new URL(hrefMatch[2], baseUrl)
-    } catch {
-      continue
-    }
-
-    if (!resolvedUrl.toString().startsWith('https://')) continue
-    if (pathExcludes.has(resolvedUrl.pathname)) continue
-
-    const textOnly = block
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, '\n')
-
-    const title = textOnly
-      .split(/\r?\n/)
-      .map((line) => normalizeWhitespace(line))
-      .filter(Boolean)
-      .find((line) => !isDateLine(line))
-
-    const date = parseIsoDateFromText(block) ?? parseIsoDateFromUrl(resolvedUrl)
-    if (!title || !date) continue
-
-    blocks.push({
-      title,
-      url: resolvedUrl.toString(),
-      type: inferItemType(resolvedUrl),
-      date,
-      order: blocks.length,
-      dateMs: new Date(date).getTime(),
-    })
-  }
-
-  return dedupeAndSortItems(blocks)
+  return items
 }
 
-function buildFreshResult(items: ArcCommunityItem[]): ArcCommunityFeedResult {
-  const fetchedAt = Date.now()
+async function fetchFallbackPageItems(sourceUrl: string): Promise<ArcCommunityItem[]> {
+  const { body, finalUrl } = await fetchText(sourceUrl)
+  const baseUrl = new URL(finalUrl)
+  const items = parsePublicLinksFromHtml(body, baseUrl)
 
+  debugLog('[ArcCommunity] parsed fallback page', {
+    sourceUrl,
+    finalUrl,
+    parsedCount: items.length,
+  })
+
+  return items
+}
+
+function buildNetworkResult(items: ArcCommunityItem[], fetchedAt = Date.now()): ArcCommunityFeedResult {
   return {
-    items,
+    items: items.slice(0, ARC_COMMUNITY_MAX_ITEMS),
     fetchedAt,
     cacheStatus: 'network',
   }
@@ -365,13 +436,60 @@ function buildStaleResult(cached: ArcCommunityCacheEntry): ArcCommunityFeedResul
   }
 }
 
-function buildErrorResult(error: unknown, fallbackMessage = 'Could not load Arc community.'): ArcCommunityFeedResult {
+function buildErrorResult(message: string): ArcCommunityFeedResult {
   return {
     items: [],
     fetchedAt: Date.now(),
     cacheStatus: 'error',
-    error: error instanceof Error && error.message ? error.message : fallbackMessage,
+    error: message,
   }
+}
+
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  return 'Could not load Arc community.'
+}
+
+async function fetchArcCommunityNetwork(): Promise<ArcCommunityFeedResult> {
+  const sitemapItems = await fetchSitemapItems(ARC_COMMUNITY_SITEMAP_URL)
+  if (sitemapItems.length > 0) {
+    const fetchedAt = Date.now()
+    await writeArcCommunityCache({ items: sitemapItems.slice(0, ARC_COMMUNITY_MAX_ITEMS), fetchedAt })
+    return buildNetworkResult(sitemapItems, fetchedAt)
+  }
+
+  // The root sitemap points at the content sitemap; fetch it if the direct content sitemap response is empty.
+  const rootText = await fetchText(ARC_COMMUNITY_ROOT_SITEMAP_URL)
+  const rootLocs = Array.from(rootText.body.matchAll(/<loc>([^<]+)<\/loc>/gi))
+    .map((match) => match[1].trim())
+    .filter((loc) => loc.includes('/sitemap/content/'))
+
+  debugLog('[ArcCommunity] parsed root sitemap', {
+    sourceUrl: ARC_COMMUNITY_ROOT_SITEMAP_URL,
+    finalUrl: rootText.finalUrl,
+    parsedCount: rootLocs.length,
+  })
+
+  for (const loc of rootLocs) {
+    const items = await fetchSitemapItems(loc)
+    if (items.length > 0) {
+      const fetchedAt = Date.now()
+      await writeArcCommunityCache({ items: items.slice(0, ARC_COMMUNITY_MAX_ITEMS), fetchedAt })
+      return buildNetworkResult(items, fetchedAt)
+    }
+  }
+
+  const fallbackPages = [ARC_COMMUNITY_LISTING_URL, ARC_COMMUNITY_ARTICLE_FALLBACK_URL]
+  for (const fallbackUrl of fallbackPages) {
+    const items = await fetchFallbackPageItems(fallbackUrl)
+    if (items.length > 0) {
+      const fetchedAt = Date.now()
+      await writeArcCommunityCache({ items: items.slice(0, ARC_COMMUNITY_MAX_ITEMS), fetchedAt })
+      return buildNetworkResult(items, fetchedAt)
+    }
+  }
+
+  return buildErrorResult('No Arc community items found in the sitemap or fallback HTML.')
 }
 
 export async function fetchArcCommunity(): Promise<ArcCommunityFeedResult> {
@@ -385,27 +503,8 @@ export async function fetchArcCommunity(): Promise<ArcCommunityFeedResult> {
   }
 
   try {
-    const listing = await fetchArcCommunityPage(ARC_COMMUNITY_LISTING_URL)
-    const listingItems = parseArcCommunityHtml(listing.html, listing.finalUrl)
-
-    if (listingItems.length > 0) {
-      const result = buildFreshResult(listingItems)
-      await writeArcCommunityCache({
-        items: result.items,
-        fetchedAt: result.fetchedAt,
-      })
-      return result
-    }
-
-    const fallback = await fetchArcCommunityPage(ARC_COMMUNITY_FALLBACK_URL)
-    const fallbackItems = parseArcCommunityHtml(fallback.html, fallback.finalUrl, [ARC_COMMUNITY_FALLBACK_PATH])
-
-    if (fallbackItems.length > 0) {
-      const result = buildFreshResult(fallbackItems)
-      await writeArcCommunityCache({
-        items: result.items,
-        fetchedAt: result.fetchedAt,
-      })
+    const result = await fetchArcCommunityNetwork()
+    if (result.items.length > 0) {
       return result
     }
 
@@ -413,7 +512,7 @@ export async function fetchArcCommunity(): Promise<ArcCommunityFeedResult> {
       return buildStaleResult(cached)
     }
 
-    return buildErrorResult(new Error('No Arc community items found in the server-rendered HTML.'), 'Could not load Arc community.')
+    return result
   } catch (error) {
     debugWarn('[ArcCommunity] fetch failed:', error)
 
@@ -421,6 +520,6 @@ export async function fetchArcCommunity(): Promise<ArcCommunityFeedResult> {
       return buildStaleResult(cached)
     }
 
-    return buildErrorResult(error)
+    return buildErrorResult(formatErrorMessage(error))
   }
 }
