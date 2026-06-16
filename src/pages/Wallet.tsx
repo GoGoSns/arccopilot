@@ -16,7 +16,7 @@ import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
-import { copyToClipboard, formatAddress, openSafeUrl } from '@/lib/utils'
+import { copyToClipboard, formatAddress } from '@/lib/utils'
 import { ONBOARDING_SEEN, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { isValidAddress } from '@/lib/validation'
 import { readAddressFromImage } from '@/lib/imageReader'
@@ -171,6 +171,18 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
     setActiveTab(tab)
   }
 
+  const handleOpenSend = () => {
+    setActionError('')
+    setScanError('')
+    onSend()
+  }
+
+  const handleOpenReceive = () => {
+    setActionError('')
+    setScanError('')
+    onReceive()
+  }
+
   const handleCopy = async () => {
     if (!address) return
 
@@ -259,7 +271,14 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
 
   const handleOpenBuy = () => {
     setActionError('')
-    const opened = openSafeUrl('https://faucet.circle.com')
+    const faucetUrl = 'https://faucet.circle.com'
+
+    if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      chrome.tabs.create({ url: faucetUrl })
+      return
+    }
+
+    const opened = window.open(faucetUrl, '_blank', 'noopener,noreferrer')
     if (!opened) {
       setActionError(t('wallet.faucetUnavailable'))
     }
@@ -349,7 +368,12 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
         onRetry={() => void refreshPortfolio()}
       />
 
-      <ActionButtons onSend={onSend} onReceive={onReceive} onScan={handleOpenScan} onBuy={handleOpenBuy} />
+      <ActionButtons
+        onSend={handleOpenSend}
+        onReceive={handleOpenReceive}
+        onScan={handleOpenScan}
+        onBuy={handleOpenBuy}
+      />
 
       {actionError ? (
         <p className="px-4 text-xs text-arc-danger">{actionError}</p>

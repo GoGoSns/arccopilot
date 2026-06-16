@@ -114,7 +114,7 @@ const EN = {
   'actions.send': 'Send',
   'actions.receive': 'Receive',
   'actions.scan': 'Scan',
-  'actions.buy': 'Buy',
+  'actions.buy': 'Get USDC',
   'actions.getUsdc': 'Get USDC',
 
   'welcome.title': 'Welcome to ArcCopilot',
@@ -187,6 +187,7 @@ const EN = {
   'receive.receiveUsdc': 'Receive USDC',
   'receive.shareTitle': 'Receive USDC on Arc Testnet',
   'receive.shareText': 'Send USDC on Arc Testnet to: {address}',
+  'receive.qrAlt': 'QR code for your wallet address',
 
   'addressBook.title': 'Address Book',
   'addressBook.searchPlaceholder': 'Search label or address...',
@@ -658,7 +659,7 @@ const TR = {
   'actions.send': 'Gönder',
   'actions.receive': 'Al',
   'actions.scan': 'Tara',
-  'actions.buy': 'Satın al',
+  'actions.buy': 'Test USDC',
   'actions.getUsdc': 'Test USDC',
 
   'welcome.title': 'ArcCopilot’a hoş geldin',
@@ -725,6 +726,7 @@ const TR = {
   'receive.receiveUsdc': 'USDC Al',
   'receive.shareTitle': 'Arc Testnet’te USDC al',
   'receive.shareText': 'Arc Testnet’teki şu adrese USDC gönder: {address}',
+  'receive.qrAlt': 'Cüzdan adresin için QR kodu',
 
   'addressBook.title': 'Adres Defteri',
   'addressBook.searchPlaceholder': 'Etiket veya adres ara...',

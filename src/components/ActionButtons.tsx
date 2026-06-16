@@ -9,7 +9,7 @@ interface ActionButtonsProps {
 }
 
 export function ActionButtons({ onSend, onReceive, onScan, onBuy }: ActionButtonsProps) {
-  const handlers = { send: onSend, receive: onReceive, scan: onScan, buy: onBuy }
+  const handlers = { send: onSend, receive: onReceive, scan: onScan, buy: onBuy } as const
   const actions = [
     { label: t('actions.send'), Icon: ArrowUpRight, key: 'send' },
     { label: t('actions.receive'), Icon: ArrowDownLeft, key: 'receive' },

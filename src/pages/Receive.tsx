@@ -133,7 +133,7 @@ export function Receive({ onBack }: ReceiveProps) {
             {qrDataUrl ? (
               <img
                 src={qrDataUrl}
-                alt="QR code for the wallet address"
+                alt={t('receive.qrAlt')}
                 className="h-[220px] w-[220px]"
                 width={220}
                 height={220}
