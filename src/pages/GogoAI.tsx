@@ -27,6 +27,7 @@ import {
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
+import { getCreatorWallet, normalizeCreatorHandle } from '@/lib/creatorRegistry'
 import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
@@ -198,6 +199,8 @@ function getActionLabel(action?: GogoAction | null): string {
   switch (action?.type) {
     case 'send':
       return t('gogo.openSend')
+    case 'tip_creator':
+      return t('gogo.tipCreator')
     case 'view_address':
       return t('gogo.viewAddress')
     case 'track_whale':
@@ -228,6 +231,8 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
       return t('gogo.working')
     case 'create_reminder':
       return t('gogo.working')
+    case 'tip_creator':
+      return t('gogo.preparingTip')
     default:
       return t('gogo.working')
   }
@@ -236,6 +241,10 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
 function getCompletedActionLabel(action?: GogoAction | null): string {
   if (action?.type === 'create_reminder') {
     return t('gogo.reminderSet')
+  }
+
+  if (action?.type === 'tip_creator') {
+    return action.params?.recipient ? t('gogo.tipPrepared') : t('gogo.done')
   }
 
   return t('gogo.done')
@@ -303,6 +312,18 @@ function formatUsdcAmount(amount: string | number | undefined): string {
   if (!Number.isFinite(parsed)) return '0 USDC'
 
   return `${parsed.toLocaleString('en-US', { maximumFractionDigits: 6 })} USDC`
+}
+
+function normalizeUsdcAmountText(value: string | undefined): string {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) return ''
+
+  const withoutCurrency = trimmed.replace(/\s*USDC$/i, '').trim()
+  if (/^\d+,\d{1,6}$/.test(withoutCurrency) && !withoutCurrency.includes('.')) {
+    return withoutCurrency.replace(',', '.')
+  }
+
+  return withoutCurrency
 }
 
 function getSpendingTone(net: number): 'negative' | 'neutral' | 'positive' {
@@ -401,6 +422,16 @@ function getMultiStepActionTitle(
       return recipientValue
         ? `${t('common.send')} ${amountLabel} ${formatText('send.successTo', { recipient })}`
         : `${t('common.send')} ${amountLabel}`
+    }
+    case 'tip_creator': {
+      const handle = typeof params.handle === 'string' ? params.handle.trim() : ''
+      const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
+      const amountLabel = amount ? formatUsdcAmount(amount) : t('common.usdc')
+      const normalizedHandle = normalizeCreatorHandle(handle)
+      return formatText('gogo.tipCreatorTitle', {
+        handle: normalizedHandle ? `@${normalizedHandle}` : t('gogo.tipCreator'),
+        amount: amountLabel,
+      })
     }
     case 'view_address':
       return `${t('gogo.viewAddress')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
@@ -1434,7 +1465,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
     if (!action || action.type === 'none' || action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
@@ -1459,7 +1490,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
         const recipientInput = typeof action.params?.recipient === 'string' ? action.params.recipient.trim() : ''
         const resolvedRecipient = recipientInput ? resolveAddress(recipientInput) : null
         const recipientInvalid = Boolean(recipientInput) && (!resolvedRecipient || !isValidAddress(resolvedRecipient))
-        const amountInput = typeof action.params?.amount === 'string' ? action.params.amount.trim() : ''
+        const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
         const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
         const amountInvalid = Boolean(amountInput) && !amountValidation.valid
         const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
@@ -1498,6 +1529,86 @@ export function GogoAI({ onBack }: GogoAIProps) {
         await persistPendingSend(recipientToPersist, amountToPersist)
         setCurrentView('send')
         break
+      }
+      case 'tip_creator': {
+        setAnalysisLoadingKey(messageKey)
+
+        try {
+          const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
+          const handle = normalizeCreatorHandle(handleInput)
+          const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
+          const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
+          const amountInvalid = Boolean(amountInput) && !amountValidation.valid
+          const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
+
+          const creatorWallet = handle ? await getCreatorWallet(handle) : null
+          const recipientInvalid = !creatorWallet || !isValidAddress(creatorWallet)
+          const warning = buildSendValidationWarning({
+            recipientInvalid,
+            amountInvalid,
+            amountOverBalance,
+          })
+          const creatorHandleLabel = handle ? `@${handle}` : t('gogo.tipCreator')
+
+          if (recipientInvalid) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel }),
+              }),
+            )
+            break
+          }
+
+          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
+          const amountToPersist = amountValidation.valid && !amountValidation.overBalance ? (amountInput || undefined) : undefined
+
+          if (amountInvalid || amountOverBalance) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: warning || t('gogo.invalidAmount'),
+              }),
+            )
+            break
+          }
+
+        updateMessageAction(
+          messageIndex,
+          actionIndex,
+          (currentAction) =>
+            currentAction.type === 'tip_creator'
+              ? {
+                  ...currentAction,
+                  completed: true,
+                  params: {
+                    ...currentAction.params,
+                    handle,
+                    amount: amountToPersist || currentAction.params.amount,
+                    recipient: recipientToPersist || currentAction.params.recipient,
+                  },
+                }
+              : currentAction,
+        )
+
+          await persistPendingSend(recipientToPersist, amountToPersist)
+          setCurrentView('send')
+          break
+        } finally {
+          setAnalysisLoadingKey(null)
+        }
       }
       case 'create_reminder': {
         setAnalysisLoadingKey(messageKey)
@@ -1712,7 +1823,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       action &&
       analysisLoadingKey === actionKey &&
       !action.completed &&
-      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder'),
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator'),
     )
     const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
@@ -1938,7 +2049,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             {getCompletedActionLabel(action)}
                   </>
                 ) : (
-                  'Onayla'
+                  t('common.confirm')
                 )}
               </Button>
             </div>
@@ -2123,7 +2234,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder'))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null

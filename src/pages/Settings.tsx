@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Search, Trash2, Twitter, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -15,7 +15,9 @@ import {
   setTwitterApiKey,
   DEFAULT_TWITTER_OFFICIAL_ACCOUNTS,
 } from '@/lib/twitterApi'
+import { listCreators, registerCreator, removeCreator, type CreatorEntry } from '@/lib/creatorRegistry'
 import {
+  CREATORS,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   REMINDERS,
@@ -32,6 +34,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
 import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
+import { formatAddress } from '@/lib/utils'
 
 interface SettingsProps {
   onBack: () => void
@@ -63,6 +66,11 @@ export function Settings({ onBack }: SettingsProps) {
   const [officialAccounts, setOfficialAccountsState] = useState(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
+  const [creators, setCreators] = useState<CreatorEntry[]>([])
+  const [creatorHandle, setCreatorHandle] = useState('')
+  const [creatorAddress, setCreatorAddress] = useState('')
+  const [creatorError, setCreatorError] = useState('')
+  const [isSavingCreator, setIsSavingCreator] = useState(false)
   const geminiKeyLabel = getSavedKeyLabel(geminiApiKey)
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
 
@@ -119,6 +127,39 @@ export function Settings({ onBack }: SettingsProps) {
     }
 
     void loadReminders()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadCreators = async () => {
+      try {
+        const items = await listCreators()
+        if (active) {
+          setCreators(items)
+        }
+      } catch (error) {
+        debugWarn('[Settings] creators load failed:', error)
+        if (active) {
+          setCreators([])
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[CREATORS]) {
+        void loadCreators()
+      }
+    }
+
+    void loadCreators()
     chrome.storage.onChanged.addListener(handleStorageChange)
 
     return () => {
@@ -192,9 +233,48 @@ export function Settings({ onBack }: SettingsProps) {
     setOfficialAccountsState(normalized)
   }
 
+  const refreshCreators = async (): Promise<void> => {
+    const items = await listCreators()
+    setCreators(items)
+  }
+
+  const handleSaveCreator = async () => {
+    const handle = creatorHandle.trim()
+    const address = creatorAddress.trim()
+
+    if (!handle || !address) {
+      setCreatorError(t('settings.creatorRequired'))
+      return
+    }
+
+    setIsSavingCreator(true)
+    setCreatorError('')
+
+    try {
+      await registerCreator(handle, address)
+      await refreshCreators()
+      setCreatorHandle('')
+      setCreatorAddress('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setCreatorError(message)
+    } finally {
+      setIsSavingCreator(false)
+    }
+  }
+
   const handleResetOfficialAccounts = async () => {
     const normalized = await setOfficialAccounts(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
     setOfficialAccountsState(normalized)
+  }
+
+  const handleRemoveCreator = async (handle: string) => {
+    try {
+      await removeCreator(handle)
+      await refreshCreators()
+    } catch (error) {
+      debugWarn('[Settings] creator remove failed:', error)
+    }
   }
 
   const handleRemoveReminder = async (id: string) => {
@@ -433,6 +513,98 @@ export function Settings({ onBack }: SettingsProps) {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#8f8f9a] bg-[#14141c] border-y border-[#242433]">
+          {t('settings.creators')}
+        </p>
+        <div className="border-b border-[#242433] bg-[#14141c]">
+          <div className="border-b border-[#242433] bg-[#14141c] px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+                <Users size={20} />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#f4f1e8]">{t('settings.creatorsTitle')}</p>
+                    <p className="text-[10px] text-[#8f8f9a]">{t('settings.creatorsDescription')}</p>
+                  </div>
+                  <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                    {creators.length}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Input
+                    label={t('settings.creatorHandle')}
+                    value={creatorHandle}
+                    onChange={(e) => {
+                      setCreatorHandle(e.target.value)
+                      setCreatorError('')
+                    }}
+                    placeholder={t('settings.creatorHandlePlaceholder')}
+                    aria-label={t('settings.creatorHandle')}
+                    className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                  />
+                  <Input
+                    label={t('settings.creatorWalletAddress')}
+                    value={creatorAddress}
+                    onChange={(e) => {
+                      setCreatorAddress(e.target.value)
+                      setCreatorError('')
+                    }}
+                    placeholder={t('settings.creatorAddressPlaceholder')}
+                    aria-label={t('settings.creatorWalletAddress')}
+                    className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                  />
+                </div>
+
+                {creatorError && (
+                  <p className="text-xs text-arc-danger">{creatorError}</p>
+                )}
+
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSaveCreator()}
+                    disabled={isSavingCreator}
+                    className="min-w-28"
+                  >
+                    {isSavingCreator ? t('common.loading') : t('settings.addCreator')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 px-4 py-4">
+            {creators.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#242433] bg-[#0a0a0f] px-4 py-4 text-sm text-[#8f8f9a]">
+                {t('settings.noCreatorsYet')}
+              </div>
+            ) : (
+              creators.map((creator) => (
+                <div key={creator.handle} className="flex items-start justify-between gap-3 rounded-2xl border border-[#242433] bg-[#14141c] px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#f4f1e8]">@{creator.handle}</p>
+                    <p className="mt-1 text-[10px] font-mono text-[#8f8f9a]">
+                      {formatAddress(creator.address, 4)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveCreator(creator.handle)}
+                    className="shrink-0 rounded-lg p-2 text-[#8f8f9a] transition-colors hover:text-[#d4af37]"
+                    title={t('common.remove')}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
