@@ -22,6 +22,7 @@ import {
   getBudgetState,
   type TipBudgetLogEntry,
 } from '@/lib/tipBudget'
+import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
@@ -374,6 +375,10 @@ function formatBudgetNumber(value: number): string {
   return formatTipBudgetAmount(value)
 }
 
+function toUsdcMicros(value: number): bigint {
+  return BigInt(Math.max(0, Math.round(value * 10 ** USDC_DECIMALS)))
+}
+
 function buildTipBudgetDecisionReply(amount: string, budgetState: Awaited<ReturnType<typeof getBudgetState>>, decision: Awaited<ReturnType<typeof canTip>>): string {
   const amountValue = Number(amount)
   if (!Number.isFinite(amountValue) || amountValue <= 0) {
@@ -452,13 +457,13 @@ function buildBatchTipReply(options: {
     : summary
 }
 
-function buildBatchTipActions(creators: CreatorEntry[], amount: string): GogoAction[] {
-  return creators.map((creator) => ({
+function buildBatchTipActions(creators: CreatorEntry[], batchRecipients: Array<{ address: string; amount: string }>): GogoAction[] {
+  return batchRecipients.map((recipient, index) => ({
     type: 'tip_creator',
     params: {
-      handle: creator.handle,
-      amount,
-      recipient: creator.address,
+      handle: creators[index]?.handle ?? '',
+      amount: recipient.amount,
+      recipient: recipient.address,
     },
     completed: false,
   }))
@@ -1679,7 +1684,9 @@ export async function askGogo(
 
     const availableBudget = Math.max(0, batchDecision.remaining)
     const requestedCount = tipRequestIntent.requestedCount ?? rankedCreators.length
-    const affordableCount = Math.floor(availableBudget / amountValue)
+    const affordableCount = Number(
+      toUsdcMicros(availableBudget) / toUsdcMicros(amountValue),
+    )
     const coveredCreators = rankedCreators.slice(0, Math.min(requestedCount, affordableCount))
 
     if (coveredCreators.length === 0) {
@@ -1697,20 +1704,42 @@ export async function askGogo(
       }
     }
 
-    const totalAmount = coveredCreators.length * amountValue
-    const actions = buildBatchTipActions(coveredCreators, amount)
-    return {
-      reply: buildBatchTipReply({
-        amount,
-        requestedCount,
-        totalCreators: rankedCreators.length,
-        coveredCreators: coveredCreators.length,
-        dailyLimit: budgetState.dailyLimitUsdc,
-        availableBudget,
-        totalAmount,
-      }),
-      actions,
-      action: actions[0],
+    try {
+      const preparedBatch = await prepareBatchNanoTip(
+        coveredCreators.map((creator) => ({
+          address: creator.address,
+          amount,
+        })),
+      )
+
+      const totalAmount = Number(preparedBatch.totalAmountUsdc)
+      if (!Number.isFinite(totalAmount)) {
+        return {
+          reply: t('nanopay.batchInvalidAmount'),
+          actions: [],
+        }
+      }
+
+      const actions = buildBatchTipActions(coveredCreators, preparedBatch.recipients)
+      return {
+        reply: buildBatchTipReply({
+          amount,
+          requestedCount,
+          totalCreators: rankedCreators.length,
+          coveredCreators: coveredCreators.length,
+          dailyLimit: budgetState.dailyLimitUsdc,
+          availableBudget,
+          totalAmount,
+        }),
+        actions,
+        action: actions[0],
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      return {
+        reply: message,
+        actions: [],
+      }
     }
   }
 
