@@ -819,7 +819,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         if (cancelled) return
 
         setArcDiscord(result)
-        setArcDiscordError(result.error ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
+        const hasDiscordCounts = result.memberCount != null || result.onlineCount != null
+        setArcDiscordError(!hasDiscordCounts && result.error ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
       } catch (error) {
         if (cancelled) return
         debugWarn('[DailyBrief] arc discord load failed:', error)

@@ -27,6 +27,7 @@ import {
 } from '@/lib/reminders'
 
 const ARC_DISCORD_API_URL = 'https://discord.com/api/v10/invites/buildonarc?with_counts=true'
+const ARC_DISCORD_USER_AGENT = 'ArcCopilot/0.3'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
 const REMINDER_NOTIFIED_PREFIX = 'arccopilot:reminders:last-notified:'
 const USDC_DECIMALS = 6
@@ -42,6 +43,14 @@ interface ArcDiscordCountsResponse {
   memberCount: number | null
   onlineCount: number | null
   error?: string
+}
+
+interface DiscordFetchDiagnostics {
+  errorName: string
+  errorMessage: string
+  status?: number
+  bodyPreview?: string
+  userAgentAttempted: boolean
 }
 
 interface AddressMemory {
@@ -117,6 +126,21 @@ function isOverTenPercentChange(previous: number, current: number): boolean {
   return Math.abs(current - previous) / previous > 0.1
 }
 
+function formatDiscordFetchError(diagnostics: DiscordFetchDiagnostics): string {
+  const parts = [
+    `${diagnostics.errorName}: ${diagnostics.errorMessage}`,
+    diagnostics.status != null ? `status=${diagnostics.status}` : null,
+    diagnostics.bodyPreview ? `body=${diagnostics.bodyPreview}` : null,
+    diagnostics.userAgentAttempted ? 'userAgent=attempted' : 'userAgent=skipped',
+  ].filter((part): part is string => Boolean(part))
+
+  return `ARC_DISCORD_FETCH_FAILED ${parts.join(' | ')}`
+}
+
+function logDiscordFetchDiagnostics(diagnostics: DiscordFetchDiagnostics): void {
+  console.warn('[ArcCopilot SW] Discord counts fetch failed', diagnostics)
+}
+
 async function fetchCurrentUsdcBalance(address: string): Promise<string> {
   const padded = address.slice(2).toLowerCase().padStart(64, '0')
   const data = '0x70a08231' + padded
@@ -160,39 +184,116 @@ async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer
 }
 
 async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
-  const response = await fetchWithTimeout(
-    ARC_DISCORD_API_URL,
-    {
-      headers: {
-        accept: 'application/json',
+  const headers = new Headers({
+    Accept: 'application/json',
+  })
+
+  let userAgentAttempted = false
+  try {
+    headers.set('User-Agent', ARC_DISCORD_USER_AGENT)
+    userAgentAttempted = headers.get('User-Agent') === ARC_DISCORD_USER_AGENT
+  } catch {
+    userAgentAttempted = false
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      ARC_DISCORD_API_URL,
+      {
+        method: 'GET',
+        credentials: 'omit',
+        cache: 'no-store',
+        redirect: 'follow',
+        referrerPolicy: 'no-referrer',
+        headers,
       },
-    },
-    10_000,
-  )
+      10_000,
+    )
 
-  if (!response.ok) {
-    throw new Error(`ARC_DISCORD_HTTP_${response.status}`)
-  }
+    const bodyText = await response.text()
+    const bodyPreview = bodyText.slice(0, 200)
 
-  const payload = await response.json() as {
-    approximate_member_count?: unknown
-    approximate_presence_count?: unknown
-  }
+    if (!response.ok) {
+      const diagnostics: DiscordFetchDiagnostics = {
+        errorName: 'DiscordHttpError',
+        errorMessage: response.statusText || `HTTP ${response.status}`,
+        status: response.status,
+        bodyPreview,
+        userAgentAttempted,
+      }
+      logDiscordFetchDiagnostics(diagnostics)
+      return {
+        memberCount: null,
+        onlineCount: null,
+        error: formatDiscordFetchError(diagnostics),
+      }
+    }
 
-  const memberCount = typeof payload.approximate_member_count === 'number'
-    ? payload.approximate_member_count
-    : null
-  const onlineCount = typeof payload.approximate_presence_count === 'number'
-    ? payload.approximate_presence_count
-    : null
+    let payload: {
+      approximate_member_count?: unknown
+      approximate_presence_count?: unknown
+    }
 
-  if (memberCount == null && onlineCount == null) {
-    throw new Error('ARC_DISCORD_COUNTS_UNAVAILABLE')
-  }
+    try {
+      payload = JSON.parse(bodyText) as {
+        approximate_member_count?: unknown
+        approximate_presence_count?: unknown
+      }
+    } catch (error) {
+      const diagnostics: DiscordFetchDiagnostics = {
+        errorName: error instanceof Error ? error.name : 'DiscordJsonParseError',
+        errorMessage: error instanceof Error ? error.message : 'Failed to parse Discord invite response',
+        status: response.status,
+        bodyPreview,
+        userAgentAttempted,
+      }
+      logDiscordFetchDiagnostics(diagnostics)
+      return {
+        memberCount: null,
+        onlineCount: null,
+        error: formatDiscordFetchError(diagnostics),
+      }
+    }
 
-  return {
-    memberCount,
-    onlineCount,
+    const memberCount = typeof payload.approximate_member_count === 'number'
+      ? payload.approximate_member_count
+      : null
+    const onlineCount = typeof payload.approximate_presence_count === 'number'
+      ? payload.approximate_presence_count
+      : null
+
+    if (memberCount == null && onlineCount == null) {
+      const diagnostics: DiscordFetchDiagnostics = {
+        errorName: 'DiscordCountsUnavailable',
+        errorMessage: 'Invite response did not include approximate_member_count or approximate_presence_count',
+        status: response.status,
+        bodyPreview,
+        userAgentAttempted,
+      }
+      logDiscordFetchDiagnostics(diagnostics)
+      return {
+        memberCount: null,
+        onlineCount: null,
+        error: formatDiscordFetchError(diagnostics),
+      }
+    }
+
+    return {
+      memberCount,
+      onlineCount,
+    }
+  } catch (error) {
+    const diagnostics: DiscordFetchDiagnostics = {
+      errorName: error instanceof Error ? error.name : 'DiscordFetchError',
+      errorMessage: error instanceof Error ? error.message : 'Unknown Discord fetch failure',
+      userAgentAttempted,
+    }
+    logDiscordFetchDiagnostics(diagnostics)
+    return {
+      memberCount: null,
+      onlineCount: null,
+      error: formatDiscordFetchError(diagnostics),
+    }
   }
 }
 
@@ -247,18 +348,13 @@ chrome.notifications.onClicked.addListener((notifId) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'FETCH_ARC_DISCORD') {
     void (async () => {
-      try {
-        const counts = await fetchArcDiscordCounts()
+      const counts = await fetchArcDiscordCounts()
+      if (counts.error) {
+        debugWarn('[ArcCopilot SW] FETCH_ARC_DISCORD failed:', counts.error)
+      } else {
         debugLog('[ArcCopilot SW] Arc Discord counts fetched')
-        sendResponse(counts)
-      } catch (error) {
-        debugWarn('[ArcCopilot SW] FETCH_ARC_DISCORD failed:', error)
-        sendResponse({
-          memberCount: null,
-          onlineCount: null,
-          error: error instanceof Error ? error.message : 'ARC_DISCORD_FETCH_FAILED',
-        })
       }
+      sendResponse(counts)
     })()
     return true
   }

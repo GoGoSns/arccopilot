@@ -25,6 +25,10 @@ interface ArcDiscordWorkerResponse {
   error?: string
 }
 
+type ArcDiscordNetworkResult = ArcDiscordCacheEntry & {
+  error?: string
+}
+
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
 }
@@ -92,7 +96,7 @@ function isArcDiscordWorkerResponse(value: unknown): value is ArcDiscordWorkerRe
     && (typeof response.error === 'string' || typeof response.error === 'undefined')
 }
 
-async function fetchArcDiscordFromWorker(): Promise<ArcDiscordCacheEntry> {
+async function fetchArcDiscordFromWorker(): Promise<ArcDiscordNetworkResult> {
   if (!canUseChromeRuntime()) {
     throw new Error('ARC_DISCORD_RUNTIME_UNAVAILABLE')
   }
@@ -121,15 +125,12 @@ async function fetchArcDiscordFromWorker(): Promise<ArcDiscordCacheEntry> {
   const memberCount = typeof response.memberCount === 'number' ? response.memberCount : null
   const onlineCount = typeof response.onlineCount === 'number' ? response.onlineCount : null
 
-  if (memberCount == null && onlineCount == null) {
-    throw new Error(response.error ?? 'ARC_DISCORD_COUNTS_UNAVAILABLE')
-  }
-
   return {
     memberCount,
     onlineCount,
     inviteUrl: ARC_DISCORD_INVITE_URL,
     fetchedAt: Date.now(),
+    error: response.error,
   }
 }
 
@@ -144,7 +145,35 @@ export async function fetchArcDiscord(): Promise<ArcDiscordResult> {
 
   try {
     const network = await fetchArcDiscordFromWorker()
-    await writeArcDiscordCache(network)
+    if (network.error) {
+      console.warn('[arcDiscord] worker returned diagnostics:', network.error)
+    }
+
+    if (network.memberCount == null && network.onlineCount == null) {
+      if (cached) {
+        return {
+          ...cached,
+          cacheStatus: 'stale-cache',
+          error: network.error ?? 'ARC_DISCORD_COUNTS_UNAVAILABLE',
+        }
+      }
+
+      return {
+        memberCount: null,
+        onlineCount: null,
+        inviteUrl: ARC_DISCORD_INVITE_URL,
+        fetchedAt: Date.now(),
+        cacheStatus: 'error',
+        error: network.error ?? 'ARC_DISCORD_COUNTS_UNAVAILABLE',
+      }
+    }
+
+    await writeArcDiscordCache({
+      memberCount: network.memberCount,
+      onlineCount: network.onlineCount,
+      inviteUrl: network.inviteUrl,
+      fetchedAt: network.fetchedAt,
+    })
     return {
       ...network,
       cacheStatus: 'network',
@@ -156,6 +185,7 @@ export async function fetchArcDiscord(): Promise<ArcDiscordResult> {
       return {
         ...cached,
         cacheStatus: 'stale-cache',
+        error: error instanceof Error ? error.message : 'ARC_DISCORD_FETCH_FAILED',
       }
     }
 
