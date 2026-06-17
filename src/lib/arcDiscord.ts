@@ -1,4 +1,3 @@
-import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 import { ARC_DISCORD_CACHE_KEY } from '@/lib/storageKeys'
 
@@ -179,7 +178,7 @@ export async function fetchArcDiscord(): Promise<ArcDiscordResult> {
       cacheStatus: 'network',
     }
   } catch (error) {
-    debugWarn('[arcDiscord] fetch failed:', error)
+    console.warn('[arcDiscord] fetch failed:', error)
 
     if (cached) {
       return {

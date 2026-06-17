@@ -184,9 +184,7 @@ async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer
 }
 
 async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
-  const headers = new Headers({
-    Accept: 'application/json',
-  })
+  const headers = new Headers({ Accept: 'application/json' })
 
   let userAgentAttempted = false
   try {
@@ -196,8 +194,11 @@ async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
     userAgentAttempted = false
   }
 
+  let response: Response | null = null
+  let bodyText = ''
+
   try {
-    const response = await fetchWithTimeout(
+    response = await fetchWithTimeout(
       ARC_DISCORD_API_URL,
       {
         method: 'GET',
@@ -210,7 +211,7 @@ async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
       10_000,
     )
 
-    const bodyText = await response.text()
+    bodyText = await response.text()
     const bodyPreview = bodyText.slice(0, 200)
 
     if (!response.ok) {
@@ -283,9 +284,12 @@ async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
       onlineCount,
     }
   } catch (error) {
+    const bodyPreview = bodyText ? bodyText.slice(0, 200) : undefined
     const diagnostics: DiscordFetchDiagnostics = {
       errorName: error instanceof Error ? error.name : 'DiscordFetchError',
       errorMessage: error instanceof Error ? error.message : 'Unknown Discord fetch failure',
+      status: response?.status,
+      bodyPreview,
       userAgentAttempted,
     }
     logDiscordFetchDiagnostics(diagnostics)
