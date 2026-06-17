@@ -1,7 +1,7 @@
 /// <reference types="chrome" />
 /**
  * ArcCopilot service worker
- * - Handles content-script messages (OPEN_SEND)
+ * - Handles content-script and popup messages (OPEN_SEND, FETCH_ARC_DISCORD)
  * - Whale polling via chrome.alarms (every 5 min)
  * - Native notifications for whale movement, incoming USDC, and balance changes
  * - Badge management (gold dot when unseen whale activity)
@@ -26,6 +26,7 @@ import {
   getReminderNotificationMessage,
 } from '@/lib/reminders'
 
+const ARC_DISCORD_API_URL = 'https://discord.com/api/v10/invites/buildonarc?with_counts=true'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
 const REMINDER_NOTIFIED_PREFIX = 'arccopilot:reminders:last-notified:'
 const USDC_DECIMALS = 6
@@ -35,6 +36,12 @@ const LAST_SEEN_INCOMING_WALLET_KEY = 'arccopilot:last-seen-incoming-wallet'
 interface PendingSend {
   recipient: string
   ts: number
+}
+
+interface ArcDiscordCountsResponse {
+  memberCount: number | null
+  onlineCount: number | null
+  error?: string
 }
 
 interface AddressMemory {
@@ -152,6 +159,43 @@ async function fetchLatestIncomingTransfer(address: string): Promise<RawTransfer
   return items.find((transfer) => transfer.to?.hash?.toLowerCase() === normalized) ?? null
 }
 
+async function fetchArcDiscordCounts(): Promise<ArcDiscordCountsResponse> {
+  const response = await fetchWithTimeout(
+    ARC_DISCORD_API_URL,
+    {
+      headers: {
+        accept: 'application/json',
+      },
+    },
+    10_000,
+  )
+
+  if (!response.ok) {
+    throw new Error(`ARC_DISCORD_HTTP_${response.status}`)
+  }
+
+  const payload = await response.json() as {
+    approximate_member_count?: unknown
+    approximate_presence_count?: unknown
+  }
+
+  const memberCount = typeof payload.approximate_member_count === 'number'
+    ? payload.approximate_member_count
+    : null
+  const onlineCount = typeof payload.approximate_presence_count === 'number'
+    ? payload.approximate_presence_count
+    : null
+
+  if (memberCount == null && onlineCount == null) {
+    throw new Error('ARC_DISCORD_COUNTS_UNAVAILABLE')
+  }
+
+  return {
+    memberCount,
+    onlineCount,
+  }
+}
+
 async function loadNotificationPrefs(): Promise<{ incoming: boolean; balance: boolean }> {
   const result = await chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY])
 
@@ -201,6 +245,24 @@ chrome.notifications.onClicked.addListener((notifId) => {
 })
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'FETCH_ARC_DISCORD') {
+    void (async () => {
+      try {
+        const counts = await fetchArcDiscordCounts()
+        debugLog('[ArcCopilot SW] Arc Discord counts fetched')
+        sendResponse(counts)
+      } catch (error) {
+        debugWarn('[ArcCopilot SW] FETCH_ARC_DISCORD failed:', error)
+        sendResponse({
+          memberCount: null,
+          onlineCount: null,
+          error: error instanceof Error ? error.message : 'ARC_DISCORD_FETCH_FAILED',
+        })
+      }
+    })()
+    return true
+  }
+
   if (message?.type === 'OPEN_SEND' && typeof message.recipient === 'string') {
     handleOpenSend(message.recipient)
       .then(() => sendResponse({ ok: true }))

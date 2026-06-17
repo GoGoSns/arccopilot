@@ -1,9 +1,8 @@
 import { debugWarn } from '@/lib/debug'
-import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 import { ARC_DISCORD_CACHE_KEY } from '@/lib/storageKeys'
 
 export const ARC_DISCORD_INVITE_URL = 'https://discord.gg/buildonarc'
-const ARC_DISCORD_API_URL = 'https://discord.com/api/v10/invites/buildonarc?with_counts=true'
 const ARC_DISCORD_CACHE_TTL_MS = 10 * 60_000
 
 export type ArcDiscordCacheStatus = 'fresh-cache' | 'network' | 'stale-cache' | 'error'
@@ -20,8 +19,18 @@ export interface ArcDiscordResult extends ArcDiscordCacheEntry {
   error?: string
 }
 
+interface ArcDiscordWorkerResponse {
+  memberCount: number | null
+  onlineCount: number | null
+  error?: string
+}
+
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
+}
+
+function canUseChromeRuntime(): boolean {
+  return typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage)
 }
 
 function isArcDiscordCacheEntry(value: unknown): value is ArcDiscordCacheEntry {
@@ -74,35 +83,46 @@ async function writeArcDiscordCache(entry: ArcDiscordCacheEntry): Promise<void> 
   await chromeStorageSet({ [ARC_DISCORD_CACHE_KEY]: entry })
 }
 
-async function fetchArcDiscordFromNetwork(): Promise<ArcDiscordCacheEntry> {
-  const response = await fetchWithTimeout(
-    ARC_DISCORD_API_URL,
-    {
-      headers: {
-        accept: 'application/json',
-      },
-    },
-    10_000,
-  )
+function isArcDiscordWorkerResponse(value: unknown): value is ArcDiscordWorkerResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
 
-  if (!response.ok) {
-    throw new Error(`ARC_DISCORD_HTTP_${response.status}`)
+  const response = value as Partial<ArcDiscordWorkerResponse>
+  return (typeof response.memberCount === 'number' || response.memberCount === null)
+    && (typeof response.onlineCount === 'number' || response.onlineCount === null)
+    && (typeof response.error === 'string' || typeof response.error === 'undefined')
+}
+
+async function fetchArcDiscordFromWorker(): Promise<ArcDiscordCacheEntry> {
+  if (!canUseChromeRuntime()) {
+    throw new Error('ARC_DISCORD_RUNTIME_UNAVAILABLE')
   }
 
-  const payload = await response.json() as {
-    approximate_member_count?: unknown
-    approximate_presence_count?: unknown
-  }
+  const response = await new Promise<ArcDiscordWorkerResponse>((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage({ type: 'FETCH_ARC_DISCORD' }, (result) => {
+        const lastError = chrome.runtime?.lastError
+        if (lastError) {
+          reject(new Error(lastError.message || 'ARC_DISCORD_MESSAGE_FAILED'))
+          return
+        }
 
-  const memberCount = typeof payload.approximate_member_count === 'number'
-    ? payload.approximate_member_count
-    : null
-  const onlineCount = typeof payload.approximate_presence_count === 'number'
-    ? payload.approximate_presence_count
-    : null
+        if (!isArcDiscordWorkerResponse(result)) {
+          reject(new Error('ARC_DISCORD_MESSAGE_INVALID'))
+          return
+        }
+
+        resolve(result)
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+
+  const memberCount = typeof response.memberCount === 'number' ? response.memberCount : null
+  const onlineCount = typeof response.onlineCount === 'number' ? response.onlineCount : null
 
   if (memberCount == null && onlineCount == null) {
-    throw new Error('ARC_DISCORD_COUNTS_UNAVAILABLE')
+    throw new Error(response.error ?? 'ARC_DISCORD_COUNTS_UNAVAILABLE')
   }
 
   return {
@@ -123,7 +143,7 @@ export async function fetchArcDiscord(): Promise<ArcDiscordResult> {
   }
 
   try {
-    const network = await fetchArcDiscordFromNetwork()
+    const network = await fetchArcDiscordFromWorker()
     await writeArcDiscordCache(network)
     return {
       ...network,
