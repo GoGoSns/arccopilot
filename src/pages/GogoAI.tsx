@@ -32,6 +32,7 @@ import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
+import { canTip, formatTipBudgetAmount, getBudgetState } from '@/lib/tipBudget'
 import {
   addReminder,
   buildReminderFromAction,
@@ -244,7 +245,7 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
   }
 
   if (action?.type === 'tip_creator') {
-    return action.params?.recipient ? t('gogo.tipPrepared') : t('gogo.done')
+    return action.params?.prepared ? t('gogo.tipPrepared') : t('gogo.done')
   }
 
   return t('gogo.done')
@@ -474,11 +475,12 @@ function getMultiStepActionTitle(
   }
 }
 
-async function persistPendingSend(recipient?: string, amount?: string): Promise<void> {
+async function persistPendingSend(recipient?: string, amount?: string, tipHandle?: string): Promise<void> {
   await chromeStorageSet({
     [PENDING_SEND_STORAGE_KEY]: {
       recipient,
       amount,
+      tipHandle,
       ts: Date.now(),
     },
   })
@@ -1537,17 +1539,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
           const handle = normalizeCreatorHandle(handleInput)
           const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
-          const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
-          const amountInvalid = Boolean(amountInput) && !amountValidation.valid
-          const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
 
           const creatorWallet = handle ? await getCreatorWallet(handle) : null
           const recipientInvalid = !creatorWallet || !isValidAddress(creatorWallet)
-          const warning = buildSendValidationWarning({
-            recipientInvalid,
-            amountInvalid,
-            amountOverBalance,
-          })
           const creatorHandleLabel = handle ? `@${handle}` : t('gogo.tipCreator')
 
           if (recipientInvalid) {
@@ -1566,8 +1560,30 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
-          const amountToPersist = amountValidation.valid && !amountValidation.overBalance ? (amountInput || undefined) : undefined
+          if (!amountInput) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: t('gogo.tipBudgetNeedAmount'),
+              }),
+            )
+            break
+          }
+
+          const amountValidation = isValidAmount(amountInput, balance)
+          const amountInvalid = !amountValidation.valid
+          const amountOverBalance = amountValidation.valid && amountValidation.overBalance
+          const warning = buildSendValidationWarning({
+            recipientInvalid,
+            amountInvalid,
+            amountOverBalance,
+          })
 
           if (amountInvalid || amountOverBalance) {
             updateMessageAction(
@@ -1585,25 +1601,50 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-        updateMessageAction(
-          messageIndex,
-          actionIndex,
-          (currentAction) =>
-            currentAction.type === 'tip_creator'
-              ? {
-                  ...currentAction,
-                  completed: true,
-                  params: {
-                    ...currentAction.params,
-                    handle,
-                    amount: amountToPersist || currentAction.params.amount,
-                    recipient: recipientToPersist || currentAction.params.recipient,
-                  },
-                }
-              : currentAction,
-        )
+          const budgetState = await getBudgetState()
+          const budgetDecision = await canTip(amountInput)
+          if (!budgetDecision.allowed) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: formatText('gogo.tipBudgetOver', {
+                  limit: formatTipBudgetAmount(budgetState.dailyLimitUsdc),
+                  remaining: formatTipBudgetAmount(budgetDecision.remaining),
+                }),
+              }),
+            )
+            break
+          }
 
-          await persistPendingSend(recipientToPersist, amountToPersist)
+          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
+          const amountToPersist = amountInput || undefined
+
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) =>
+              currentAction.type === 'tip_creator'
+                ? {
+                    ...currentAction,
+                    completed: true,
+                    params: {
+                      ...currentAction.params,
+                      handle,
+                      amount: amountToPersist || currentAction.params.amount,
+                      recipient: recipientToPersist || currentAction.params.recipient,
+                      prepared: true,
+                    },
+                  }
+                : currentAction,
+          )
+
+          await persistPendingSend(recipientToPersist, amountToPersist, handle)
           setCurrentView('send')
           break
         } finally {

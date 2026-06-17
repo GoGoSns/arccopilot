@@ -17,6 +17,8 @@ import {
   type MetaMaskAccountResult,
 } from '@/lib/metamask'
 import { EXPLORER_URL, USDC_ADDRESS } from '@/lib/arc'
+import { getCreatorWallet, normalizeCreatorHandle } from '@/lib/creatorRegistry'
+import { recordTip } from '@/lib/tipBudget'
 import { formatAddress, openSafeUrl, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { MemoryCard } from '@/components/MemoryCard'
@@ -45,16 +47,18 @@ type MetaMaskAccessState = 'checking' | 'authorized' | 'unauthorized' | 'missing
 type PendingSend = {
   recipient?: string
   amount?: string
+  tipHandle?: string
   ts: number
 }
 
 function isPendingSend(value: unknown): value is PendingSend {
   if (!value || typeof value !== 'object') return false
 
-  const pending = value as PendingSend & { recipient?: unknown; amount?: unknown; ts?: unknown }
+  const pending = value as PendingSend & { recipient?: unknown; amount?: unknown; tipHandle?: unknown; ts?: unknown }
   return typeof pending.ts === 'number'
     && (pending.recipient === undefined || typeof pending.recipient === 'string')
     && (pending.amount === undefined || typeof pending.amount === 'string')
+    && (pending.tipHandle === undefined || typeof pending.tipHandle === 'string')
 }
 
 export function Send({ onBack }: SendProps) {
@@ -82,6 +86,8 @@ export function Send({ onBack }: SendProps) {
   const amountRef = useRef<HTMLInputElement>(null)
   const successTimerRef = useRef<number | null>(null)
   const contractLookupTokenRef = useRef(0)
+  const pendingTipHandleRef = useRef<string | null>(null)
+  const recordedTipRef = useRef(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
 
   const trimmedRecipient = recipient.trim()
@@ -121,10 +127,13 @@ export function Send({ onBack }: SendProps) {
       if (isPendingSend(pending) && Date.now() - pending.ts < 30_000) {
         const pendingRecipient = typeof pending.recipient === 'string' ? pending.recipient.trim() : ''
         const pendingAmount = typeof pending.amount === 'string' ? pending.amount.trim() : ''
+        const pendingTipHandle = typeof pending.tipHandle === 'string' ? normalizeCreatorHandle(pending.tipHandle) : ''
         const recipientReady = !pendingRecipient || isValidAddress(pendingRecipient)
         const amountValidation = pendingAmount ? isValidAmount(pendingAmount) : { valid: true, overBalance: false, amountMicros: null }
         const amountReady = !pendingAmount || amountValidation.valid
         let hasPrefill = false
+        pendingTipHandleRef.current = pendingTipHandle || null
+        recordedTipRef.current = false
 
         if (recipientReady && pendingRecipient) {
           setRecipient(pendingRecipient)
@@ -152,6 +161,8 @@ export function Send({ onBack }: SendProps) {
         }
       } else {
         setFromUniversalTip(false)
+        pendingTipHandleRef.current = null
+        recordedTipRef.current = false
         if (hasPendingSend) {
           void chromeStorageRemove(PENDING_SEND_STORAGE_KEY)
         }
@@ -386,6 +397,8 @@ export function Send({ onBack }: SendProps) {
     setTxHash('')
     setTxStatus('idle')
     setLastTransfer(null)
+    pendingTipHandleRef.current = null
+    recordedTipRef.current = false
     if (successTimerRef.current !== null) {
       window.clearTimeout(successTimerRef.current)
       successTimerRef.current = null
@@ -406,6 +419,47 @@ export function Send({ onBack }: SendProps) {
       }
     }
   }, [txHash]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (txStatus !== 'confirmed') return
+    if (recordedTipRef.current) return
+    if (!pendingTipHandleRef.current || !lastTransfer?.amount) return
+
+    let cancelled = false
+    const pendingTipHandle = pendingTipHandleRef.current
+    const confirmedRecipient = lastTransfer.recipient.toLowerCase()
+
+    const recordConfirmedTip = async () => {
+      const creatorWallet = await getCreatorWallet(pendingTipHandle)
+      if (cancelled) {
+        return
+      }
+
+      if (!creatorWallet) {
+        return
+      }
+
+      if (pendingTipHandleRef.current !== pendingTipHandle || txStatus !== 'confirmed') {
+        return
+      }
+
+      if (creatorWallet.toLowerCase() !== confirmedRecipient) {
+        return
+      }
+
+      recordedTipRef.current = true
+      await recordTip(pendingTipHandle, lastTransfer.amount)
+    }
+
+    void recordConfirmedTip().catch((error) => {
+      recordedTipRef.current = false
+      console.error('[Send] failed to record tip budget entry:', error)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [lastTransfer, txStatus])
 
   const handleSend = async () => {
     setError('')

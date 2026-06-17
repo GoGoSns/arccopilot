@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Key, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -21,6 +21,7 @@ import {
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   REMINDERS,
+  TIP_BUDGET,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import {
@@ -30,11 +31,12 @@ import {
   type Reminder,
 } from '@/lib/reminders'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
+import { formatRelativeTime, formatAddress } from '@/lib/utils'
+import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
 import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
-import { formatAddress } from '@/lib/utils'
 
 interface SettingsProps {
   onBack: () => void
@@ -67,12 +69,18 @@ export function Settings({ onBack }: SettingsProps) {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
   const [creators, setCreators] = useState<CreatorEntry[]>([])
+  const [tipBudget, setTipBudget] = useState<TipBudgetState | null>(null)
+  const [tipBudgetLimitInput, setTipBudgetLimitInput] = useState('')
+  const [tipBudgetError, setTipBudgetError] = useState('')
+  const [isSavingTipBudget, setIsSavingTipBudget] = useState(false)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
   const [isSavingCreator, setIsSavingCreator] = useState(false)
   const geminiKeyLabel = getSavedKeyLabel(geminiApiKey)
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
+  const tipBudgetRemaining = tipBudget ? Math.max(0, tipBudget.dailyLimitUsdc - tipBudget.spentTodayUsdc) : 0
+  const recentTipEntries = tipBudget ? [...tipBudget.log].slice(-5).reverse() : []
 
   useEffect(() => {
     let active = true
@@ -168,6 +176,41 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+
+    const loadTipBudget = async () => {
+      try {
+        const state = await getBudgetState()
+        if (active) {
+          setTipBudget(state)
+          setTipBudgetLimitInput(formatTipBudgetAmount(state.dailyLimitUsdc))
+        }
+      } catch (error) {
+        debugWarn('[Settings] tip budget load failed:', error)
+        if (active) {
+          setTipBudget(null)
+          setTipBudgetLimitInput('')
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[TIP_BUDGET]) {
+        void loadTipBudget()
+      }
+    }
+
+    void loadTipBudget()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
   const handleToggleIncomingAlerts = async () => {
     const nextValue = !incomingAlerts
     setIncomingAlerts(nextValue)
@@ -236,6 +279,33 @@ export function Settings({ onBack }: SettingsProps) {
   const refreshCreators = async (): Promise<void> => {
     const items = await listCreators()
     setCreators(items)
+  }
+
+  const refreshTipBudget = async (): Promise<void> => {
+    const state = await getBudgetState()
+    setTipBudget(state)
+    setTipBudgetLimitInput(formatTipBudgetAmount(state.dailyLimitUsdc))
+  }
+
+  const handleSaveTipBudget = async () => {
+    const nextLimit = tipBudgetLimitInput.trim()
+    if (!nextLimit) {
+      setTipBudgetError(t('settings.tipBudgetInvalidLimit'))
+      return
+    }
+
+    setIsSavingTipBudget(true)
+    setTipBudgetError('')
+
+    try {
+      await setDailyLimit(nextLimit)
+      await refreshTipBudget()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setTipBudgetError(message)
+    } finally {
+      setIsSavingTipBudget(false)
+    }
   }
 
   const handleSaveCreator = async () => {
@@ -519,6 +589,93 @@ export function Settings({ onBack }: SettingsProps) {
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#8f8f9a] bg-[#14141c] border-y border-[#242433]">
           {t('settings.creators')}
         </p>
+        <div className="border-b border-[#242433] bg-[#14141c] px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+              <Coins size={20} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#f4f1e8]">{t('settings.tipBudgetTitle')}</p>
+                  <p className="text-[10px] text-[#8f8f9a]">{t('settings.tipBudgetDescription')}</p>
+                </div>
+                <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                  {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : t('state.loading')}
+                </span>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetDailyLimit')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#f4f1e8]">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : '—'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetSpentToday')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#f4f1e8]">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : '—'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetRemaining')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#d4af37]">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : '—'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Input
+                  label={t('settings.tipBudgetDailyLimit')}
+                  value={tipBudgetLimitInput}
+                  onChange={(e) => {
+                    setTipBudgetLimitInput(e.target.value)
+                    setTipBudgetError('')
+                  }}
+                  placeholder={t('settings.tipBudgetLimitPlaceholder')}
+                  aria-label={t('settings.tipBudgetDailyLimit')}
+                  className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void handleSaveTipBudget()}
+                  disabled={isSavingTipBudget}
+                  className="min-w-28 self-end"
+                >
+                  {isSavingTipBudget ? t('common.loading') : t('settings.tipBudgetSaveLimit')}
+                </Button>
+              </div>
+
+              {tipBudgetError && <p className="text-xs text-arc-danger">{tipBudgetError}</p>}
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">{t('settings.tipBudgetRecentTips')}</p>
+                {recentTipEntries.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#242433] bg-[#0a0a0f] px-4 py-4 text-xs text-[#8f8f9a]">
+                    {t('settings.tipBudgetNoTipsYet')}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {recentTipEntries.map((entry) => (
+                      <div key={`${entry.handle}-${entry.timestamp}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#242433] bg-[#0a0a0f] px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#f4f1e8]">@{entry.handle}</p>
+                          <p className="text-[10px] text-[#8f8f9a]">{formatRelativeTime(new Date(entry.timestamp).toISOString())}</p>
+                        </div>
+                        <p className="shrink-0 text-sm font-semibold text-[#d4af37]">
+                          {formatTipBudgetAmount(entry.amount)} {t('common.usdc')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
         <div className="border-b border-[#242433] bg-[#14141c]">
           <div className="border-b border-[#242433] bg-[#14141c] px-4 py-4">
             <div className="flex items-start gap-3">
