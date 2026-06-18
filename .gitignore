@@ -4,9 +4,12 @@ dist
 coverage
 .env
 .env.local
+.env.*
 .env.*.local
+_ref-arc-nanopayments/
 .DS_Store
 *.log
 *.zip
 *.crx
 *.pem
+*.key
