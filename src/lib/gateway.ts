@@ -1,3 +1,4 @@
+// Circle Gateway integration scaffold. Not wired to UI: GatewayClient requires a raw private key, incompatible with ArcCopilot's injected-MetaMask signing. Retained for documentation; see Lepton submission notes.
 import {
   CHAIN_CONFIGS,
   GATEWAY_DOMAINS,
