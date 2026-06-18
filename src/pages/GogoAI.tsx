@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { EXPLORER_URL } from '@/lib/arc'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
-import { formatAddress, openSafeUrl } from '@/lib/utils'
+import { formatAddress, openSafeUrl, shortenTxHash } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances, PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
@@ -27,12 +27,18 @@ import {
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
+import {
+  depositToGateway,
+  getGatewayBalance,
+  getGatewayChainLabel,
+  withdrawViaGateway,
+} from '@/lib/gateway'
 import { getCreatorWallet, normalizeCreatorHandle } from '@/lib/creatorRegistry'
 import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
-import { canTip, formatTipBudgetAmount, getBudgetState } from '@/lib/tipBudget'
+import { canTip, formatTipBudgetAmount, getBudgetState, recordTip } from '@/lib/tipBudget'
 import {
   addReminder,
   buildReminderFromAction,
@@ -202,6 +208,8 @@ function getActionLabel(action?: GogoAction | null): string {
       return t('gogo.openSend')
     case 'tip_creator':
       return t('gogo.tipCreator')
+    case 'gateway_tip':
+      return t('gogo.gatewayTip')
     case 'view_address':
       return t('gogo.viewAddress')
     case 'track_whale':
@@ -234,6 +242,8 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
       return t('gogo.working')
     case 'tip_creator':
       return t('gogo.preparingTip')
+    case 'gateway_tip':
+      return t('gogo.preparingGatewayTip')
     default:
       return t('gogo.working')
   }
@@ -248,7 +258,19 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
     return action.params?.prepared ? t('gogo.tipPrepared') : t('gogo.done')
   }
 
+  if (action?.type === 'gateway_tip') {
+    return t('gogo.gatewayTipConfirmed')
+  }
+
   return t('gogo.done')
+}
+
+function getGatewayChainLabelSafe(destinationDomain?: number): string {
+  try {
+    return getGatewayChainLabel(destinationDomain ?? 26)
+  } catch {
+    return t('wallet.arcTestnet')
+  }
 }
 
 function getRiskTone(analysis: AddressAnalysis): 'contract' | 'unknown' | 'empty' | 'normal' {
@@ -432,6 +454,18 @@ function getMultiStepActionTitle(
       return formatText('gogo.tipCreatorTitle', {
         handle: normalizedHandle ? `@${normalizedHandle}` : t('gogo.tipCreator'),
         amount: amountLabel,
+      })
+    }
+    case 'gateway_tip': {
+      const handle = typeof params.handle === 'string' ? params.handle.trim() : ''
+      const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
+      const amountLabel = amount ? formatUsdcAmount(amount) : t('common.usdc')
+      const normalizedHandle = normalizeCreatorHandle(handle)
+      const destinationDomain = typeof params.destinationDomain === 'number' ? params.destinationDomain : 26
+      return formatText('gogo.gatewayTipTitle', {
+        handle: normalizedHandle ? `@${normalizedHandle}` : t('gogo.gatewayTip'),
+        amount: amountLabel,
+        chain: getGatewayChainLabelSafe(destinationDomain),
       })
     }
     case 'view_address':
@@ -1467,7 +1501,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
     if (!action || action.type === 'none' || action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
@@ -1650,6 +1684,172 @@ export function GogoAI({ onBack }: GogoAIProps) {
         } finally {
           setAnalysisLoadingKey(null)
         }
+      }
+      case 'gateway_tip': {
+        setAnalysisLoadingKey(messageKey)
+
+        try {
+          const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
+          const handle = normalizeCreatorHandle(handleInput)
+          const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
+          const destinationDomain = typeof action.params?.destinationDomain === 'number' ? action.params.destinationDomain : 26
+
+          const creatorWallet = handle ? await getCreatorWallet(handle) : null
+          const recipientInvalid = !creatorWallet || !isValidAddress(creatorWallet)
+          const creatorHandleLabel = handle ? `@${handle}` : t('gogo.gatewayTip')
+
+          if (recipientInvalid) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel }),
+              }),
+            )
+            break
+          }
+
+          if (!amountInput) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: t('gogo.gatewayTipNeedAmount'),
+              }),
+            )
+            break
+          }
+
+          const amountValidation = isValidAmount(amountInput, balance)
+          const amountInvalid = !amountValidation.valid
+          const amountOverBalance = amountValidation.valid && amountValidation.overBalance
+          const warning = buildSendValidationWarning({
+            recipientInvalid,
+            amountInvalid,
+            amountOverBalance,
+          })
+
+          if (amountInvalid || amountOverBalance) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: warning || t('gogo.invalidAmount'),
+              }),
+            )
+            break
+          }
+
+          const budgetState = await getBudgetState()
+          const budgetDecision = await canTip(amountInput)
+          if (!budgetDecision.allowed) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: formatText('gogo.tipBudgetOver', {
+                  limit: formatTipBudgetAmount(budgetState.dailyLimitUsdc),
+                  remaining: formatTipBudgetAmount(budgetDecision.remaining),
+                }),
+              }),
+            )
+            break
+          }
+
+          const gatewayBalance = await getGatewayBalance()
+          const gatewayAvailable = Number(gatewayBalance.formattedAvailable ?? '0')
+          if (Number.isFinite(gatewayAvailable) && gatewayAvailable < Number(amountInput)) {
+            await depositToGateway(amountInput)
+          }
+
+          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
+          const amountToPersist = amountInput || undefined
+          const result = await withdrawViaGateway(
+            recipientToPersist ?? '',
+            amountToPersist ?? '',
+            destinationDomain,
+          )
+
+          try {
+            await recordTip(handle, amountInput)
+          } catch (recordError) {
+            console.warn('[GogoAI] gateway tip budget log failed:', recordError)
+          }
+
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) =>
+              currentAction.type === 'gateway_tip'
+                ? {
+                    ...currentAction,
+                    completed: true,
+                    params: {
+                      ...currentAction.params,
+                      handle,
+                      amount: amountToPersist || currentAction.params.amount,
+                      recipient: recipientToPersist || currentAction.params.recipient,
+                      destinationDomain,
+                      prepared: true,
+                    },
+                  }
+                : currentAction,
+            (message) => ({
+              ...message,
+              content: formatText('gogo.gatewayTipSuccess', {
+                amount: formatTipBudgetAmount(Number(amountInput)),
+                recipient: creatorHandleLabel,
+                chain: getGatewayChainLabelSafe(destinationDomain),
+                txHash: shortenTxHash(result.mintTxHash),
+              }),
+            }),
+          )
+        } catch (error) {
+          console.error('[GogoAI] gateway tip failed:', error)
+          const rawMessage = error instanceof Error ? error.message : ''
+          const errorMessage = /signer unavailable/i.test(rawMessage)
+            ? t('gogo.gatewaySignerUnavailable')
+            : /invalid recipient address/i.test(rawMessage)
+              ? t('gogo.invalidAddress')
+              : /invalid usdc amount/i.test(rawMessage)
+                ? t('gogo.invalidAmount')
+                : rawMessage || t('gogo.gatewayTransferFailed')
+
+          const nextMessages = messagesRef.current.map((message, index) => {
+            if (index !== messageIndex) return message
+            return {
+              ...message,
+              content: errorMessage,
+            }
+          })
+
+          messagesRef.current = nextMessages
+          setMessages(nextMessages)
+          void saveGogoHistory(nextMessages)
+        } finally {
+          setAnalysisLoadingKey(null)
+        }
+        break
       }
       case 'create_reminder': {
         setAnalysisLoadingKey(messageKey)
@@ -1858,13 +2058,14 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const analyzeAction = action.type === 'analyze_address' ? action : null
     const summaryAction = action.type === 'summarize_activity' ? action : null
     const draftTweetAction = action.type === 'draft_tweet' ? action : null
+    const gatewayAction = action.type === 'gateway_tip' ? action : null
     const isAnalyzeAction = Boolean(analyzeAction)
     const isSummaryAction = Boolean(summaryAction)
     const isActionLoading = Boolean(
       action &&
       analysisLoadingKey === actionKey &&
       !action.completed &&
-      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator'),
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip'),
     )
     const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
@@ -1904,9 +2105,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   {getMultiStepActionTitle(action, resolveAddress, addressMemories)}
                 </p>
               </div>
-              <span className="rounded-full border border-arc-border bg-arc-bg/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
-                {getActionLabel(action)}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {gatewayAction ? (
+                  <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                    {t('gogo.gatewayBadge')}
+                  </span>
+                ) : null}
+                <span className="rounded-full border border-arc-border bg-arc-bg/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                  {getActionLabel(action)}
+                </span>
+              </div>
             </div>
 
             {draftTweetAction && (
@@ -2275,7 +2483,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator'))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null
@@ -2380,31 +2588,38 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
                   {action && (
                     <div className={`mt-2 ${isUser ? 'flex justify-end' : 'flex justify-start'}`}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={`h-8 text-[11px] ${
-                          actionCompleted
-                            ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
-                            : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
-                        }`}
-                        onClick={() => void handleAction(index, 0, action, actionKey)}
-                        disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
-                      >
-                        {isActionLoading ? (
-                          <>
-                            <Loader2 size={12} className="animate-spin" />
-                            {actionLoadingLabel}
-                          </>
-                        ) : actionCompleted ? (
-                          <>
-                            <Check size={12} />
-                            {getCompletedActionLabel(action)}
-                          </>
-                        ) : (
-                          getActionLabel(action)
-                        )}
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {action.type === 'gateway_tip' ? (
+                          <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                            {t('gogo.gatewayBadge')}
+                          </span>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`h-8 text-[11px] ${
+                            actionCompleted
+                              ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
+                              : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
+                          }`}
+                          onClick={() => void handleAction(index, 0, action, actionKey)}
+                          disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
+                        >
+                          {isActionLoading ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" />
+                              {actionLoadingLabel}
+                            </>
+                          ) : actionCompleted ? (
+                            <>
+                              <Check size={12} />
+                              {getCompletedActionLabel(action)}
+                            </>
+                          ) : (
+                            getActionLabel(action)
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   )}
 
