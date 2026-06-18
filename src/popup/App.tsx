@@ -6,6 +6,7 @@ import { Wallet } from '@/pages/Wallet'
 import { Send } from '@/pages/Send'
 import { Receive } from '@/pages/Receive'
 import { Discover } from '@/pages/Discover'
+import { Activity } from '@/pages/Activity'
 import { Profile } from '@/pages/Profile'
 import { Settings } from '@/pages/Settings'
 import { AddressBook } from '@/pages/AddressBook'
@@ -27,6 +28,7 @@ const VALID_VIEWS: View[] = [
   'address-detail',
   'daily-brief',
   'gogo-ai',
+  'activity',
 ]
 
 function isView(value: unknown): value is View {
@@ -85,12 +87,14 @@ export default function App() {
   if (view === 'address-detail') return <AddressDetail onBack={goBack} />
   if (view === 'daily-brief') return <DailyBrief onBack={goBack} />
   if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
+  if (view === 'activity') return <Activity onBack={goBack} />
 
   return (
     <Wallet
       onSend={() => go('send')}
       onReceive={() => go('receive')}
-      onDiscover={() => go('discover')}
+      onOpenBrief={() => go('daily-brief')}
+      onOpenActivity={() => go('activity')}
       onMenu={() => go('settings')}
       onOpenGogo={() => go('gogo-ai')}
     />

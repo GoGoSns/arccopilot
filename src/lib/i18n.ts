@@ -81,6 +81,9 @@ const EN = {
   'state.retry': 'Retry',
 
   'nav.wallet': 'Wallet',
+  'nav.brief': 'Brief',
+  'nav.gogo': 'Gogo',
+  'nav.activity': 'Activity',
   'nav.addressBook': 'Address Book',
   'nav.dailyBrief': 'Daily Brief',
   'nav.gogoAI': 'Gogo AI',
@@ -94,6 +97,10 @@ const EN = {
 
   'wallet.arcTestnet': 'Arc Testnet',
   'wallet.myWallet': 'My Wallet',
+  'wallet.totalBalance': 'Total balance',
+  'wallet.streakLevel': '{streak}d streak · Lv {level}',
+  'wallet.gogoCardTitle': 'Your Gogo assistant',
+  'wallet.gogoCardSubtitle': 'Tip a creator, get a brief',
   'wallet.copyAddress': 'Copy address',
   'wallet.copied': 'Copied!',
   'wallet.nftsEmpty': 'No NFTs yet',
@@ -672,6 +679,9 @@ const TR = {
   'state.retry': 'Tekrar dene',
 
   'nav.wallet': 'Cüzdan',
+  'nav.brief': 'Brief',
+  'nav.gogo': 'Gogo',
+  'nav.activity': 'Aktivite',
   'nav.addressBook': 'Adres Defteri',
   'nav.dailyBrief': 'Günlük Özet',
   'nav.gogoAI': 'Gogo AI',
@@ -685,6 +695,10 @@ const TR = {
 
   'wallet.arcTestnet': 'Arc Testnet',
   'wallet.myWallet': 'Cüzdanım',
+  'wallet.totalBalance': 'Toplam bakiye',
+  'wallet.streakLevel': '{streak} gün · Lv {level}',
+  'wallet.gogoCardTitle': 'Gogo asistanın',
+  'wallet.gogoCardSubtitle': 'Bir yaratıcıya tip at, brifing al',
   'wallet.copyAddress': 'Adresi kopyala',
   'wallet.copied': 'Kopyalandı!',
   'wallet.nftsEmpty': 'Henüz NFT yok',

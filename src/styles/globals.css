@@ -35,5 +35,5 @@ html:has(#root:not(:only-child)) {
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4af37/30;
+  background: #333333;
 }

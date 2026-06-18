@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -377,6 +377,21 @@ export function Settings({ onBack }: SettingsProps) {
             <div>
               <p className="text-sm font-semibold text-arc-text">{t('settings.addressBook')}</p>
               <p className="text-[10px] text-arc-text-dim">{t('settings.manageAddresses')}</p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
+        </div>
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer group"
+          onClick={() => setCurrentView('discover')}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+              <LayoutDashboard size={20} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-arc-text">{t('bottom.openDashboard')}</p>
+              <p className="text-[10px] text-arc-text-dim">{t('discover.ecosystemPulse')}</p>
             </div>
           </div>
           <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />

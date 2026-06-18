@@ -1,127 +1,267 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
-import { Copy, Loader2, QrCode, Sparkles, Wallet as WalletIcon, X } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
-import { t } from '@/lib/i18n'
-import { WalletHeader } from '@/components/WalletHeader'
-import { BalanceCard } from '@/components/BalanceCard'
-import { ActionButtons } from '@/components/ActionButtons'
-import { TabBar } from '@/components/TabBar'
-import { TokenList } from '@/components/TokenList'
-import { ActivityTab } from '@/components/ActivityTab'
-import { DiscoverTab } from '@/components/DiscoverTab'
-import { BottomStatus } from '@/components/BottomStatus'
-import { Card } from '@/components/ui/Card'
-import { ErrorState } from '@/components/ErrorState'
+import {
+  Activity as ActivityIcon,
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronRight,
+  Copy,
+  Droplet,
+  FileText,
+  Flame,
+  Loader2,
+  QrCode,
+  Settings2,
+  Sparkles,
+  Wallet as WalletIcon,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
+import { t, formatText } from '@/lib/i18n'
 import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
-import { copyToClipboard, formatAddress } from '@/lib/utils'
+import { copyToClipboard, formatAddress, formatUSD } from '@/lib/utils'
 import { ONBOARDING_SEEN, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { isValidAddress } from '@/lib/validation'
 import { readAddressFromImage } from '@/lib/imageReader'
+import { MONOCHROME_DARK } from '@/lib/designTokens'
 
-type Tab = 'tokens' | 'activity' | 'nfts' | 'discover'
+function makeCardStyle(backgroundColor: string, borderColor: string, borderRadius: number, borderWidth = 1) {
+  return {
+    backgroundColor,
+    borderColor,
+    borderRadius,
+    borderWidth,
+    borderStyle: 'solid' as const,
+  }
+}
 
-interface PortfolioSectionProps {
+function formatUsdFromBalance(balance: string | null): string | null {
+  if (balance == null) return null
+  const parsed = Number(balance)
+  return Number.isFinite(parsed) ? formatUSD(parsed) : null
+}
+
+function getTokenBadgeLabel(token: PortfolioTokenBalance): string {
+  if (token.isUsdc) return '$'
+
+  const symbolInitial = token.symbol.trim().slice(0, 1)
+  if (symbolInitial) return symbolInitial.toUpperCase()
+
+  const nameInitial = token.name.trim().slice(0, 1)
+  if (nameInitial) return nameInitial.toUpperCase()
+
+  return '•'
+}
+
+function ActionTile({
+  label,
+  Icon,
+  onClick,
+}: {
+  label: string
+  Icon: LucideIcon
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-[82px] flex-1 flex-col items-center justify-start gap-2 rounded-none text-center"
+    >
+      <div
+        className="flex h-12 w-12 items-center justify-center border text-white"
+        style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.iconTile)}
+      >
+        <Icon size={18} strokeWidth={1.75} />
+      </div>
+      <span className="text-[11px] font-medium leading-none text-white">{label}</span>
+    </button>
+  )
+}
+
+function BottomNavItem({
+  label,
+  Icon,
+  active,
+  onClick,
+}: {
+  label: string
+  Icon: LucideIcon
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 px-1 transition-colors"
+      style={{ color: active ? MONOCHROME_DARK.colors.text : MONOCHROME_DARK.colors.hint }}
+    >
+      <Icon size={16} strokeWidth={1.9} />
+      <span className="text-[10px] font-medium leading-none">{label}</span>
+    </button>
+  )
+}
+
+function PortfolioSection({
+  tokens,
+  isLoading,
+  error,
+  onRetry,
+}: {
   tokens: PortfolioTokenBalance[]
   isLoading: boolean
   error: string | null
   onRetry: () => void
-}
-
-function PortfolioSection({ tokens, isLoading, error, onRetry }: PortfolioSectionProps) {
+}) {
   const showSkeleton = isLoading && tokens.length === 0
-  const showRefreshing = isLoading && tokens.length > 0
-  const hasUsdcOnly = tokens.length === 1 && tokens[0].isUsdc
   const showErrorState = Boolean(error) && tokens.length === 0 && !isLoading
   const showEmptyState = !isLoading && tokens.length === 0 && !error
+  const showRefreshing = isLoading && tokens.length > 0
+  const subtitle = showRefreshing ? t('portfolio.loading') : showEmptyState ? t('portfolio.emptyDescription') : ''
 
   return (
-    <Card className="mx-4 mt-3 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-arc-border/80 px-4 py-3">
-        <h2 className="text-sm font-semibold text-arc-text">{t('portfolio.title')}</h2>
-        {showRefreshing ? (
-          <span className="text-xs text-arc-gold">{t('portfolio.loading')}</span>
-        ) : null}
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3 px-0.5">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6b6b6b]">
+            {t('portfolio.title')}
+          </p>
+          {subtitle ? <p className="mt-1 text-xs text-[#6b6b6b]">{subtitle}</p> : null}
+        </div>
+        <span
+          className="shrink-0 border px-2.5 py-1 text-[11px] font-medium text-white"
+          style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.pill)}
+        >
+          {tokens.length}
+        </span>
       </div>
 
-      <div className="px-4 py-2">
-        {showErrorState ? (
-          <div className="py-2">
-            <ErrorState
-              title={t('portfolio.title')}
-              description={error ?? t('portfolio.couldNotLoad')}
-              actionLabel={t('state.retry')}
-              onAction={onRetry}
-            />
+      {showErrorState ? (
+        <div
+          className="space-y-3 border px-4 py-4"
+          style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center border text-white"
+              style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
+            >
+              <WalletIcon size={18} strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-white">{t('portfolio.couldNotLoad')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{error ?? t('portfolio.couldNotLoad')}</p>
+            </div>
           </div>
-        ) : showSkeleton ? (
-          <div className="space-y-3 py-1">
-            <div className="flex items-center gap-3 animate-pulse">
-              <div className="h-9 w-9 rounded-full bg-arc-bg/60" />
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center justify-center rounded-full border border-[#333333] px-3 py-2 text-[11px] font-medium text-white transition-colors hover:border-white/30"
+          >
+            {t('state.retry')}
+          </button>
+        </div>
+      ) : showSkeleton ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((index) => (
+            <div
+              key={index}
+              className="flex items-center gap-3 border px-3 py-3 animate-pulse"
+              style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
+            >
+              <div className="h-10 w-10 shrink-0 rounded-[15px] bg-white/[0.06]" />
               <div className="min-w-0 flex-1 space-y-2">
-                <div className="h-3.5 w-24 rounded bg-arc-bg/60" />
-                <div className="h-2.5 w-32 rounded bg-arc-bg/50" />
+                <div className="h-3.5 w-24 rounded bg-white/[0.06]" />
+                <div className="h-2.5 w-16 rounded bg-white/[0.05]" />
               </div>
-              <div className="h-3.5 w-16 rounded bg-arc-bg/60" />
+              <div className="space-y-2 text-right">
+                <div className="h-3.5 w-16 rounded bg-white/[0.06]" />
+                <div className="h-2.5 w-12 rounded bg-white/[0.05]" />
+              </div>
             </div>
-            <div className="flex items-center gap-3 animate-pulse">
-              <div className="h-9 w-9 rounded-full bg-arc-bg/60" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="h-3.5 w-20 rounded bg-arc-bg/60" />
-                <div className="h-2.5 w-28 rounded bg-arc-bg/50" />
-              </div>
-              <div className="h-3.5 w-16 rounded bg-arc-bg/60" />
+          ))}
+        </div>
+      ) : showEmptyState ? (
+        <div
+          className="space-y-3 border px-4 py-4"
+          style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center border text-white"
+              style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
+            >
+              <WalletIcon size={18} strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-white">{t('portfolio.title')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{t('portfolio.emptyDescription')}</p>
             </div>
           </div>
-        ) : tokens.length > 0 ? (
-          <div className="divide-y divide-arc-border/60">
-            {tokens.map((token) => (
-              <div key={`${token.address}-${token.symbol}`} className="flex items-center gap-3 py-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-arc-gold/25 bg-arc-gold/10 text-sm font-semibold text-arc-gold">
-                  {token.isUsdc ? '$' : token.symbol.slice(0, 1) || token.name.slice(0, 1).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-arc-text">{token.name}</p>
-                  <p className="truncate text-xs text-arc-text-dim">{token.symbol}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-mono text-sm font-medium text-arc-text">{token.balance}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : showEmptyState ? (
-          <div className="flex flex-col items-center gap-3 px-3 py-5 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
-              <WalletIcon size={20} />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
-              <p className="text-xs leading-relaxed text-arc-text-dim">{t('portfolio.emptyDescription')}</p>
-            </div>
-          </div>
-        ) : null}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {tokens.map((token) => {
+            const usdValue = token.isUsdc ? formatUsdFromBalance(token.balance) : null
 
-        {!isLoading && hasUsdcOnly ? (
-          <p className="pb-2 text-xs text-arc-text-dim">{t('portfolio.otherTokensNote')}</p>
-        ) : null}
-      </div>
-    </Card>
+            return (
+              <div
+                key={`${token.address}-${token.symbol}`}
+                className="border px-3 py-3"
+                style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center border text-sm font-medium text-white"
+                    style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
+                  >
+                    {getTokenBadgeLabel(token)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white">{token.name}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-[#9a9a9a]">{token.symbol}</p>
+                  </div>
+
+                  <div className="shrink-0 text-right">
+                    <p className="font-medium text-white">{token.balance}</p>
+                    <p className="mt-0.5 text-[11px] text-[#6b6b6b]">{usdValue ?? '—'}</p>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!isLoading && tokens.length === 1 && tokens[0]?.isUsdc ? (
+        <p className="px-0.5 text-[11px] text-[#6b6b6b]">{t('portfolio.otherTokensNote')}</p>
+      ) : null}
+    </section>
   )
 }
 
 interface WalletProps {
   onSend: () => void
   onReceive: () => void
-  onDiscover: () => void
+  onOpenBrief: () => void
+  onOpenActivity: () => void
   onMenu: () => void
   onOpenGogo?: () => void
 }
 
-export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: WalletProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('tokens')
+export function Wallet({
+  onSend,
+  onReceive,
+  onOpenBrief,
+  onOpenActivity,
+  onMenu,
+  onOpenGogo,
+}: WalletProps) {
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingReady, setOnboardingReady] = useState(false)
@@ -136,7 +276,6 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   const address = useStore((s) => s.walletAddress)
   const xp = useStore((s) => s.xp)
   const streak = useStore((s) => s.streak)
-  const setCurrentView = useStore((s) => s.setCurrentView)
   const { balance, isLoading } = useUSDCBalance()
   const { tokens: portfolioTokens, isLoading: isPortfolioLoading, error: portfolioError, refresh: refreshPortfolio } = usePortfolioBalances(address)
 
@@ -166,9 +305,27 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   }, [scanPanelOpen])
 
   const level = Math.max(1, Math.floor(xp / 100))
+  const displayBalance = balance ?? null
+  const displayUsdBalance = formatUsdFromBalance(displayBalance)
+  const streakLabel = formatText('wallet.streakLevel', {
+    streak: Math.max(0, streak),
+    level,
+  })
+  const openGogo = onOpenGogo ?? (() => {})
 
-  const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab)
+  const dismissOnboarding = () => {
+    onboardingDismissedRef.current = true
+    setShowOnboarding(false)
+    setOnboardingReady(true)
+    void chromeStorageSet({ [ONBOARDING_SEEN]: true })
+  }
+
+  const handleCopy = async () => {
+    if (!address) return
+
+    await copyToClipboard(address)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
   }
 
   const handleOpenSend = () => {
@@ -183,25 +340,10 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
     onReceive()
   }
 
-  const handleCopy = async () => {
-    if (!address) return
-
-    await copyToClipboard(address)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
-  }
-
   const closeScanPanel = () => {
     setScanPanelOpen(false)
     setScanError('')
     setScanBusy(false)
-  }
-
-  const dismissOnboarding = () => {
-    onboardingDismissedRef.current = true
-    setShowOnboarding(false)
-    setOnboardingReady(true)
-    void chromeStorageSet({ [ONBOARDING_SEEN]: true })
   }
 
   const queueSendWithRecipient = async (recipient: string) => {
@@ -285,174 +427,260 @@ export function Wallet({ onSend, onReceive, onDiscover, onMenu, onOpenGogo }: Wa
   }
 
   return (
-    <div className="flex flex-col h-full bg-arc-bg">
-      <WalletHeader onMenu={onMenu} onNotifications={() => {}} />
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      style={{
+        backgroundColor: MONOCHROME_DARK.colors.background,
+        color: MONOCHROME_DARK.colors.text,
+      }}
+    >
+      <main className="flex-1 overflow-y-auto px-4 pt-3 pb-4">
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center border text-sm font-medium text-white"
+                  style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, 999)}
+                >
+                  {address ? address.slice(2, 3).toUpperCase() : 'C'}
+                </div>
 
-      <div className="relative flex items-center gap-3 border-b border-arc-border px-4 py-2">
-        <div className="flex h-8 w-8 select-none items-center justify-center rounded-full bg-arc-gold/20 text-sm font-bold text-arc-gold">
-          {address ? address[2].toUpperCase() : 'G'}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-arc-text">{t('wallet.myWallet')}</p>
-          <p className="font-mono text-xs text-arc-text-dim">
-            {address ? formatAddress(address, 4) : '-'}
-          </p>
-        </div>
-        <button
-          onClick={handleCopy}
-          title={t('wallet.copyAddress')}
-          className="rounded-lg p-1.5 text-arc-text-dim transition-colors hover:text-arc-gold"
-        >
-          <Copy size={14} />
-        </button>
-        {copied && (
-          <span className="pointer-events-none absolute right-12 top-1/2 -translate-y-1/2 rounded border border-arc-border bg-arc-card px-1.5 py-0.5 text-[10px] text-arc-success">
-            {t('wallet.copied')}
-          </span>
-        )}
-      </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-medium leading-tight text-white">{t('wallet.myWallet')}</p>
+                  <div className="mt-1 flex min-w-0 items-center gap-2">
+                    <p className="truncate text-[11px] font-normal text-[#9a9a9a]">
+                      {address ? formatAddress(address, 4) : t('wallet.addressMissing')}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCopy}
+                      disabled={!address}
+                      aria-label={t('wallet.copyAddress')}
+                      title={t('wallet.copyAddress')}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center border text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                      style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.pill)}
+                    >
+                      <Copy size={14} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-      {onboardingReady && showOnboarding && (
-        <Card className="relative mx-4 mt-3 overflow-hidden border-arc-gold/20 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
+            <div className="flex items-center gap-2">
+              <div
+                className="inline-flex h-11 items-center gap-2 border px-3 text-[11px] font-medium text-white"
+                style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.pill)}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
+                <span>Arc</span>
+              </div>
+              <button
+                type="button"
+                onClick={onMenu}
+                aria-label={t('nav.settings')}
+                title={t('nav.settings')}
+                className="flex h-11 w-11 shrink-0 items-center justify-center border text-white transition-colors"
+                style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.pill)}
+              >
+                <Settings2 size={16} strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+
+          {copied ? (
+            <div
+              className="inline-flex items-center gap-2 border px-3 py-2 text-[11px] font-medium text-white"
+              style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.pill)}
+            >
+              {t('wallet.copied')}
+            </div>
+          ) : null}
+
+          {onboardingReady && showOnboarding ? (
+            <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.elevatedBorder, MONOCHROME_DARK.radius.card)}>
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex h-11 w-11 shrink-0 items-center justify-center text-white"
+                  style={makeCardStyle(MONOCHROME_DARK.colors.text, MONOCHROME_DARK.colors.text, MONOCHROME_DARK.radius.iconTile)}
+                >
+                  <Sparkles size={18} strokeWidth={1.75} color={MONOCHROME_DARK.colors.background} />
+                </div>
+                <div className="min-w-0 flex-1 space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-white">{t('onboarding.title')}</p>
+                    <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('onboarding.subtitle')}</p>
+                  </div>
+
+                  <ul className="space-y-2 text-xs leading-relaxed text-[#9a9a9a]">
+                    {[
+                      ['1', t('onboarding.point1')],
+                      ['2', t('onboarding.point2')],
+                      ['3', t('onboarding.point3')],
+                    ].map(([step, label]) => (
+                      <li key={label} className="flex items-start gap-2">
+                        <span
+                          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border text-[10px] font-medium text-white"
+                          style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, 999)}
+                        >
+                          {step}
+                        </span>
+                        <span>{label}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={dismissOnboarding}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-white bg-white px-4 text-[11px] font-medium text-black transition-opacity hover:opacity-90"
+                    >
+                      {t('onboarding.getStarted')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.elevatedBorder, MONOCHROME_DARK.radius.hero, 0.5)}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6b6b6b]">
+                  {t('wallet.totalBalance')}
+                </p>
+              </div>
+              <div
+                className="inline-flex items-center gap-1.5 border px-3 py-1 text-[11px] font-medium text-white"
+                style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.pill)}
+              >
+                <Flame size={12} strokeWidth={1.9} />
+                <span>{streakLabel}</span>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {isLoading && displayBalance == null ? (
+                <div className="space-y-3">
+                  <div className="h-10 w-36 animate-pulse rounded bg-white/[0.06]" />
+                  <div className="h-4 w-28 animate-pulse rounded bg-white/[0.05]" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-[38px] font-medium leading-none tracking-[-0.05em] text-white">
+                    {displayUsdBalance ?? t('common.unknown')}
+                  </p>
+                  <p className="mt-2 text-sm font-normal text-[#9a9a9a]">
+                    {displayBalance != null ? `${displayBalance} ${t('common.usdc')}` : t('common.unknown')}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2">
+            <ActionTile label={t('actions.send')} Icon={ArrowUpRight} onClick={handleOpenSend} />
+            <ActionTile label={t('actions.receive')} Icon={ArrowDownLeft} onClick={handleOpenReceive} />
+            <ActionTile label={t('actions.scan')} Icon={QrCode} onClick={handleOpenScan} />
+            <ActionTile label={t('actions.getUsdc')} Icon={Droplet} onClick={handleOpenBuy} />
+          </div>
+
+          {actionError ? <p className="px-0.5 text-[11px] text-[#9a9a9a]">{actionError}</p> : null}
+
+          {scanPanelOpen ? (
+            <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center border text-white"
+                    style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
+                  >
+                    <QrCode size={18} strokeWidth={1.8} />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-sm font-medium text-white">{t('wallet.scanTitle')}</p>
+                    <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.scanSubtitle')}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeScanPanel}
+                  aria-label={t('common.close')}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center border text-white transition-colors"
+                  style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.pill)}
+                >
+                  <X size={14} strokeWidth={1.9} />
+                </button>
+              </div>
+
+              <div
+                ref={scanDropzoneRef}
+                tabIndex={0}
+                onPaste={handleScanPaste}
+                className="mt-4 rounded-[16px] border border-dashed border-[#2a2a2a] bg-[#0e0e0e] p-4 outline-none focus:border-[#333333]"
+              >
+                <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.scanPasteHint')}</p>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => scanInputRef.current?.click()}
+                    disabled={scanBusy}
+                    className="inline-flex min-h-11 items-center gap-2 border px-3 text-[11px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.pill)}
+                  >
+                    {scanBusy ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}
+                    {scanBusy ? t('common.loading') : t('wallet.scanChooseImage')}
+                  </button>
+                </div>
+
+                {scanError ? <p className="mt-3 text-[11px] text-[#9a9a9a]">{scanError}</p> : null}
+              </div>
+            </div>
+          ) : null}
+
           <button
             type="button"
-            onClick={dismissOnboarding}
-            aria-label={t('common.close')}
-            className="absolute right-3 top-3 rounded-lg border border-arc-border bg-arc-bg/80 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+            onClick={openGogo}
+            className="w-full border px-4 py-4 text-left transition-colors hover:border-[#333333]"
+            style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
           >
-            <X size={14} />
-          </button>
-          <div className="flex items-start gap-3 pr-8">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-arc-gold/25 bg-arc-gold/10 text-arc-gold">
-              <Sparkles size={18} />
-            </div>
-            <div className="min-w-0 flex-1 space-y-3">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-arc-text">{t('onboarding.title')}</p>
-                <p className="text-xs leading-relaxed text-arc-text-dim">{t('onboarding.subtitle')}</p>
-              </div>
-              <ul className="space-y-2 text-xs leading-relaxed text-arc-text-dim">
-                {[
-                  ['1', t('onboarding.point1')],
-                  ['2', t('onboarding.point2')],
-                  ['3', t('onboarding.point3')],
-                ].map(([icon, label]) => (
-                  <li key={label} className="flex items-start gap-2">
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-[10px] font-semibold text-arc-gold">
-                      {icon}
-                    </span>
-                    <span>{label}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex justify-end">
-                <Button type="button" size="sm" onClick={dismissOnboarding} className="min-w-[92px]">
-                  {t('onboarding.getStarted')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <BalanceCard
-        address={address ?? ''}
-        balance={balance}
-        isLoading={isLoading}
-      />
-
-      <PortfolioSection
-        tokens={portfolioTokens}
-        isLoading={isPortfolioLoading}
-        error={portfolioError}
-        onRetry={() => void refreshPortfolio()}
-      />
-
-      <ActionButtons
-        onSend={handleOpenSend}
-        onReceive={handleOpenReceive}
-        onScan={handleOpenScan}
-        onBuy={handleOpenBuy}
-      />
-
-      {actionError ? (
-        <p className="px-4 text-xs text-arc-danger">{actionError}</p>
-      ) : null}
-
-      {scanPanelOpen ? (
-        <Card className="mx-4 mt-1 overflow-hidden border-arc-gold/20 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-arc-gold/25 bg-arc-gold/10 text-arc-gold">
-                <QrCode size={18} />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-semibold text-arc-text">{t('wallet.scanTitle')}</p>
-                <p className="text-xs leading-relaxed text-arc-text-dim">{t('wallet.scanSubtitle')}</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={closeScanPanel}
-              aria-label={t('common.close')}
-              className="rounded-lg border border-arc-border bg-arc-bg/80 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          <div
-            ref={scanDropzoneRef}
-            tabIndex={0}
-            onPaste={handleScanPaste}
-            className="mt-4 rounded-2xl border border-dashed border-arc-border bg-arc-bg/60 p-4 outline-none focus:border-arc-gold/40"
-          >
-            <p className="text-xs leading-relaxed text-arc-text-dim">
-              {t('wallet.scanPasteHint')}
-            </p>
-
-            <div className="mt-3 flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => scanInputRef.current?.click()}
-                disabled={scanBusy}
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center bg-white text-black"
+                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
               >
-                {scanBusy ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}
-                {scanBusy ? t('common.loading') : t('wallet.scanChooseImage')}
-              </Button>
+                <Sparkles size={18} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-white">{t('wallet.gogoCardTitle')}</p>
+                <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.gogoCardSubtitle')}</p>
+              </div>
+              <ChevronRight size={16} className="shrink-0 text-[#6b6b6b]" />
             </div>
+          </button>
 
-            {scanError ? (
-              <p className="mt-3 text-xs text-arc-danger">{scanError}</p>
-            ) : null}
+          <div className="pt-1">
+            <PortfolioSection
+              tokens={portfolioTokens}
+              isLoading={isPortfolioLoading}
+              error={portfolioError}
+              onRetry={() => void refreshPortfolio()}
+            />
           </div>
-        </Card>
-      ) : null}
+        </div>
+      </main>
 
-      <TabBar active={activeTab} onChange={handleTabChange} />
-
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'tokens' && <TokenList usdcBalance={balance} />}
-        {activeTab === 'activity' && <ActivityTab address={address} />}
-        {activeTab === 'nfts' && (
-          <div className="flex h-32 flex-col items-center justify-center text-sm text-arc-text-dim">
-            {t('wallet.nftsEmpty')}
-          </div>
-        )}
-        {activeTab === 'discover' && <DiscoverTab address={address} onViewAll={onDiscover} />}
-      </div>
-
-      <BottomStatus
-        level={level}
-        streak={streak}
-        onOpenDashboard={onDiscover}
-        onOpenAddressBook={() => setCurrentView('address-book')}
-        onOpenProfile={() => setCurrentView('profile')}
-        onOpenBrief={() => setCurrentView('daily-brief')}
-        onOpenGogo={onOpenGogo}
-      />
+      <nav className="shrink-0 border-t" style={{ borderTopColor: MONOCHROME_DARK.colors.border, borderTopWidth: 0.5, backgroundColor: MONOCHROME_DARK.colors.background }}>
+        <div className="grid grid-cols-4">
+          <BottomNavItem label={t('nav.wallet')} Icon={WalletIcon} active onClick={() => {}} />
+          <BottomNavItem label={t('nav.brief')} Icon={FileText} active={false} onClick={onOpenBrief} />
+          <BottomNavItem label={t('nav.gogo')} Icon={Sparkles} active={false} onClick={openGogo} />
+          <BottomNavItem label={t('nav.activity')} Icon={ActivityIcon} active={false} onClick={onOpenActivity} />
+        </div>
+      </nav>
 
       <input
         ref={scanInputRef}
