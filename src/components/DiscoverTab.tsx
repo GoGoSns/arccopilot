@@ -69,15 +69,15 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
           <div className="grid grid-cols-3 gap-2">
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('discover.liveSnapshot')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.volume24h : t('common.unknown')}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-accent">{stats.dataComplete ? stats.volume24h : t('common.unknown')}</p>
             </Card>
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('discover.mostActiveAddresses')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.activeWallets : t('common.unknown')}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-accent">{stats.dataComplete ? stats.activeWallets : t('common.unknown')}</p>
             </Card>
             <Card className="rounded-lg px-2 py-2">
               <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('dailyBrief.totalTx')}</p>
-              <p className="mt-1 text-[13px] font-semibold text-arc-gold">{stats.dataComplete ? stats.totalTxs : t('common.unknown')}</p>
+              <p className="mt-1 text-[13px] font-semibold text-arc-accent">{stats.dataComplete ? stats.totalTxs : t('common.unknown')}</p>
             </Card>
           </div>
         )}
@@ -92,7 +92,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
           {onViewAll ? (
             <button
               onClick={onViewAll}
-              className="text-[10px] font-medium text-arc-gold transition-colors hover:text-arc-gold/80"
+              className="text-[10px] font-medium text-arc-accent transition-colors hover:text-arc-accent/80"
             >
               {t('discover.viewAll')}
             </button>
@@ -154,7 +154,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
         <div className="grid grid-cols-2 gap-2">
           <Card className="flex flex-col gap-2 px-3 py-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-arc-gold/10 text-arc-gold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-arc-accent/10 text-arc-accent">
                 <Trophy size={16} />
               </div>
               <span className="rounded-full border border-arc-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-arc-text-dim">

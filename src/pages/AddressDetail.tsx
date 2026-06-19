@@ -17,8 +17,8 @@ const TAG_OPTIONS = [
   { value: 'friend', label: t('tag.friend'), icon: User, color: 'text-green-500' },
   { value: 'work', label: t('tag.work'), icon: Briefcase, color: 'text-blue-500' },
   { value: 'warning', label: t('tag.warning'), icon: AlertTriangle, color: 'text-red-500' },
-  { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-arc-gold' },
-  { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-arc-gold' },
+  { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-arc-accent' },
+  { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-arc-accent' },
   { value: 'other', label: t('tag.other'), icon: HelpCircle, color: 'text-gray-400' },
 ] as const
 
@@ -116,13 +116,13 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
           <button
             onClick={handleToggleWhale}
             title={isWhale ? t('addressDetail.untrackWhale') : t('addressDetail.trackAsWhale')}
-            className={`p-1.5 rounded-lg transition-colors ${isWhale ? 'text-arc-gold bg-arc-gold/15' : 'text-arc-text-dim hover:text-arc-gold'}`}
+            className={`p-1.5 rounded-lg transition-colors ${isWhale ? 'text-arc-accent bg-arc-accent/15' : 'text-arc-text-dim hover:text-arc-accent'}`}
           >
             <Eye size={18} />
           </button>
           <button
             onClick={() => setIsEditing(!isEditing)}
-            className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'text-arc-gold bg-arc-gold/10' : 'text-arc-text-dim hover:text-arc-text'}`}
+            className={`p-1.5 rounded-lg transition-colors ${isEditing ? 'text-arc-accent bg-arc-accent/10' : 'text-arc-text-dim hover:text-arc-text'}`}
           >
             <Edit2 size={18} />
           </button>
@@ -161,7 +161,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
         </div>
 
         {isEditing ? (
-          <Card className="p-4 space-y-4 border-arc-gold/30">
+          <Card className="p-4 space-y-4 border-arc-accent/30">
             <Input
               label={t('addressDetail.label')}
               value={editLabel}
@@ -200,7 +200,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                 {t('addressDetail.note')}
               </label>
               <textarea
-                className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-gold/50 transition-colors min-h-[100px] resize-none"
+                className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-accent/50 transition-colors min-h-[100px] resize-none"
                 placeholder={t('addressDetail.addSomeNotes')}
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
@@ -215,7 +215,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="primary" onClick={handleSend} className="h-12 shadow-lg shadow-arc-gold/10">
+              <Button variant="primary" onClick={handleSend} className="h-12 shadow-lg shadow-arc-accent/10">
                 <Send size={18} />
                 {t('addressDetail.send')}
               </Button>
@@ -240,7 +240,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
               <h3 className="text-[10px] uppercase tracking-wider font-bold text-arc-text-dim ml-1">{t('addressDetail.insights')}</h3>
               <div className="grid grid-cols-2 gap-3">
                 <Card className="p-3 flex flex-col items-center justify-center text-center space-y-1">
-                  <Clock className="text-arc-gold mb-1" size={20} />
+                  <Clock className="text-arc-accent mb-1" size={20} />
                   <p className="text-[10px] uppercase text-arc-text-dim">{t('addressDetail.transactions')}</p>
                   <p className="text-lg font-bold text-arc-text">
                     {isLoading ? t('common.loadingDots') : dataComplete ? totalTx ?? 0 : '—'}
@@ -286,7 +286,7 @@ export function AddressDetail({ onBack }: AddressDetailProps) {
                   <span className={`font-bold capitalize ${
                     direction === 'mostly-sent' ? 'text-arc-danger' :
                     direction === 'mostly-received' ? 'text-arc-success' :
-                    'text-arc-gold'
+                    'text-arc-accent'
                   }`}>
                     {isLoading ? t('common.loadingDots') : dataComplete && direction ? direction.replace('-', ' ') : t('common.unknown')}
                   </span>

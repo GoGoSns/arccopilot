@@ -12,8 +12,8 @@ html, body, #root {
   width: 360px;
   height: 600px;
   overflow: hidden;
-  background: #0a0a0f;
-  color: #e5e5e5;
+  background: #0a0a0a;
+  color: #ffffff;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -31,7 +31,7 @@ html:has(#root:not(:only-child)) {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f1f2a;
+  background: #2a2a2a;
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {

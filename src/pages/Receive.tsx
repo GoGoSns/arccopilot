@@ -16,7 +16,7 @@ const QR_OPTIONS = {
   width: 220,
   errorCorrectionLevel: 'M' as const,
   color: {
-    dark: '#0a0a0f',
+    dark: '#0a0a0a',
     light: '#ffffff',
   },
 }

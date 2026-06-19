@@ -6,6 +6,7 @@ export const MONOCHROME_DARK = {
     border: '#2a2a2a',
     borderEmphasis: '#333333',
     elevatedBorder: '#262626',
+    accent: '#ffffff',
     text: '#ffffff',
     muted: '#9a9a9a',
     hint: '#6b6b6b',

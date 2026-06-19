@@ -99,7 +99,7 @@ export function Welcome() {
         <div
           className="w-24 h-24 flex items-center justify-center text-4xl font-black text-black select-none"
           style={{
-            background: '#d4af37',
+            background: '#ffffff',
             clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
           }}
         >
@@ -119,7 +119,7 @@ export function Welcome() {
             <Button variant="primary" fullWidth size="lg" disabled>
               {t('welcome.createWallet')}
             </Button>
-            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-gold/20 text-arc-gold border border-arc-gold/30 pointer-events-none">
+            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-accent/20 text-arc-accent border border-arc-accent/30 pointer-events-none">
               {t('welcome.comingSoon')}
             </span>
           </div>
@@ -129,7 +129,7 @@ export function Welcome() {
             <Button variant="outline" fullWidth size="lg" disabled>
               {t('welcome.importWallet')}
             </Button>
-            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-gold/20 text-arc-gold border border-arc-gold/30 pointer-events-none">
+            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-accent/20 text-arc-accent border border-arc-accent/30 pointer-events-none">
               {t('welcome.comingSoon')}
             </span>
           </div>
@@ -165,9 +165,9 @@ export function Welcome() {
       <div className="px-6 py-3 text-center">
         <p className="text-[10px] text-arc-text-dim">
           By continuing, you agree to our{' '}
-          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">{t('welcome.terms')}</button>
+          <button className="text-arc-accent/80 hover:text-arc-accent underline-offset-2 hover:underline">{t('welcome.terms')}</button>
           {' '}and{' '}
-          <button className="text-arc-gold/80 hover:text-arc-gold underline-offset-2 hover:underline">{t('welcome.privacyPolicy')}</button>
+          <button className="text-arc-accent/80 hover:text-arc-accent underline-offset-2 hover:underline">{t('welcome.privacyPolicy')}</button>
         </p>
       </div>
     </div>

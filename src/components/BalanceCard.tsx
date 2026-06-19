@@ -17,9 +17,9 @@ export function BalanceCard({ address, balance, isLoading = false }: BalanceCard
       </p>
       <div className="mt-3 flex items-baseline justify-center gap-2">
         {isLoading ? (
-          <span className="font-display text-5xl font-bold animate-pulse text-arc-gold/40">...</span>
+          <span className="font-display text-5xl font-bold animate-pulse text-arc-accent/40">...</span>
         ) : (
-          <span className="font-display text-5xl font-bold text-arc-gold">{displayBalance}</span>
+          <span className="font-display text-5xl font-bold text-arc-accent">{displayBalance}</span>
         )}
         <span className="text-lg text-arc-text-dim">{t('common.usdc')}</span>
       </div>

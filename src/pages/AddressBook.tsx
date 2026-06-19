@@ -41,8 +41,8 @@ export function AddressBook({ onBack }: AddressBookProps) {
     { value: 'friend', label: t('tag.friend'), icon: User, color: 'text-green-500' },
     { value: 'work', label: t('tag.work'), icon: Briefcase, color: 'text-blue-500' },
     { value: 'warning', label: t('tag.warning'), icon: AlertTriangle, color: 'text-red-500' },
-    { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-arc-gold' },
-    { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-arc-gold' },
+    { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-arc-accent' },
+    { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-arc-accent' },
     { value: 'other', label: t('tag.other'), icon: HelpCircle, color: 'text-gray-400' },
   ] as const
 
@@ -89,7 +89,7 @@ export function AddressBook({ onBack }: AddressBookProps) {
         </div>
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="p-1.5 rounded-lg text-arc-gold hover:bg-arc-gold/10 transition-colors"
+          className="p-1.5 rounded-lg text-arc-accent hover:bg-arc-accent/10 transition-colors"
         >
           <Plus size={20} />
         </button>
@@ -140,7 +140,7 @@ export function AddressBook({ onBack }: AddressBookProps) {
 
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-sm p-5 space-y-4 shadow-2xl border-arc-gold/20">
+          <Card className="w-full max-w-sm p-5 space-y-4 shadow-2xl border-arc-accent/20">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-arc-text">{t('addressBook.newAddress')}</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-arc-text-dim hover:text-arc-text">
@@ -194,7 +194,7 @@ export function AddressBook({ onBack }: AddressBookProps) {
                   {t('addressBook.noteOptional')}
                 </label>
                 <textarea
-                  className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-gold/50 transition-colors min-h-[80px] resize-none"
+                  className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-accent/50 transition-colors min-h-[80px] resize-none"
                   placeholder={t('addressBook.notePlaceholder')}
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}

@@ -412,7 +412,7 @@ function main(): void {
       border: '1px solid rgba(212, 175, 55, 0.45)',
       background: 'linear-gradient(180deg, rgba(10, 12, 18, 0.98) 0%, rgba(6, 8, 12, 0.98) 100%)',
       color: '#f7f1df',
-      boxShadow: '0 18px 50px rgba(0,0,0,0.48), 0 0 0 1px rgba(212,175,55,0.08)',
+      boxShadow: '0 18px 50px rgba(0,0,0,0.48), 0 0 0 1px rgba(255,255,255,0.08)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       fontFamily: 'system-ui, sans-serif',
@@ -451,7 +451,7 @@ function main(): void {
       width: '8px',
       height: '8px',
       borderRadius: '999px',
-      background: 'linear-gradient(180deg, #f2d77b 0%, #d4af37 100%)',
+      background: 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)',
       boxShadow: '0 0 12px rgba(212, 175, 55, 0.55)',
       flexShrink: '0',
     } as unknown as CSSStyleDeclaration)
@@ -525,7 +525,7 @@ function main(): void {
       minHeight: '34px',
       border: '1px solid rgba(212, 175, 55, 0.55)',
       borderRadius: '12px',
-      background: 'linear-gradient(180deg, #f2d77b 0%, #d4af37 100%)',
+      background: 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)',
       color: '#111111',
       fontSize: '12px',
       fontWeight: '800',
@@ -745,7 +745,7 @@ function main(): void {
       span.textContent = address
       Object.assign(span.style, {
         backgroundColor: 'rgba(212, 175, 55, 0.12)',
-        borderBottom: '1px dotted #d4af37',
+        borderBottom: '1px dotted #ffffff',
         cursor: 'pointer',
         padding: '0 2px',
         borderRadius: '2px',

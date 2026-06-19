@@ -622,7 +622,7 @@ export function Send({ onBack }: SendProps) {
         </div>
 
         <div className="flex-1 flex flex-col items-center justify-center px-5 py-6 gap-5">
-          <CheckCircle2 size={52} className="text-arc-gold" />
+          <CheckCircle2 size={52} className="text-arc-accent" />
 
           <div className="text-center space-y-1">
             <p className="text-sm font-medium text-arc-text-dim">{t('send.sent')}</p>
@@ -637,7 +637,7 @@ export function Send({ onBack }: SendProps) {
 
           <button
             onClick={() => navigator.clipboard.writeText(txHash)}
-            className="flex items-center gap-2 rounded-xl bg-arc-card border border-arc-border px-3 py-2.5 w-full hover:border-arc-gold/30 transition-colors"
+            className="flex items-center gap-2 rounded-xl bg-arc-card border border-arc-border px-3 py-2.5 w-full hover:border-arc-accent/30 transition-colors"
           >
             <p className="flex-1 text-left text-xs font-mono text-arc-text-dim truncate">{shortenTxHash(txHash)}</p>
             <Copy size={13} className="shrink-0 text-arc-text-dim" />
@@ -720,7 +720,7 @@ export function Send({ onBack }: SendProps) {
                       setShowSuggestions(false)
                     }}
                   >
-                    <div className="h-8 w-8 rounded-full bg-arc-gold/10 flex items-center justify-center text-arc-gold">
+                    <div className="h-8 w-8 rounded-full bg-arc-accent/10 flex items-center justify-center text-arc-accent">
                       <User size={14} />
                     </div>
                     <div className="min-w-0">
@@ -740,7 +740,7 @@ export function Send({ onBack }: SendProps) {
               </span>
             )}
             {isUnknownRecipient && (
-              <span className="rounded-full border border-arc-gold/20 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-gold">
+              <span className="rounded-full border border-arc-accent/20 bg-arc-accent/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-accent">
                 {t('send.unknownRecipient')}
               </span>
             )}
@@ -752,16 +752,16 @@ export function Send({ onBack }: SendProps) {
           </div>
 
           {showRecipientSafetyWarning && (
-            <p className="text-[11px] leading-relaxed text-arc-gold">
+            <p className="text-[11px] leading-relaxed text-arc-accent">
               {t('send.verifyRecipient')}
             </p>
           )}
         </div>
 
         {metaMaskAccessState === 'unauthorized' && (
-          <Card className="space-y-3 border-arc-gold/30 bg-arc-gold/10 p-3">
+          <Card className="space-y-3 border-arc-accent/30 bg-arc-accent/10 p-3">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-arc-gold">{t('send.metaMaskPermissionNeeded')}</p>
+              <p className="text-sm font-semibold text-arc-accent">{t('send.metaMaskPermissionNeeded')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">
                 {t('send.metaMaskPermissionNeeded')}
               </p>
@@ -821,7 +821,7 @@ export function Send({ onBack }: SendProps) {
 
         <div className="flex items-center justify-between text-xs text-arc-text-dim">
           <span>{t('send.availableBalance')}</span>
-          <span className="text-arc-gold">
+          <span className="text-arc-accent">
             {balance != null ? `${balance} USDC` : t('common.unknown')}
           </span>
         </div>

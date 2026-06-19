@@ -30,8 +30,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     if (this.state.hasError) {
       return (
         <div className="flex h-full min-h-[420px] items-center justify-center bg-arc-bg px-4 py-6">
-          <div className="w-full max-w-sm rounded-2xl border border-arc-gold/25 bg-arc-card p-5 text-center shadow-2xl shadow-black/30">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-arc-gold/25 bg-arc-gold/10 text-arc-gold">
+          <div className="w-full max-w-sm rounded-2xl border border-arc-accent/25 bg-arc-card p-5 text-center shadow-2xl shadow-black/30">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-arc-accent/25 bg-arc-accent/10 text-arc-accent">
               <span className="text-lg font-bold">!</span>
             </div>
             <h1 className="text-base font-semibold text-arc-text">Bir şeyler ters gitti.</h1>

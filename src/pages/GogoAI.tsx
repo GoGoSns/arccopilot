@@ -188,7 +188,7 @@ function getVoiceFeedbackClassName(tone: VoiceInputFeedbackTone): string {
       return 'border-arc-danger/30 bg-arc-danger/10 text-arc-danger'
     case 'info':
     default:
-      return 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold'
+      return 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent'
   }
 }
 
@@ -665,15 +665,15 @@ export function GogoAI({ onBack }: GogoAIProps) {
         />
       ) : (
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-arc-border bg-arc-bg">
-          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
+          <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.2s]" />
         </div>
       )}
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-arc-text">{t('gogo.imageReading')}</p>
         <div className="mt-1 flex items-center gap-1.5">
-          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.1s]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-gold" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.2s]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.1s]" />
+          <span className="h-2 w-2 animate-bounce rounded-full bg-arc-accent" />
         </div>
       </div>
     </div>
@@ -1233,7 +1233,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 {formatAddress(imageResult.address, 4)}
               </h4>
             </div>
-            <span className="rounded-full border border-arc-gold/30 bg-arc-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold">
+            <span className="rounded-full border border-arc-accent/30 bg-arc-accent/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-accent">
               {imageResult.source === 'qr' ? t('gogo.imageSourceQr') : t('gogo.imageSourceVision')}
             </span>
           </div>
@@ -1279,7 +1279,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
           {isAnalysisLoading ? (
             <div className="mt-3 flex items-center gap-3 rounded-xl border border-arc-border bg-arc-bg/80 p-3">
-              <Loader2 size={18} className="animate-spin text-arc-gold" />
+              <Loader2 size={18} className="animate-spin text-arc-accent" />
               <div>
                 <p className="text-sm font-medium text-arc-text">{t('gogo.checkingAddress')}</p>
                 <p className="text-xs text-arc-text-dim">{t('gogo.fetchingAddressHistory')}</p>
@@ -1333,7 +1333,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   href={`${EXPLORER_URL}/address/${imageResult.address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-gold hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
                 >
                   {t('gogo.viewOnArcScan')}
                   <ExternalLink size={10} />
@@ -1888,7 +1888,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <div
             className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
               actionCompleted
-                ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold'
+                ? 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent'
                 : 'border-arc-border bg-arc-bg/80 text-arc-text-dim'
             }`}
           >
@@ -1951,7 +1951,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               <Card className={`border p-4 shadow-lg shadow-black/10 ${riskStyles?.card ?? 'border-arc-border bg-arc-card'}`}>
                 {isActionLoading ? (
                   <div className="flex items-center gap-3">
-                    <Loader2 size={18} className="animate-spin text-arc-gold" />
+                    <Loader2 size={18} className="animate-spin text-arc-accent" />
                     <div>
                       <p className="text-sm font-medium text-arc-text">Checking this address on ArcScan...</p>
                       <p className="text-xs text-arc-text-dim">Fetching contract status and transaction history.</p>
@@ -2005,7 +2005,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               <Card className={`border p-4 shadow-lg shadow-black/10 ${spendingStyles?.card ?? 'border-arc-border bg-arc-card'}`}>
                 {isActionLoading ? (
                   <div className="flex items-center gap-3">
-                    <Loader2 size={18} className="animate-spin text-arc-gold" />
+                    <Loader2 size={18} className="animate-spin text-arc-accent" />
                     <div>
                       <p className="text-sm font-medium text-arc-text">{t('gogo.summarizingSpending')}</p>
                       <p className="text-xs text-arc-text-dim">{t('gogo.countingSpendingTransfers')}</p>
@@ -2075,8 +2075,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 size="sm"
                 className={`h-8 text-[11px] ${
                   actionCompleted
-                    ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
-                    : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
+                    ? 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent hover:bg-arc-accent/10'
+                    : 'border-arc-accent/20 bg-arc-accent/5 text-arc-accent hover:bg-arc-accent/10'
                 }`}
                 onClick={() => void handleAction(messageIndex, actionIndex, action, actionKey)}
                 disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
@@ -2106,7 +2106,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     return (
       <div className="flex h-full items-center justify-center bg-arc-bg">
         <div className="flex items-center gap-3 text-arc-text-dim">
-          <Loader2 size={18} className="animate-spin text-arc-gold" />
+          <Loader2 size={18} className="animate-spin text-arc-accent" />
           <span className="text-sm">{t('gogo.loading')}</span>
         </div>
       </div>
@@ -2132,7 +2132,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
             <ArrowLeft size={18} />
           </button>
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-arc-gold" />
+            <Sparkles size={16} className="text-arc-accent" />
             <div className="flex flex-col">
               <h2 className="text-base font-semibold text-arc-text">{t('gogo.title')}</h2>
               <p className="text-[11px] text-arc-text-dim">{t('gogo.subtitle')}</p>
@@ -2157,8 +2157,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <div className="flex h-full items-center justify-center">
             <Card className="w-full max-w-md p-5 shadow-xl shadow-black/20">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-gold/10">
-                  <Sparkles size={22} className="text-arc-gold" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-accent/10">
+                  <Sparkles size={22} className="text-arc-accent" />
                 </div>
                 <div>
                   <p className="text-lg font-semibold text-arc-text">{t('gogo.preparingBriefTitle')}</p>
@@ -2168,9 +2168,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
               <div className="mt-5 rounded-xl border border-arc-border bg-arc-bg/50 px-4 py-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
-                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.1s]" />
-                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.2s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.1s]" />
+                  <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent" />
                 </div>
               </div>
             </Card>
@@ -2181,8 +2181,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <div className="flex h-full items-center justify-center">
             <Card className="w-full max-w-md p-5 shadow-xl shadow-black/20">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-gold/10">
-                  <Sparkles size={22} className="text-arc-gold" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-accent/10">
+                  <Sparkles size={22} className="text-arc-accent" />
                 </div>
                 <div>
                   <p className="text-lg font-semibold text-arc-text">{t('gogo.introTitle')}</p>
@@ -2195,7 +2195,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <button
                     key={suggestion.key}
                     onClick={() => handleQuickSuggestion(suggestion.label)}
-                    className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text"
+                    className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-accent/30 hover:text-arc-text"
                   >
                     {suggestion.label}
                   </button>
@@ -2213,8 +2213,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <div className="flex min-h-full items-center justify-center">
             <Card className="w-full max-w-md p-5 shadow-xl shadow-black/20">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-gold/10">
-                  <Sparkles size={22} className="text-arc-gold" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-accent/10">
+                  <Sparkles size={22} className="text-arc-accent" />
                 </div>
                 <div>
                   <p className="text-lg font-semibold text-arc-text">{t('gogo.noKeyTitle')}</p>
@@ -2248,7 +2248,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   href="https://aistudio.google.com/apikey"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs text-arc-gold hover:underline"
+                  className="inline-flex items-center gap-1.5 text-xs text-arc-accent hover:underline"
                 >
                   {t('gogo.getFreeKey')}
                   <ExternalLink size={10} />
@@ -2298,7 +2298,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <div
                     className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
                       isUser
-                        ? 'bg-arc-gold text-arc-bg font-medium'
+                        ? 'bg-arc-accent text-arc-bg font-medium'
                         : isError
                           ? 'border border-arc-danger/20 bg-arc-danger/10 text-arc-danger'
                           : 'border border-arc-border bg-arc-card text-arc-text'
@@ -2317,7 +2317,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                         variant="ghost"
                         size="sm"
                         className={`h-7 px-2 text-[11px] ${
-                          isSpeakingThisMessage ? 'border-arc-gold/40 bg-arc-gold/10 text-arc-gold' : ''
+                          isSpeakingThisMessage ? 'border-arc-accent/40 bg-arc-accent/10 text-arc-accent' : ''
                         }`}
                         onClick={() => void speakMessage(actionKey, message.content)}
                         disabled={!voiceResponsesReady}
@@ -2388,8 +2388,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                           size="sm"
                           className={`h-8 text-[11px] ${
                             actionCompleted
-                              ? 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:bg-arc-gold/10'
-                              : 'border-arc-gold/20 bg-arc-gold/5 text-arc-gold hover:bg-arc-gold/10'
+                              ? 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent hover:bg-arc-accent/10'
+                              : 'border-arc-accent/20 bg-arc-accent/5 text-arc-accent hover:bg-arc-accent/10'
                           }`}
                           onClick={() => void handleAction(index, 0, action, actionKey)}
                           disabled={isLoading || hasActionLoading || actionCompleted || isActionLoading}
@@ -2417,7 +2417,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       {isActionLoading ? (
                         <Card className="border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
                           <div className="flex items-center gap-3">
-                            <Loader2 size={18} className="animate-spin text-arc-gold" />
+                            <Loader2 size={18} className="animate-spin text-arc-accent" />
                             <div>
                               <p className="text-sm font-medium text-arc-text">Checking this address on ArcScan...</p>
                               <p className="text-xs text-arc-text-dim">Fetching contract status and transaction history.</p>
@@ -2472,7 +2472,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                               href={`${EXPLORER_URL}/address/${analyzeAction?.params.address ?? ''}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-gold hover:underline"
+                              className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
                             >
                               View on ArcScan
                               <ExternalLink size={10} />
@@ -2488,7 +2488,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       {isActionLoading ? (
                         <Card className="border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
                           <div className="flex items-center gap-3">
-                            <Loader2 size={18} className="animate-spin text-arc-gold" />
+                            <Loader2 size={18} className="animate-spin text-arc-accent" />
                             <div>
                               <p className="text-sm font-medium text-arc-text">{t('gogo.summarizingSpending')}</p>
                               <p className="text-xs text-arc-text-dim">{t('gogo.countingSpendingTransfers')}</p>
@@ -2562,9 +2562,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
               <div className="flex items-start">
                 <div className="max-w-[88%] rounded-2xl border border-arc-border bg-arc-card px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.2s]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold [animation-delay:-0.1s]" />
-                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-gold" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.2s]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent [animation-delay:-0.1s]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-arc-accent" />
                   </div>
                 </div>
               </div>
@@ -2580,7 +2580,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     <button
                       key={suggestion.key}
                       onClick={() => handleQuickSuggestion(suggestion.label)}
-                      className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-gold/30 hover:text-arc-text"
+                      className="rounded-full border border-arc-border bg-arc-bg/60 px-3 py-1.5 text-xs text-arc-text-dim transition-colors hover:border-arc-accent/30 hover:text-arc-text"
                     >
                       {suggestion.label}
                     </button>
@@ -2595,8 +2595,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
           <div className="mt-4">
             <Card className="p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-arc-gold/10">
-                  <Sparkles size={18} className="text-arc-gold" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-arc-accent/10">
+                  <Sparkles size={18} className="text-arc-accent" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-arc-text">{t('gogo.addGeminiKey')}</p>
@@ -2644,7 +2644,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   type="button"
                   onClick={openImagePicker}
                   disabled={isReadingImage}
-                  className="rounded-lg border border-arc-border bg-arc-card p-2 text-arc-text-dim transition-all hover:border-arc-gold/30 hover:text-arc-text disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg border border-arc-border bg-arc-card p-2 text-arc-text-dim transition-all hover:border-arc-accent/30 hover:text-arc-text disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label={t('gogo.imageButtonTooltip')}
                   title={t('gogo.imageButtonTooltip')}
                 >
@@ -2656,7 +2656,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   className={`rounded-lg border p-2 transition-all ${
                     isListening
                       ? 'border-arc-danger/40 bg-arc-danger text-white shadow-lg shadow-arc-danger/20 animate-pulse'
-                      : 'border-arc-gold/30 bg-arc-gold/10 text-arc-gold hover:border-arc-gold/50 hover:bg-arc-gold/20'
+                      : 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent hover:border-arc-accent/50 hover:bg-arc-accent/20'
                   }`}
                   aria-label={voiceInputContext.isFullPage && isListening ? t('gogo.stopListening') : voiceInputTooltip}
                   title={voiceInputContext.isFullPage && isListening ? t('gogo.stopListening') : voiceInputTooltip}
@@ -2669,7 +2669,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 ref={inputRef}
                 type="text"
                 placeholder={t('gogo.askAnything')}
-                className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-24 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-gold/50 focus:outline-none"
+                className="w-full rounded-xl border border-arc-border bg-arc-card py-3 pl-24 pr-12 text-sm text-arc-text placeholder:text-arc-text-dim transition-colors focus:border-arc-accent/50 focus:outline-none"
                 value={userInput}
                 onChange={(event) => setUserInput(event.target.value)}
                 onPaste={handleImagePaste}
@@ -2679,7 +2679,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
             <button
               type="submit"
               disabled={isComposerLocked || !userInput.trim() || !address}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-arc-gold p-2 text-arc-bg transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-arc-accent p-2 text-arc-bg transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={t('gogo.send')}
             >
               <Send size={16} />
@@ -2692,8 +2692,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
         <div className="border-t border-arc-border bg-arc-bg px-4 py-4">
           <Card className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-arc-gold/10">
-                <Sparkles size={18} className="text-arc-gold" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-arc-accent/10">
+                <Sparkles size={18} className="text-arc-accent" />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-medium text-arc-text">{t('gogo.setGeminiKey')}</p>
@@ -2727,7 +2727,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 href="https://aistudio.google.com/apikey"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs text-arc-gold hover:underline"
+                className="inline-flex items-center gap-1.5 text-xs text-arc-accent hover:underline"
               >
                 {t('gogo.getFreeKey')}
                 <ExternalLink size={10} />

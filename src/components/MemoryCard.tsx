@@ -17,8 +17,8 @@ const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
   friend: 'text-green-500 bg-green-500/10',
   work: 'text-blue-500 bg-blue-500/10',
   warning: 'text-red-500 bg-red-500/10',
-  self: 'text-arc-gold bg-arc-gold/10',
-  whale: 'text-arc-gold bg-arc-gold/10',
+  self: 'text-arc-accent bg-arc-accent/10',
+  whale: 'text-arc-accent bg-arc-accent/10',
   other: 'text-gray-400 bg-gray-400/10',
 }
 
@@ -63,14 +63,14 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
           {memory ? (
             <button
               onClick={onEdit}
-              className="p-1 text-arc-text-dim hover:text-arc-gold transition-colors"
+              className="p-1 text-arc-text-dim hover:text-arc-accent transition-colors"
             >
               <Edit2 size={14} />
             </button>
           ) : (
             <button
               onClick={onSave}
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-arc-gold bg-arc-gold/10 hover:bg-arc-gold/20 transition-colors"
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-arc-accent bg-arc-accent/10 hover:bg-arc-accent/20 transition-colors"
             >
               <Plus size={12} />
               {t('memory.save')}

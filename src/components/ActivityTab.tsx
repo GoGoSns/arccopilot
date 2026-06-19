@@ -17,8 +17,8 @@ const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
   friend: 'bg-green-500',
   work: 'bg-blue-500',
   warning: 'bg-red-500',
-  self: 'bg-arc-gold',
-  whale: 'bg-arc-gold',
+  self: 'bg-arc-accent',
+  whale: 'bg-arc-accent',
   other: 'bg-gray-400',
 }
 
@@ -80,7 +80,7 @@ export function ActivityTab({ address }: ActivityTabProps) {
               setSelectedAddress(tx.counterpartyAddress)
               setCurrentView('address-detail')
             }}
-            className="flex items-center gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3 text-left transition-colors hover:border-arc-gold/30 hover:bg-arc-card/80"
+            className="flex items-center gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3 text-left transition-colors hover:border-arc-accent/30 hover:bg-arc-card/80"
           >
             <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${amountBg}`}>
               <Icon size={18} />

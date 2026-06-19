@@ -371,7 +371,7 @@ export function Settings({ onBack }: SettingsProps) {
           onClick={() => setCurrentView('address-book')}
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+            <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
               <Book size={20} />
             </div>
             <div>
@@ -379,14 +379,14 @@ export function Settings({ onBack }: SettingsProps) {
               <p className="text-[10px] text-arc-text-dim">{t('settings.manageAddresses')}</p>
             </div>
           </div>
-          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
+          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-accent transition-colors" />
         </div>
         <div
           className="flex items-center justify-between px-4 py-3 border-b border-arc-border/50 hover:bg-arc-card/30 transition-colors cursor-pointer group"
           onClick={() => setCurrentView('discover')}
         >
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+            <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
               <LayoutDashboard size={20} />
             </div>
             <div>
@@ -394,7 +394,7 @@ export function Settings({ onBack }: SettingsProps) {
               <p className="text-[10px] text-arc-text-dim">{t('discover.ecosystemPulse')}</p>
             </div>
           </div>
-          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-gold transition-colors" />
+          <ChevronRight size={16} className="text-arc-text-dim group-hover:text-arc-accent transition-colors" />
         </div>
 
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
@@ -407,7 +407,7 @@ export function Settings({ onBack }: SettingsProps) {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+                <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
                   <Key size={20} />
                 </div>
                 <div>
@@ -438,14 +438,14 @@ export function Settings({ onBack }: SettingsProps) {
                   autoFocus
                   type="password"
                   placeholder={t('settings.pasteGeminiKey')}
-                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-gold"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-accent"
                   value={tempKey}
                   onChange={(e) => setTempKey(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveGemini()}
                 />
                 <button
                   onClick={handleSaveGemini}
-                  className="bg-arc-gold text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                  className="bg-arc-accent text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   {t('settings.save')}
                 </button>
@@ -462,7 +462,7 @@ export function Settings({ onBack }: SettingsProps) {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37] group-hover:bg-[#d4af37]/20 transition-colors">
+                <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff] group-hover:bg-[#ffffff]/20 transition-colors">
                   <Twitter size={20} />
                 </div>
                 <div>
@@ -481,7 +481,7 @@ export function Settings({ onBack }: SettingsProps) {
                         setTwitterTempKey('')
                         setIsAddingTwitter(true)
                       }}
-                      className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#d4af37] hover:bg-[#d4af37]/10 transition-colors"
+                      className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#ffffff] hover:bg-[#ffffff]/10 transition-colors"
                     >
                       {t('settings.update')}
                     </button>
@@ -506,14 +506,14 @@ export function Settings({ onBack }: SettingsProps) {
                   autoFocus
                   type="password"
                   placeholder={t('settings.twitterKey')}
-                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-[#d4af37]"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-[#ffffff]"
                   value={twitterTempKey}
                   onChange={(e) => setTwitterTempKey(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveTwitterKey()}
                 />
                 <button
                   onClick={handleSaveTwitterKey}
-                  className="bg-[#d4af37] text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                  className="bg-[#ffffff] text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   {twitterApiKey ? t('settings.update') : t('settings.save')}
                 </button>
@@ -522,7 +522,7 @@ export function Settings({ onBack }: SettingsProps) {
           )}
           <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
                 <Search size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
@@ -534,7 +534,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <button
                     type="button"
                     onClick={handleResetTwitterSearchQuery}
-                    className="shrink-0 text-[10px] font-semibold text-[#d4af37] underline-offset-2 hover:underline"
+                    className="shrink-0 text-[10px] font-semibold text-[#ffffff] underline-offset-2 hover:underline"
                   >
                     {t('settings.resetToDefault')}
                   </button>
@@ -562,7 +562,7 @@ export function Settings({ onBack }: SettingsProps) {
 
           <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
                 <AtSign size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
@@ -574,7 +574,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <button
                     type="button"
                     onClick={handleResetOfficialAccounts}
-                    className="shrink-0 text-[10px] font-semibold text-[#d4af37] underline-offset-2 hover:underline"
+                    className="shrink-0 text-[10px] font-semibold text-[#ffffff] underline-offset-2 hover:underline"
                   >
                     {t('settings.resetToDefault')}
                   </button>
@@ -601,41 +601,41 @@ export function Settings({ onBack }: SettingsProps) {
           </div>
         </div>
 
-        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#8f8f9a] bg-[#14141c] border-y border-[#242433]">
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#9a9a9a] bg-[#141414] border-y border-[#2a2a2a]">
           {t('settings.creators')}
         </p>
-        <div className="border-b border-[#242433] bg-[#14141c] px-4 py-4">
+        <div className="border-b border-[#2a2a2a] bg-[#141414] px-4 py-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+            <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
               <Coins size={20} />
             </div>
             <div className="min-w-0 flex-1 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#f4f1e8]">{t('settings.tipBudgetTitle')}</p>
-                  <p className="text-[10px] text-[#8f8f9a]">{t('settings.tipBudgetDescription')}</p>
+                  <p className="text-sm font-semibold text-[#ffffff]">{t('settings.tipBudgetTitle')}</p>
+                  <p className="text-[10px] text-[#9a9a9a]">{t('settings.tipBudgetDescription')}</p>
                 </div>
-                <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                <span className="rounded-full border border-[#ffffff]/25 bg-[#ffffff]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">
                   {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : t('state.loading')}
                 </span>
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetDailyLimit')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#f4f1e8]">
+                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetDailyLimit')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
                     {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetSpentToday')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#f4f1e8]">
+                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetSpentToday')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
                     {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#242433] bg-[#0a0a0f] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#8f8f9a]">{t('settings.tipBudgetRemaining')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#d4af37]">
+                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetRemaining')}</p>
+                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
                     {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
@@ -651,7 +651,7 @@ export function Settings({ onBack }: SettingsProps) {
                   }}
                   placeholder={t('settings.tipBudgetLimitPlaceholder')}
                   aria-label={t('settings.tipBudgetDailyLimit')}
-                  className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                  className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
                 />
                 <Button
                   type="button"
@@ -667,20 +667,20 @@ export function Settings({ onBack }: SettingsProps) {
               {tipBudgetError && <p className="text-xs text-arc-danger">{tipBudgetError}</p>}
 
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">{t('settings.tipBudgetRecentTips')}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">{t('settings.tipBudgetRecentTips')}</p>
                 {recentTipEntries.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#242433] bg-[#0a0a0f] px-4 py-4 text-xs text-[#8f8f9a]">
+                  <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0a0a0a] px-4 py-4 text-xs text-[#9a9a9a]">
                     {t('settings.tipBudgetNoTipsYet')}
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {recentTipEntries.map((entry) => (
-                      <div key={`${entry.handle}-${entry.timestamp}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#242433] bg-[#0a0a0f] px-4 py-3">
+                      <div key={`${entry.handle}-${entry.timestamp}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#f4f1e8]">@{entry.handle}</p>
-                          <p className="text-[10px] text-[#8f8f9a]">{formatRelativeTime(new Date(entry.timestamp).toISOString())}</p>
+                          <p className="text-sm font-semibold text-[#ffffff]">@{entry.handle}</p>
+                          <p className="text-[10px] text-[#9a9a9a]">{formatRelativeTime(new Date(entry.timestamp).toISOString())}</p>
                         </div>
-                        <p className="shrink-0 text-sm font-semibold text-[#d4af37]">
+                        <p className="shrink-0 text-sm font-semibold text-[#ffffff]">
                           {formatTipBudgetAmount(entry.amount)} {t('common.usdc')}
                         </p>
                       </div>
@@ -691,19 +691,19 @@ export function Settings({ onBack }: SettingsProps) {
             </div>
           </div>
         </div>
-        <div className="border-b border-[#242433] bg-[#14141c]">
-          <div className="border-b border-[#242433] bg-[#14141c] px-4 py-4">
+        <div className="border-b border-[#2a2a2a] bg-[#141414]">
+          <div className="border-b border-[#2a2a2a] bg-[#141414] px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37]">
+              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
                 <Users size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#f4f1e8]">{t('settings.creatorsTitle')}</p>
-                    <p className="text-[10px] text-[#8f8f9a]">{t('settings.creatorsDescription')}</p>
+                    <p className="text-sm font-semibold text-[#ffffff]">{t('settings.creatorsTitle')}</p>
+                    <p className="text-[10px] text-[#9a9a9a]">{t('settings.creatorsDescription')}</p>
                   </div>
-                  <span className="rounded-full border border-[#d4af37]/25 bg-[#d4af37]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#d4af37]">
+                  <span className="rounded-full border border-[#ffffff]/25 bg-[#ffffff]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">
                     {creators.length}
                   </span>
                 </div>
@@ -718,7 +718,7 @@ export function Settings({ onBack }: SettingsProps) {
                     }}
                     placeholder={t('settings.creatorHandlePlaceholder')}
                     aria-label={t('settings.creatorHandle')}
-                    className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                    className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
                   />
                   <Input
                     label={t('settings.creatorWalletAddress')}
@@ -729,7 +729,7 @@ export function Settings({ onBack }: SettingsProps) {
                     }}
                     placeholder={t('settings.creatorAddressPlaceholder')}
                     aria-label={t('settings.creatorWalletAddress')}
-                    className="bg-[#0a0a0f] border-[#242433] text-[#f4f1e8] placeholder:text-[#7d7d89] focus:border-[#d4af37] font-mono text-xs"
+                    className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
                   />
                 </div>
 
@@ -754,22 +754,22 @@ export function Settings({ onBack }: SettingsProps) {
 
           <div className="space-y-2 px-4 py-4">
             {creators.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#242433] bg-[#0a0a0f] px-4 py-4 text-sm text-[#8f8f9a]">
+              <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0a0a0a] px-4 py-4 text-sm text-[#9a9a9a]">
                 {t('settings.noCreatorsYet')}
               </div>
             ) : (
               creators.map((creator) => (
-                <div key={creator.handle} className="flex items-start justify-between gap-3 rounded-2xl border border-[#242433] bg-[#14141c] px-4 py-3">
+                <div key={creator.handle} className="flex items-start justify-between gap-3 rounded-2xl border border-[#2a2a2a] bg-[#141414] px-4 py-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#f4f1e8]">@{creator.handle}</p>
-                    <p className="mt-1 text-[10px] font-mono text-[#8f8f9a]">
+                    <p className="text-sm font-semibold text-[#ffffff]">@{creator.handle}</p>
+                    <p className="mt-1 text-[10px] font-mono text-[#9a9a9a]">
                       {formatAddress(creator.address, 4)}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleRemoveCreator(creator.handle)}
-                    className="shrink-0 rounded-lg p-2 text-[#8f8f9a] transition-colors hover:text-[#d4af37]"
+                    className="shrink-0 rounded-lg p-2 text-[#9a9a9a] transition-colors hover:text-[#ffffff]"
                     title={t('common.remove')}
                   >
                     <Trash2 size={16} />
@@ -839,7 +839,7 @@ export function Settings({ onBack }: SettingsProps) {
               className={`flex w-full items-center justify-between px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group ${index > 0 ? 'border-t border-arc-border/50' : ''}`}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#d4af37]/10 text-[#d4af37] group-hover:bg-[#d4af37]/20 transition-colors">
+                <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff] group-hover:bg-[#ffffff]/20 transition-colors">
                   <Bell size={20} />
                 </div>
                 <div className="text-left">
@@ -849,7 +849,7 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
               <span
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-                  item.enabled ? 'border-[#d4af37]/50 bg-[#d4af37]' : 'border-arc-border bg-arc-border/60'
+                  item.enabled ? 'border-[#ffffff]/50 bg-[#ffffff]' : 'border-arc-border bg-arc-border/60'
                 }`}
                 aria-hidden="true"
               >
@@ -884,7 +884,7 @@ export function Settings({ onBack }: SettingsProps) {
                 className={`flex w-full items-center justify-between px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group ${index > 0 ? 'border-t border-arc-border/50' : ''}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-arc-gold/10 text-arc-gold group-hover:bg-arc-gold/20 transition-colors">
+                  <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
                     <Icon size={20} />
                   </div>
                   <div className="text-left">
@@ -894,7 +894,7 @@ export function Settings({ onBack }: SettingsProps) {
                 </div>
                 <span
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-                    item.enabled ? 'border-[#d4af37]/50 bg-[#d4af37]' : 'border-arc-border bg-arc-border/60'
+                    item.enabled ? 'border-[#ffffff]/50 bg-[#ffffff]' : 'border-arc-border bg-arc-border/60'
                   }`}
                   aria-hidden="true"
                 >
@@ -940,8 +940,8 @@ export function Settings({ onBack }: SettingsProps) {
                             onClick={() => void setLocale(option.value)}
                             className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                               selected
-                                ? 'border-arc-gold bg-arc-gold/10 text-arc-gold'
-                                : 'border-arc-border text-arc-text-dim hover:border-arc-gold/30 hover:text-arc-text'
+                                ? 'border-arc-accent bg-arc-accent/10 text-arc-accent'
+                                : 'border-arc-border text-arc-text-dim hover:border-arc-accent/30 hover:text-arc-text'
                             }`}
                           >
                             {option.label}
@@ -975,7 +975,7 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('common.version')}</p>
-                <p className="mt-1 text-sm font-semibold text-arc-gold">v{APP_VERSION}</p>
+                <p className="mt-1 text-sm font-semibold text-arc-accent">v{APP_VERSION}</p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-arc-border/70 pt-3 text-xs text-arc-text-dim">

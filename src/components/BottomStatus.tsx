@@ -28,7 +28,7 @@ export function BottomStatus({
           onClick={onOpenProfile}
           className="flex items-center gap-2 transition-opacity hover:opacity-80"
         >
-          <span className="rounded-full bg-arc-gold/15 px-2 py-0.5 text-xs font-bold text-arc-gold">
+          <span className="rounded-full bg-arc-accent/15 px-2 py-0.5 text-xs font-bold text-arc-accent">
             Lv {Math.max(1, level)}
           </span>
           {streak > 0 ? (
@@ -46,7 +46,7 @@ export function BottomStatus({
           <button
             onClick={onOpenBrief}
             title={t('bottom.dailyBrief')}
-            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-accent/40 hover:text-arc-accent"
           >
             <Sun size={13} />
           </button>
@@ -56,7 +56,7 @@ export function BottomStatus({
           <button
             onClick={onOpenGogo}
             title={t('bottom.gogoAI')}
-            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+            className="rounded-full border border-arc-border bg-arc-card/60 p-1.5 text-arc-text-dim transition-colors hover:border-arc-accent/40 hover:text-arc-accent"
           >
             <Sparkles size={13} />
           </button>
@@ -68,7 +68,7 @@ export function BottomStatus({
         {onOpenAddressBook && (
           <button
             onClick={onOpenAddressBook}
-            className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+            className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-accent/40 hover:text-arc-accent"
           >
             <Book size={12} />
             {t('bottom.addressBook')}
@@ -77,7 +77,7 @@ export function BottomStatus({
         )}
         <button
           onClick={onOpenDashboard}
-          className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-gold/40 hover:text-arc-gold"
+          className="inline-flex items-center gap-1 rounded-full border border-arc-border bg-arc-card/60 px-3 py-1 text-xs font-medium text-arc-text-dim transition-colors hover:border-arc-accent/40 hover:text-arc-accent"
         >
           {t('bottom.openDashboard')}
           <ChevronRight size={12} />

@@ -22,12 +22,12 @@ export function TabBar({ active, onChange }: TabBarProps) {
           key={id}
           onClick={() => onChange(id)}
           className={`flex-1 py-2.5 text-xs font-medium transition-colors relative ${
-            active === id ? 'text-arc-gold' : 'text-arc-text-dim hover:text-arc-text'
+            active === id ? 'text-arc-accent' : 'text-arc-text-dim hover:text-arc-text'
           }`}
         >
           {label}
           {active === id && (
-            <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-arc-gold rounded-full" />
+            <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-arc-accent rounded-full" />
           )}
         </button>
       ))}

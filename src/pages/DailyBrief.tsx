@@ -184,7 +184,7 @@ const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, Tweet
   },
   opportunity: {
     label: 'Opportunity',
-    className: 'border-[#d4af37]/45 bg-gradient-to-r from-[#d4af37]/20 to-emerald-400/10 text-[#f5d87d] shadow-[0_0_0_1px_rgba(212,175,55,0.15)]',
+    className: 'border-[#ffffff]/45 bg-gradient-to-r from-[#ffffff]/20 to-emerald-400/10 text-[#ffffff] shadow-[0_0_0_1px_rgba(255,255,255,0.15)]',
   },
   discussion: {
     label: 'Discussion',
@@ -192,7 +192,7 @@ const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, Tweet
   },
 }
 
-const OFFICIAL_TWEET_BADGE_CLASS = 'border-[#d4af37]/45 bg-gradient-to-r from-[#d4af37]/20 to-emerald-400/10 text-[#f5d87d] shadow-[0_0_0_1px_rgba(212,175,55,0.15)]'
+const OFFICIAL_TWEET_BADGE_CLASS = 'border-[#ffffff]/45 bg-gradient-to-r from-[#ffffff]/20 to-emerald-400/10 text-[#ffffff] shadow-[0_0_0_1px_rgba(255,255,255,0.15)]'
 
 function TweetBadgePill({ badge }: { badge: TweetBadge }) {
   return (
@@ -223,7 +223,7 @@ function getArcCommunityBadge(type: ArcCommunityItem['type']): TweetBadge {
     default:
       return {
         label: t('dailyBrief.arcCommunityAnnouncement'),
-        className: 'border-[#d4af37]/35 bg-[#d4af37]/10 text-[#f5d87d]',
+        className: 'border-[#ffffff]/35 bg-[#ffffff]/10 text-[#ffffff]',
       }
   }
 }
@@ -259,7 +259,7 @@ function TweetListItem({
             <TweetBadgePill badge={badge} />
           </div>
         )}
-        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
+        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-accent">
           {tweet.text}
         </p>
         <p className="text-[10px] font-medium text-arc-text-dim">
@@ -1051,11 +1051,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        <div className="space-y-4 overflow-hidden rounded-2xl border border-arc-gold/25 bg-gradient-to-br from-arc-gold/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-gold/5">
+        <div className="space-y-4 overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-arc-accent/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
           <div className="flex items-center gap-2">
-            <Lightbulb size={14} className="text-arc-gold" />
+            <Lightbulb size={14} className="text-arc-accent" />
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/85">{t('dailyBrief.recommendations')}</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">{t('dailyBrief.recommendations')}</p>
             </div>
           </div>
 
@@ -1073,7 +1073,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 return (
                   <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
                         <Bell size={14} />
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
@@ -1141,7 +1141,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 return (
                   <div key={`${item.kind}-${item.title}-${item.actionLabel}`} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
                         <Icon size={14} />
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
@@ -1169,7 +1169,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         <div className="space-y-2 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.yourBalance')}</p>
           <div className="flex items-end gap-3">
-            <span className="text-3xl font-bold text-arc-gold">{balance}</span>
+            <span className="text-3xl font-bold text-arc-accent">{balance}</span>
             <span className="mb-0.5 text-base text-arc-text-dim">{t('common.usdc')}</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1265,16 +1265,16 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-arc-border bg-arc-bg/70 px-3 py-4 text-center">
-              <Activity size={16} className="text-arc-gold" />
+              <Activity size={16} className="text-arc-accent" />
               <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">{t('dailyBrief.noEcosystemStats')}</p>
             </div>
           )}
         </div>
 
-        <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-gold/60' : 'border-arc-border'}`}>
+        <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-accent/60' : 'border-arc-border'}`}>
           <div className="flex items-center gap-2">
-            <Eye size={14} className="text-arc-gold" />
+            <Eye size={14} className="text-arc-accent" />
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.whaleMovements')}</p>
           </div>
 
@@ -1295,7 +1295,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="text-[10px] text-arc-text-dim">{t('dailyBrief.markWhaleInAddressBook')}</p>
               <button
                 onClick={() => setCurrentView('address-book')}
-                className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
+                className="text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
               >
                 {t('dailyBrief.browseAddressBook')}
               </button>
@@ -1305,8 +1305,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           {!whaleError && !whaleLoading && whaleReady && safeWhaleEntries.length > 0 && (
             <div className="space-y-px">
               {safeWhaleEntries.map((entry, i) => (
-                <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-gold/5' : ''}`}>
-                  <Eye size={14} className="shrink-0 text-arc-gold" />
+                <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-accent/5' : ''}`}>
+                  <Eye size={14} className="shrink-0 text-arc-accent" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>
                     <p className="text-[10px] text-arc-text-dim">
@@ -1329,7 +1329,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <MessageCircle size={14} className="text-arc-gold" />
+              <MessageCircle size={14} className="text-arc-accent" />
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcCommunity')}</p>
             </div>
           </div>
@@ -1370,9 +1370,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-gold/30 hover:bg-arc-gold/5"
+                    className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-accent/30 hover:bg-arc-accent/5"
                   >
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border/50 bg-arc-border/30 text-arc-gold">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border/50 bg-arc-border/30 text-arc-accent">
                       <ArrowUpRight size={14} />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
@@ -1380,7 +1380,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                         <TweetBadgePill badge={getArcCommunityBadge(item.type)} />
                         <span className="text-[10px] text-arc-text-dim">{formatRelativeTime(item.date)}</span>
                       </div>
-                      <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-gold">
+                      <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-accent">
                         {item.title}
                       </p>
                     </div>
@@ -1395,13 +1395,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-gold/20 bg-arc-gold/10 text-arc-gold">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
               <Users size={14} />
             </div>
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcDiscord')}</p>
-                <span className="rounded-full border border-arc-gold/20 bg-arc-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-gold">
+                <span className="rounded-full border border-arc-accent/20 bg-arc-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-accent">
                   {t('dailyBrief.arcDiscordServerName')}
                 </span>
               </div>
@@ -1456,7 +1456,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-center gap-2">
-            <Twitter size={14} className="text-[#d4af37]" />
+            <Twitter size={14} className="text-[#ffffff]" />
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
@@ -1469,7 +1469,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             />
           ) : hasOfficialTweets && (
             <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/80">
                 {t('dailyBrief.official')}
               </p>
               {officialTweetsStaleAt && (
@@ -1522,7 +1522,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="text-xs text-arc-danger">{tweetsError}</p>
               <button
                 onClick={() => setCurrentView('settings')}
-                className="text-[10px] font-semibold text-arc-gold underline-offset-2 hover:underline"
+                className="text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
               >
                 {t('dailyBrief.updateKeyInSettings')}
               </button>
@@ -1552,11 +1552,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-arc-gold/20 bg-arc-card p-4">
+        <div className="relative overflow-hidden rounded-2xl border border-arc-accent/20 bg-arc-card p-4">
           <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-arc-gold" />
-            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-gold/80">{t('dailyBrief.insight')}</p>
+            <Sparkles size={14} className="text-arc-accent" />
+            <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/80">{t('dailyBrief.insight')}</p>
           </div>
             {activePattern && (
               <button

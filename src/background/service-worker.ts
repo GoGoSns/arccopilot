@@ -4,7 +4,7 @@
  * - Handles content-script and popup messages (OPEN_SEND, FETCH_ARC_DISCORD)
  * - Whale polling via chrome.alarms (every 5 min)
  * - Native notifications for whale movement, incoming USDC, and balance changes
- * - Badge management (gold dot when unseen whale activity)
+ * - Badge management (neutral dot when unseen whale activity)
  */
 
 import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
@@ -479,7 +479,7 @@ async function checkWhales(): Promise<void> {
 
   if (newActivity) {
     chrome.action.setBadgeText({ text: '•' })
-    chrome.action.setBadgeBackgroundColor({ color: '#d4af37' })
+    chrome.action.setBadgeBackgroundColor({ color: '#ffffff' })
     debugLog('[ArcCopilot SW] badge set - new whale activity')
   }
 }

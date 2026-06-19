@@ -24,10 +24,10 @@ export function ActionButtons({ onSend, onReceive, onScan, onBuy }: ActionButton
           key={key}
           type="button"
           onClick={handlers[key]}
-          className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-arc-card border border-arc-border hover:border-arc-gold/40 hover:bg-arc-card/80 transition-all active:scale-95"
+          className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-arc-card border border-arc-border hover:border-arc-accent/40 hover:bg-arc-card/80 transition-all active:scale-95"
         >
-          <div className="w-9 h-9 rounded-xl bg-arc-gold/10 flex items-center justify-center">
-            <Icon size={18} className="text-arc-gold" />
+          <div className="w-9 h-9 rounded-xl bg-arc-accent/10 flex items-center justify-center">
+            <Icon size={18} className="text-arc-accent" />
           </div>
           <span className="text-[10px] text-arc-text-dim">{label}</span>
         </button>
