@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
@@ -421,7 +421,7 @@ export function Settings({ onBack }: SettingsProps) {
                 {geminiApiKey && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleClearGeminiKey() }}
-                    className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                    className="p-2 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors"
                     title={t('settings.clearApiKey')}
                   >
                     <Trash2 size={16} />
@@ -438,14 +438,14 @@ export function Settings({ onBack }: SettingsProps) {
                   autoFocus
                   type="password"
                   placeholder={t('settings.pasteGeminiKey')}
-                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-arc-accent"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text placeholder:text-arc-hint focus:outline-none focus:border-arc-accent"
                   value={tempKey}
                   onChange={(e) => setTempKey(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveGemini()}
                 />
                 <button
                   onClick={handleSaveGemini}
-                  className="bg-arc-accent text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                  className="bg-white text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   {t('settings.save')}
                 </button>
@@ -462,7 +462,7 @@ export function Settings({ onBack }: SettingsProps) {
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff] group-hover:bg-[#ffffff]/20 transition-colors">
+                <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
                   <Twitter size={20} />
                 </div>
                 <div>
@@ -481,13 +481,13 @@ export function Settings({ onBack }: SettingsProps) {
                         setTwitterTempKey('')
                         setIsAddingTwitter(true)
                       }}
-                      className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-[#ffffff] hover:bg-[#ffffff]/10 transition-colors"
+                      className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-arc-accent hover:bg-arc-accent/10 transition-colors"
                     >
                       {t('settings.update')}
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleClearTwitterKey() }}
-                      className="p-2 rounded-lg text-arc-text-dim hover:text-arc-danger transition-colors"
+                      className="p-2 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors"
                       title={t('settings.clearTwitterKey')}
                     >
                       <Trash2 size={16} />
@@ -506,14 +506,14 @@ export function Settings({ onBack }: SettingsProps) {
                   autoFocus
                   type="password"
                   placeholder={t('settings.twitterKey')}
-                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text focus:outline-none focus:border-[#ffffff]"
+                  className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text placeholder:text-arc-hint focus:outline-none focus:border-arc-accent"
                   value={twitterTempKey}
                   onChange={(e) => setTwitterTempKey(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveTwitterKey()}
                 />
                 <button
                   onClick={handleSaveTwitterKey}
-                  className="bg-[#ffffff] text-arc-bg px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                  className="bg-white text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   {twitterApiKey ? t('settings.update') : t('settings.save')}
                 </button>
@@ -522,7 +522,7 @@ export function Settings({ onBack }: SettingsProps) {
           )}
           <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
+              <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
                 <Search size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
@@ -534,7 +534,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <button
                     type="button"
                     onClick={handleResetTwitterSearchQuery}
-                    className="shrink-0 text-[10px] font-semibold text-[#ffffff] underline-offset-2 hover:underline"
+                    className="shrink-0 text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
                   >
                     {t('settings.resetToDefault')}
                   </button>
@@ -562,7 +562,7 @@ export function Settings({ onBack }: SettingsProps) {
 
           <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
+              <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
                 <AtSign size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
@@ -574,7 +574,7 @@ export function Settings({ onBack }: SettingsProps) {
                   <button
                     type="button"
                     onClick={handleResetOfficialAccounts}
-                    className="shrink-0 text-[10px] font-semibold text-[#ffffff] underline-offset-2 hover:underline"
+                    className="shrink-0 text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
                   >
                     {t('settings.resetToDefault')}
                   </button>
@@ -601,42 +601,42 @@ export function Settings({ onBack }: SettingsProps) {
           </div>
         </div>
 
-        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-[#9a9a9a] bg-[#141414] border-y border-[#2a2a2a]">
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card border-y border-arc-border">
           {t('settings.creators')}
         </p>
-        <div className="border-b border-[#2a2a2a] bg-[#141414] px-4 py-4">
+        <div className="border-b border-arc-border bg-arc-card px-4 py-4">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
+            <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
               <Coins size={20} />
             </div>
             <div className="min-w-0 flex-1 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[#ffffff]">{t('settings.tipBudgetTitle')}</p>
-                  <p className="text-[10px] text-[#9a9a9a]">{t('settings.tipBudgetDescription')}</p>
+                  <p className="text-sm font-semibold text-white">{t('settings.tipBudgetTitle')}</p>
+                  <p className="text-[10px] text-arc-text-dim">{t('settings.tipBudgetDescription')}</p>
                 </div>
-                <span className="rounded-full border border-[#ffffff]/25 bg-[#ffffff]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">
+                <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
                   {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : t('state.loading')}
                 </span>
               </div>
 
               <div className="grid gap-2 sm:grid-cols-3">
-                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetDailyLimit')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : '—'}
+                <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetDailyLimit')}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : 'â€”'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetSpentToday')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : '—'}
+                <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetSpentToday')}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : 'â€”'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-3 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9a9a9a]">{t('settings.tipBudgetRemaining')}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#ffffff]">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : '—'}
+                <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetRemaining')}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : 'â€”'}
                   </p>
                 </div>
               </div>
@@ -651,7 +651,7 @@ export function Settings({ onBack }: SettingsProps) {
                   }}
                   placeholder={t('settings.tipBudgetLimitPlaceholder')}
                   aria-label={t('settings.tipBudgetDailyLimit')}
-                  className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
                 />
                 <Button
                   type="button"
@@ -667,20 +667,20 @@ export function Settings({ onBack }: SettingsProps) {
               {tipBudgetError && <p className="text-xs text-arc-danger">{tipBudgetError}</p>}
 
               <div className="space-y-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">{t('settings.tipBudgetRecentTips')}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white">{t('settings.tipBudgetRecentTips')}</p>
                 {recentTipEntries.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0a0a0a] px-4 py-4 text-xs text-[#9a9a9a]">
+                  <div className="rounded-2xl border border-dashed border-arc-border bg-arc-bg px-4 py-4 text-xs text-arc-text-dim">
                     {t('settings.tipBudgetNoTipsYet')}
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {recentTipEntries.map((entry) => (
-                      <div key={`${entry.handle}-${entry.timestamp}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-3">
+                      <div key={`${entry.handle}-${entry.timestamp}`} className="flex items-center justify-between gap-3 rounded-2xl border border-arc-border bg-arc-bg px-4 py-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#ffffff]">@{entry.handle}</p>
-                          <p className="text-[10px] text-[#9a9a9a]">{formatRelativeTime(new Date(entry.timestamp).toISOString())}</p>
+                          <p className="text-sm font-semibold text-white">@{entry.handle}</p>
+                          <p className="text-[10px] text-arc-text-dim">{formatRelativeTime(new Date(entry.timestamp).toISOString())}</p>
                         </div>
-                        <p className="shrink-0 text-sm font-semibold text-[#ffffff]">
+                        <p className="shrink-0 text-sm font-semibold text-white">
                           {formatTipBudgetAmount(entry.amount)} {t('common.usdc')}
                         </p>
                       </div>
@@ -691,19 +691,19 @@ export function Settings({ onBack }: SettingsProps) {
             </div>
           </div>
         </div>
-        <div className="border-b border-[#2a2a2a] bg-[#141414]">
-          <div className="border-b border-[#2a2a2a] bg-[#141414] px-4 py-4">
+        <div className="border-b border-arc-border bg-arc-card">
+          <div className="border-b border-arc-border bg-arc-card px-4 py-4">
             <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff]">
+              <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
                 <Users size={20} />
               </div>
               <div className="min-w-0 flex-1 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#ffffff]">{t('settings.creatorsTitle')}</p>
-                    <p className="text-[10px] text-[#9a9a9a]">{t('settings.creatorsDescription')}</p>
+                    <p className="text-sm font-semibold text-white">{t('settings.creatorsTitle')}</p>
+                    <p className="text-[10px] text-arc-text-dim">{t('settings.creatorsDescription')}</p>
                   </div>
-                  <span className="rounded-full border border-[#ffffff]/25 bg-[#ffffff]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffffff]">
+                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
                     {creators.length}
                   </span>
                 </div>
@@ -718,7 +718,7 @@ export function Settings({ onBack }: SettingsProps) {
                     }}
                     placeholder={t('settings.creatorHandlePlaceholder')}
                     aria-label={t('settings.creatorHandle')}
-                    className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
+                    className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
                   />
                   <Input
                     label={t('settings.creatorWalletAddress')}
@@ -729,7 +729,7 @@ export function Settings({ onBack }: SettingsProps) {
                     }}
                     placeholder={t('settings.creatorAddressPlaceholder')}
                     aria-label={t('settings.creatorWalletAddress')}
-                    className="bg-[#0a0a0a] border-[#2a2a2a] text-[#ffffff] placeholder:text-[#6b6b6b] focus:border-[#ffffff] font-mono text-xs"
+                    className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
                   />
                 </div>
 
@@ -754,22 +754,22 @@ export function Settings({ onBack }: SettingsProps) {
 
           <div className="space-y-2 px-4 py-4">
             {creators.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0a0a0a] px-4 py-4 text-sm text-[#9a9a9a]">
+              <div className="rounded-2xl border border-dashed border-arc-border bg-arc-bg px-4 py-4 text-sm text-arc-text-dim">
                 {t('settings.noCreatorsYet')}
               </div>
             ) : (
               creators.map((creator) => (
-                <div key={creator.handle} className="flex items-start justify-between gap-3 rounded-2xl border border-[#2a2a2a] bg-[#141414] px-4 py-3">
+                <div key={creator.handle} className="flex items-start justify-between gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#ffffff]">@{creator.handle}</p>
-                    <p className="mt-1 text-[10px] font-mono text-[#9a9a9a]">
+                    <p className="text-sm font-semibold text-white">@{creator.handle}</p>
+                    <p className="mt-1 text-[10px] font-mono text-arc-text-dim">
                       {formatAddress(creator.address, 4)}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void handleRemoveCreator(creator.handle)}
-                    className="shrink-0 rounded-lg p-2 text-[#9a9a9a] transition-colors hover:text-[#ffffff]"
+                    className="shrink-0 rounded-lg p-2 text-arc-text-dim transition-colors hover:text-white"
                     title={t('common.remove')}
                   >
                     <Trash2 size={16} />
@@ -839,7 +839,7 @@ export function Settings({ onBack }: SettingsProps) {
               className={`flex w-full items-center justify-between px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group ${index > 0 ? 'border-t border-arc-border/50' : ''}`}
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-[#ffffff]/10 text-[#ffffff] group-hover:bg-[#ffffff]/20 transition-colors">
+                <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent group-hover:bg-arc-accent/20 transition-colors">
                   <Bell size={20} />
                 </div>
                 <div className="text-left">
@@ -849,7 +849,7 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
               <span
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-                  item.enabled ? 'border-[#ffffff]/50 bg-[#ffffff]' : 'border-arc-border bg-arc-border/60'
+                  item.enabled ? 'border-white/50 bg-white' : 'border-arc-border bg-arc-border/60'
                 }`}
                 aria-hidden="true"
               >
@@ -894,7 +894,7 @@ export function Settings({ onBack }: SettingsProps) {
                 </div>
                 <span
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-                    item.enabled ? 'border-[#ffffff]/50 bg-[#ffffff]' : 'border-arc-border bg-arc-border/60'
+                    item.enabled ? 'border-white/50 bg-white' : 'border-arc-border bg-arc-border/60'
                   }`}
                   aria-hidden="true"
                 >

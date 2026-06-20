@@ -16,6 +16,7 @@ html, body, #root {
   color: #ffffff;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
 }
 
 /* Options page is full screen */

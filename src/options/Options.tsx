@@ -6,9 +6,9 @@ export function Options() {
       <div className="max-w-2xl mx-auto py-12 px-6">
         <div className="flex items-center gap-4 mb-10">
           <div
-            className="w-10 h-10 flex items-center justify-center text-xl font-black text-black"
+            className="w-10 h-10 flex items-center justify-center text-xl font-black text-white border border-arc-border"
             style={{
-              background: '#ffffff',
+              background: '#141414',
               clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
             }}
           >
@@ -31,7 +31,7 @@ export function Options() {
                 <p className="font-medium text-arc-text">{title}</p>
                 <p className="text-sm text-arc-text-dim">{desc}</p>
               </div>
-              <span className="text-xs text-arc-accent bg-arc-accent/10 px-2 py-1 rounded-full">{value}</span>
+              <span className="text-xs text-white bg-arc-card border border-arc-border px-2 py-1 rounded-full">{value}</span>
             </div>
           ))}
         </div>

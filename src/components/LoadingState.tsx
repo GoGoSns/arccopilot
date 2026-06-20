@@ -12,7 +12,7 @@ export function LoadingState({ icon: Icon = Loader2, title, description, classNa
   return (
     <Card className={`border-arc-border bg-arc-card p-4 ${className}`}>
       <div className="flex items-center gap-3">
-        <Icon size={18} className="animate-spin text-arc-accent" />
+        <Icon size={18} className="animate-spin text-white" />
         <div className="min-w-0">
           <p className="text-sm font-medium text-arc-text">{title}</p>
           {description ? <p className="text-xs text-arc-text-dim">{description}</p> : null}

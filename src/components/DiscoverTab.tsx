@@ -23,17 +23,18 @@ function hashToHue(address: string): number {
 }
 
 function BuilderAvatar({ address }: { address: string }) {
-  const hue = hashToHue(address)
+  const tone = hashToHue(address)
+  const opacity = 0.08 + (tone % 6) * 0.03
 
   return (
     <div
       className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border border-white/10"
-      style={{ background: `hsl(${hue} 70% 55% / 0.28)` }}
+      style={{ background: `rgba(255, 255, 255, ${opacity})` }}
       aria-hidden="true"
     >
       <div
         className="h-2.5 w-2.5 rounded-full"
-        style={{ background: `hsl(${hue} 80% 60%)` }}
+        style={{ background: 'rgba(255, 255, 255, 0.7)' }}
       />
     </div>
   )
@@ -92,7 +93,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
           {onViewAll ? (
             <button
               onClick={onViewAll}
-              className="text-[10px] font-medium text-arc-accent transition-colors hover:text-arc-accent/80"
+              className="text-[10px] font-medium text-arc-text transition-colors hover:text-white/80"
             >
               {t('discover.viewAll')}
             </button>
@@ -130,7 +131,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
                       {formatAddress(builder.address, 4)}
                     </p>
                     {builder.isYou && (
-                      <span className="shrink-0 rounded-full border border-sky-500/20 bg-sky-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
+                      <span className="shrink-0 rounded-full border border-arc-border bg-arc-card px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-arc-text-dim">
                         You
                       </span>
                     )}
@@ -154,7 +155,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
         <div className="grid grid-cols-2 gap-2">
           <Card className="flex flex-col gap-2 px-3 py-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-arc-accent/10 text-arc-accent">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
                 <Trophy size={16} />
               </div>
               <span className="rounded-full border border-arc-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-arc-text-dim">
@@ -169,7 +170,7 @@ export function DiscoverTab({ address, onViewAll }: DiscoverTabProps) {
 
           <Card className="flex flex-col gap-2 px-3 py-3">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-arc-success/10 text-arc-success">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
                 <Target size={16} />
               </div>
               <span className="rounded-full border border-arc-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-arc-text-dim">

@@ -101,10 +101,10 @@ export function Profile({ onBack }: ProfileProps) {
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-20 h-20 rounded-3xl bg-arc-accent/20 flex items-center justify-center text-arc-accent text-3xl font-black shadow-xl border-2 border-arc-accent/30">
+            <div className="w-20 h-20 rounded-3xl border border-arc-border bg-arc-card flex items-center justify-center text-white text-3xl font-black shadow-xl">
               {initial}
             </div>
-            <div className="absolute -bottom-2 -right-2 bg-arc-bg border-2 border-arc-accent rounded-full px-2 py-0.5 text-[10px] font-bold text-arc-accent shadow-lg">
+            <div className="absolute -bottom-2 -right-2 bg-white border border-white rounded-full px-2 py-0.5 text-[10px] font-bold text-black shadow-lg">
               Lv {level}
             </div>
           </div>
@@ -133,7 +133,7 @@ export function Profile({ onBack }: ProfileProps) {
           </div>
 
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs px-3 py-1 rounded-full bg-arc-accent/10 text-arc-accent border border-arc-accent/20 font-bold">
+            <span className="text-xs px-3 py-1 rounded-full bg-white text-black border border-white font-bold">
               Level {level}
             </span>
             <span className="text-xs px-3 py-1 rounded-full bg-arc-danger/10 text-arc-danger border border-arc-danger/20 font-bold">
@@ -154,11 +154,11 @@ export function Profile({ onBack }: ProfileProps) {
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-arc-text-dim ml-1">{t('profile.badges')}</p>
           <div className="grid grid-cols-2 gap-3">
             {badges.map((badge) => (
-              <Card
+                <Card
                 key={badge.id}
                 className={`relative flex flex-col items-center gap-2 p-3 text-center transition-all group ${
                   badge.isUnlocked
-                    ? 'bg-arc-accent/5 border-arc-accent/30 shadow-lg shadow-arc-accent/5'
+                    ? 'bg-arc-card border-arc-borderEmphasis'
                     : 'opacity-60 bg-arc-card/30'
                 }`}
               >
@@ -168,12 +168,12 @@ export function Profile({ onBack }: ProfileProps) {
                   </div>
                 )}
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
-                  badge.isUnlocked ? 'bg-arc-accent/20 text-arc-accent' : 'bg-arc-border text-arc-text-dim'
+                  badge.isUnlocked ? 'bg-white text-black' : 'bg-arc-border text-arc-text-dim'
                 }`}>
                   <Trophy size={20} />
                 </div>
                 <div className="space-y-0.5">
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${badge.isUnlocked ? 'text-arc-accent' : 'text-arc-text-dim'}`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${badge.isUnlocked ? 'text-white' : 'text-arc-text-dim'}`}>
                     {badge.label}
                   </p>
                   <p className="text-[8px] text-arc-text-dim leading-tight">
@@ -188,7 +188,7 @@ export function Profile({ onBack }: ProfileProps) {
 
       {isEditing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-sm p-5 space-y-4 shadow-2xl border-arc-accent/20">
+          <Card className="w-full max-w-sm p-5 space-y-4 shadow-2xl border-arc-borderEmphasis">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-arc-text">{t('profile.editProfileDialog')}</h3>
               <button onClick={() => setIsEditing(false)} className="text-arc-text-dim hover:text-arc-text">
@@ -208,7 +208,7 @@ export function Profile({ onBack }: ProfileProps) {
                   {t('profile.bio')}
                 </label>
                 <textarea
-                  className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-arc-accent/50 transition-colors min-h-[100px] resize-none"
+                  className="w-full bg-arc-bg border border-arc-border rounded-xl p-3 text-sm text-arc-text placeholder:text-arc-text-dim focus:outline-none focus:border-white/50 transition-colors min-h-[100px] resize-none"
                   placeholder={t('profile.tellUsAboutYourself')}
                   value={editBio}
                   onChange={(e) => setEditBio(e.target.value.slice(0, 160))}
@@ -229,7 +229,7 @@ export function Profile({ onBack }: ProfileProps) {
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="bg-arc-card border border-arc-accent/50 text-arc-accent px-4 py-2 rounded-full text-xs font-bold shadow-2xl backdrop-blur-md">
+          <div className="bg-arc-card border border-arc-borderEmphasis text-white px-4 py-2 rounded-full text-xs font-bold shadow-2xl backdrop-blur-md">
             {toast}
           </div>
         </div>

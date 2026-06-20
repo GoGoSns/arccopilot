@@ -14,12 +14,12 @@ interface ActivityTabProps {
 }
 
 const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
-  friend: 'bg-green-500',
-  work: 'bg-blue-500',
-  warning: 'bg-red-500',
-  self: 'bg-arc-accent',
-  whale: 'bg-arc-accent',
-  other: 'bg-gray-400',
+  friend: 'bg-white/65',
+  work: 'bg-white/45',
+  warning: 'bg-white/25',
+  self: 'bg-white',
+  whale: 'bg-white/85',
+  other: 'bg-white/20',
 }
 
 export function ActivityTab({ address }: ActivityTabProps) {
@@ -65,8 +65,8 @@ export function ActivityTab({ address }: ActivityTabProps) {
     <div className="flex flex-col gap-2 px-4 py-3">
       {transactions.map((tx) => {
         const isSend = tx.direction === 'send'
-        const amountColor = isSend ? 'text-arc-danger' : 'text-arc-success'
-        const amountBg = isSend ? 'bg-arc-danger/10 text-arc-danger' : 'bg-arc-success/10 text-arc-success'
+        const amountColor = isSend ? 'text-arc-text' : 'text-arc-success'
+        const amountBg = isSend ? 'border border-arc-border bg-arc-card text-arc-text-dim' : 'bg-arc-success/10 text-arc-success'
         const Icon = isSend ? ArrowUpRight : ArrowDownLeft
 
         const memory = addressMemories[tx.counterpartyAddress.toLowerCase()]
@@ -80,7 +80,7 @@ export function ActivityTab({ address }: ActivityTabProps) {
               setSelectedAddress(tx.counterpartyAddress)
               setCurrentView('address-detail')
             }}
-            className="flex items-center gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3 text-left transition-colors hover:border-arc-accent/30 hover:bg-arc-card/80"
+            className="flex items-center gap-3 rounded-2xl border border-arc-border bg-arc-card px-4 py-3 text-left transition-colors hover:border-arc-borderEmphasis hover:bg-arc-elevated"
           >
             <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${amountBg}`}>
               <Icon size={18} />

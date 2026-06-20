@@ -720,7 +720,7 @@ export function Send({ onBack }: SendProps) {
                       setShowSuggestions(false)
                     }}
                   >
-                    <div className="h-8 w-8 rounded-full bg-arc-accent/10 flex items-center justify-center text-arc-accent">
+                    <div className="h-8 w-8 rounded-full border border-arc-border bg-arc-card flex items-center justify-center text-white">
                       <User size={14} />
                     </div>
                     <div className="min-w-0">
@@ -740,7 +740,7 @@ export function Send({ onBack }: SendProps) {
               </span>
             )}
             {isUnknownRecipient && (
-              <span className="rounded-full border border-arc-accent/20 bg-arc-accent/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-arc-accent">
+              <span className="rounded-full border border-arc-border bg-arc-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
                 {t('send.unknownRecipient')}
               </span>
             )}
@@ -759,9 +759,9 @@ export function Send({ onBack }: SendProps) {
         </div>
 
         {metaMaskAccessState === 'unauthorized' && (
-          <Card className="space-y-3 border-arc-accent/30 bg-arc-accent/10 p-3">
+          <Card className="space-y-3 border-arc-borderEmphasis bg-arc-card p-3">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-arc-accent">{t('send.metaMaskPermissionNeeded')}</p>
+              <p className="text-sm font-semibold text-white">{t('send.metaMaskPermissionNeeded')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">
                 {t('send.metaMaskPermissionNeeded')}
               </p>

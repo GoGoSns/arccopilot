@@ -22,7 +22,7 @@ export function ErrorState({
   return (
     <Card className={`border-arc-border bg-arc-card p-4 ${className}`}>
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 text-arc-danger" size={18} />
+        <Icon className="mt-0.5 text-arc-text-dim" size={18} />
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-sm font-medium text-arc-text">{title}</p>
           {description ? <p className="text-xs leading-relaxed text-arc-text-dim">{description}</p> : null}

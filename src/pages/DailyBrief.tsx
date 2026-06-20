@@ -180,11 +180,11 @@ type TweetBadge = {
 const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, TweetBadge> = {
   news: {
     label: 'News',
-    className: 'border-[#1d9bf0]/35 bg-[#1d9bf0]/12 text-[#8bc7ff]',
+    className: 'border-arc-border bg-arc-card text-arc-text-dim',
   },
   opportunity: {
     label: 'Opportunity',
-    className: 'border-[#ffffff]/45 bg-gradient-to-r from-[#ffffff]/20 to-emerald-400/10 text-[#ffffff] shadow-[0_0_0_1px_rgba(255,255,255,0.15)]',
+    className: 'border-white/25 bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.12)]',
   },
   discussion: {
     label: 'Discussion',
@@ -192,7 +192,7 @@ const TWEET_CATEGORY_BADGES: Record<NonNullable<TwitterTweet['category']>, Tweet
   },
 }
 
-const OFFICIAL_TWEET_BADGE_CLASS = 'border-[#ffffff]/45 bg-gradient-to-r from-[#ffffff]/20 to-emerald-400/10 text-[#ffffff] shadow-[0_0_0_1px_rgba(255,255,255,0.15)]'
+const OFFICIAL_TWEET_BADGE_CLASS = 'border-white/25 bg-white/10 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.12)]'
 
 function TweetBadgePill({ badge }: { badge: TweetBadge }) {
   return (
@@ -207,7 +207,7 @@ function getArcCommunityBadge(type: ArcCommunityItem['type']): TweetBadge {
     case 'Blog':
       return {
         label: t('dailyBrief.arcCommunityBlog'),
-        className: 'border-[#1d9bf0]/35 bg-[#1d9bf0]/12 text-[#8bc7ff]',
+        className: 'border-arc-border bg-arc-card text-arc-text-dim',
       }
     case 'External':
       return {
@@ -223,7 +223,7 @@ function getArcCommunityBadge(type: ArcCommunityItem['type']): TweetBadge {
     default:
       return {
         label: t('dailyBrief.arcCommunityAnnouncement'),
-        className: 'border-[#ffffff]/35 bg-[#ffffff]/10 text-[#ffffff]',
+        className: 'border-white/25 bg-white/10 text-white',
       }
   }
 }
@@ -247,7 +247,7 @@ function TweetListItem({
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex min-w-0 items-center gap-1">
           <span className="truncate text-[11px] font-semibold text-arc-text">{tweet.authorName}</span>
-          {tweet.verified && <BadgeCheck size={11} className="shrink-0 text-[#1d9bf0]" />}
+          {tweet.verified && <BadgeCheck size={11} className="shrink-0 text-arc-success" />}
         </div>
         <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
           <span className="truncate">@{tweet.authorHandle}</span>
@@ -259,7 +259,7 @@ function TweetListItem({
             <TweetBadgePill badge={badge} />
           </div>
         )}
-        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-accent">
+        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-white">
           {tweet.text}
         </p>
         <p className="text-[10px] font-medium text-arc-text-dim">
@@ -1141,7 +1141,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 return (
                   <div key={`${item.kind}-${item.title}-${item.actionLabel}`} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
                         <Icon size={14} />
                       </div>
                       <div className="min-w-0 flex-1 space-y-2">
@@ -1169,7 +1169,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         <div className="space-y-2 rounded-2xl border border-arc-border bg-arc-card p-4">
           <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.yourBalance')}</p>
           <div className="flex items-end gap-3">
-            <span className="text-3xl font-bold text-arc-accent">{balance}</span>
+            <span className="text-3xl font-bold text-white">{balance}</span>
             <span className="mb-0.5 text-base text-arc-text-dim">{t('common.usdc')}</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -1178,8 +1178,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             ) : balanceChange ? (
               <>
                 {isPositive && <TrendingUp size={12} className="text-arc-success" />}
-                {isNegative && <TrendingDown size={12} className="text-arc-danger" />}
-                <span className={`text-xs font-medium ${isPositive ? 'text-arc-success' : isNegative ? 'text-arc-danger' : 'text-arc-text-dim'}`}>
+                {isNegative && <TrendingDown size={12} className="text-arc-text-dim" />}
+                <span className={`text-xs font-medium ${isPositive ? 'text-arc-success' : 'text-arc-text-dim'}`}>
                   {balanceChange} USDC (last 24h)
                 </span>
               </>
@@ -1213,7 +1213,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 const label = mem?.label ?? formatAddress(tx.otherAddress, 4)
                 return (
                   <div key={i} className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30">
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tx.direction === 'in' ? 'bg-arc-success/15 text-arc-success' : 'bg-arc-danger/15 text-arc-danger'}`}>
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tx.direction === 'in' ? 'bg-arc-success/15 text-arc-success' : 'border border-arc-border bg-arc-card text-arc-text-dim'}`}>
                       {tx.direction === 'in' ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1222,7 +1222,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                       </p>
                       <p className="text-[10px] text-arc-text-dim">{formatRelativeTime(tx.timestamp)}</p>
                     </div>
-                    <span className={`shrink-0 text-xs font-semibold ${tx.direction === 'in' ? 'text-arc-success' : 'text-arc-danger'}`}>
+                    <span className={`shrink-0 text-xs font-semibold ${tx.direction === 'in' ? 'text-arc-success' : 'text-arc-text-dim'}`}>
                       {tx.direction === 'in' ? '+' : '-'}{tx.amount} USDC
                     </span>
                   </div>
@@ -1265,16 +1265,16 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-arc-border bg-arc-bg/70 px-3 py-4 text-center">
-              <Activity size={16} className="text-arc-accent" />
+              <Activity size={16} className="text-white" />
               <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">{t('dailyBrief.noEcosystemStats')}</p>
             </div>
           )}
         </div>
 
-        <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-accent/60' : 'border-arc-border'}`}>
+        <div className={`space-y-3 rounded-2xl border bg-arc-card p-4 ${anyWhaleRecent ? 'border-l-2 border-arc-borderEmphasis' : 'border-arc-border'}`}>
           <div className="flex items-center gap-2">
-            <Eye size={14} className="text-arc-accent" />
+            <Eye size={14} className="text-white" />
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.whaleMovements')}</p>
           </div>
 
@@ -1295,7 +1295,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="text-[10px] text-arc-text-dim">{t('dailyBrief.markWhaleInAddressBook')}</p>
               <button
                 onClick={() => setCurrentView('address-book')}
-                className="text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
+                className="text-[10px] font-semibold text-white underline-offset-2 hover:underline"
               >
                 {t('dailyBrief.browseAddressBook')}
               </button>
@@ -1305,15 +1305,15 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           {!whaleError && !whaleLoading && whaleReady && safeWhaleEntries.length > 0 && (
             <div className="space-y-px">
               {safeWhaleEntries.map((entry, i) => (
-                <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-arc-accent/5' : ''}`}>
-                  <Eye size={14} className="shrink-0 text-arc-accent" />
+                <div key={i} className={`flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-arc-border/30 ${entry.hasRecent ? 'bg-white/5' : ''}`}>
+                  <Eye size={14} className="shrink-0 text-white" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>
                     <p className="text-[10px] text-arc-text-dim">
                       {entry.direction === 'out' ? t('activity.sent') : t('activity.received')} {entry.amount} {t('common.usdc')} · {formatRelativeTime(entry.timestamp)}
                     </p>
                   </div>
-                  <span className={`shrink-0 text-xs font-semibold ${entry.direction === 'out' ? 'text-arc-danger' : 'text-arc-success'}`}>
+                  <span className={`shrink-0 text-xs font-semibold ${entry.direction === 'out' ? 'text-arc-text-dim' : 'text-arc-success'}`}>
                     {entry.amount}
                   </span>
                 </div>
@@ -1329,7 +1329,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <MessageCircle size={14} className="text-arc-accent" />
+              <MessageCircle size={14} className="text-white" />
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcCommunity')}</p>
             </div>
           </div>
@@ -1370,9 +1370,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-accent/30 hover:bg-arc-accent/5"
+                    className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-borderEmphasis hover:bg-arc-elevated"
                   >
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border/50 bg-arc-border/30 text-arc-accent">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
                       <ArrowUpRight size={14} />
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
@@ -1380,7 +1380,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                         <TweetBadgePill badge={getArcCommunityBadge(item.type)} />
                         <span className="text-[10px] text-arc-text-dim">{formatRelativeTime(item.date)}</span>
                       </div>
-                      <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-arc-accent">
+                      <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-white">
                         {item.title}
                       </p>
                     </div>
@@ -1395,13 +1395,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
-              <Users size={14} />
-            </div>
+              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
+                <Users size={14} />
+              </div>
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcDiscord')}</p>
-                <span className="rounded-full border border-arc-accent/20 bg-arc-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-accent">
+                <span className="rounded-full border border-white/25 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
                   {t('dailyBrief.arcDiscordServerName')}
                 </span>
               </div>
@@ -1412,8 +1412,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   <div className="h-3 w-28 animate-pulse rounded bg-arc-border/70" />
                 </div>
               ) : arcDiscordDisplayError ? (
-                <div className="flex items-start justify-between gap-3 rounded-xl border border-arc-danger/20 bg-arc-danger/10 px-3 py-2">
-                  <p className="text-xs leading-relaxed text-arc-danger">{arcDiscordDisplayError}</p>
+                <div className="flex items-start justify-between gap-3 rounded-xl border border-arc-borderEmphasis bg-arc-card px-3 py-2">
+                  <p className="text-xs leading-relaxed text-arc-text-dim">{arcDiscordDisplayError}</p>
                   <Button variant="outline" size="sm" onClick={retryBrief} className="shrink-0">
                     {t('state.retry')}
                   </Button>
@@ -1456,7 +1456,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
           <div className="flex items-center gap-2">
-            <Twitter size={14} className="text-[#ffffff]" />
+            <Twitter size={14} className="text-white" />
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
@@ -1469,7 +1469,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             />
           ) : hasOfficialTweets && (
             <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/80">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-white/80">
                 {t('dailyBrief.official')}
               </p>
               {officialTweetsStaleAt && (
@@ -1519,7 +1519,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             </div>
           ) : tweetsError ? (
             <div className="space-y-2 py-1 text-center">
-              <p className="text-xs text-arc-danger">{tweetsError}</p>
+              <p className="text-xs text-arc-text-dim">{tweetsError}</p>
               <button
                 onClick={() => setCurrentView('settings')}
                 className="text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
+﻿import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
 import {
   Activity as ActivityIcon,
   ArrowDownLeft,
@@ -52,7 +52,7 @@ function getTokenBadgeLabel(token: PortfolioTokenBalance): string {
   const nameInitial = token.name.trim().slice(0, 1)
   if (nameInitial) return nameInitial.toUpperCase()
 
-  return '•'
+  return 'â€¢'
 }
 
 function ActionTile({
@@ -127,10 +127,10 @@ function PortfolioSection({
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3 px-0.5">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6b6b6b]">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-arc-hint">
             {t('portfolio.title')}
           </p>
-          {subtitle ? <p className="mt-1 text-xs text-[#6b6b6b]">{subtitle}</p> : null}
+          {subtitle ? <p className="mt-1 text-xs text-arc-hint">{subtitle}</p> : null}
         </div>
         <span
           className="shrink-0 border px-2.5 py-1 text-[11px] font-medium text-white"
@@ -154,13 +154,13 @@ function PortfolioSection({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-white">{t('portfolio.couldNotLoad')}</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{error ?? t('portfolio.couldNotLoad')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{error ?? t('portfolio.couldNotLoad')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex items-center justify-center rounded-full border border-[#333333] px-3 py-2 text-[11px] font-medium text-white transition-colors hover:border-white/30"
+            className="inline-flex items-center justify-center rounded-full border border-arc-borderEmphasis px-3 py-2 text-[11px] font-medium text-white transition-colors hover:border-white/30"
           >
             {t('state.retry')}
           </button>
@@ -199,7 +199,7 @@ function PortfolioSection({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-white">{t('portfolio.title')}</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{t('portfolio.emptyDescription')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{t('portfolio.emptyDescription')}</p>
             </div>
           </div>
         </div>
@@ -224,12 +224,12 @@ function PortfolioSection({
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-white">{token.name}</p>
-                    <p className="mt-0.5 truncate text-[11px] text-[#9a9a9a]">{token.symbol}</p>
+                    <p className="mt-0.5 truncate text-[11px] text-arc-text-dim">{token.symbol}</p>
                   </div>
 
                   <div className="shrink-0 text-right">
                     <p className="font-medium text-white">{token.balance}</p>
-                    <p className="mt-0.5 text-[11px] text-[#6b6b6b]">{usdValue ?? '—'}</p>
+                    <p className="mt-0.5 text-[11px] text-arc-hint">{usdValue ?? 'â€”'}</p>
                   </div>
                 </div>
               </div>
@@ -239,7 +239,7 @@ function PortfolioSection({
       )}
 
       {!isLoading && tokens.length === 1 && tokens[0]?.isUsdc ? (
-        <p className="px-0.5 text-[11px] text-[#6b6b6b]">{t('portfolio.otherTokensNote')}</p>
+        <p className="px-0.5 text-[11px] text-arc-hint">{t('portfolio.otherTokensNote')}</p>
       ) : null}
     </section>
   )
@@ -449,7 +449,7 @@ export function Wallet({
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-medium leading-tight text-white">{t('wallet.myWallet')}</p>
                   <div className="mt-1 flex min-w-0 items-center gap-2">
-                    <p className="truncate text-[11px] font-normal text-[#9a9a9a]">
+                    <p className="truncate text-[11px] font-normal text-arc-text-dim">
                       {address ? formatAddress(address, 4) : t('wallet.addressMissing')}
                     </p>
                     <button
@@ -510,10 +510,10 @@ export function Wallet({
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-white">{t('onboarding.title')}</p>
-                    <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('onboarding.subtitle')}</p>
+                    <p className="text-xs leading-relaxed text-arc-text-dim">{t('onboarding.subtitle')}</p>
                   </div>
 
-                  <ul className="space-y-2 text-xs leading-relaxed text-[#9a9a9a]">
+                  <ul className="space-y-2 text-xs leading-relaxed text-arc-text-dim">
                     {[
                       ['1', t('onboarding.point1')],
                       ['2', t('onboarding.point2')],
@@ -548,7 +548,7 @@ export function Wallet({
           <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.elevatedBorder, MONOCHROME_DARK.radius.hero, 0.5)}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[#6b6b6b]">
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-arc-hint">
                   {t('wallet.totalBalance')}
                 </p>
               </div>
@@ -572,7 +572,7 @@ export function Wallet({
                   <p className="text-[38px] font-medium leading-none tracking-[-0.05em] text-white">
                     {displayUsdBalance ?? t('common.unknown')}
                   </p>
-                  <p className="mt-2 text-sm font-normal text-[#9a9a9a]">
+                  <p className="mt-2 text-sm font-normal text-arc-text-dim">
                     {displayBalance != null ? `${displayBalance} ${t('common.usdc')}` : t('common.unknown')}
                   </p>
                 </>
@@ -587,7 +587,7 @@ export function Wallet({
             <ActionTile label={t('actions.getUsdc')} Icon={Droplet} onClick={handleOpenBuy} />
           </div>
 
-          {actionError ? <p className="px-0.5 text-[11px] text-[#9a9a9a]">{actionError}</p> : null}
+          {actionError ? <p className="px-0.5 text-[11px] text-arc-text-dim">{actionError}</p> : null}
 
           {scanPanelOpen ? (
             <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}>
@@ -601,7 +601,7 @@ export function Wallet({
                   </div>
                   <div className="min-w-0 space-y-1">
                     <p className="text-sm font-medium text-white">{t('wallet.scanTitle')}</p>
-                    <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.scanSubtitle')}</p>
+                    <p className="text-xs leading-relaxed text-arc-text-dim">{t('wallet.scanSubtitle')}</p>
                   </div>
                 </div>
                 <button
@@ -619,9 +619,9 @@ export function Wallet({
                 ref={scanDropzoneRef}
                 tabIndex={0}
                 onPaste={handleScanPaste}
-                className="mt-4 rounded-[16px] border border-dashed border-[#2a2a2a] bg-[#0e0e0e] p-4 outline-none focus:border-[#333333]"
+                className="mt-4 rounded-[16px] border border-dashed border-arc-border bg-arc-elevated p-4 outline-none focus:border-arc-borderEmphasis"
               >
-                <p className="text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.scanPasteHint')}</p>
+                <p className="text-xs leading-relaxed text-arc-text-dim">{t('wallet.scanPasteHint')}</p>
 
                 <div className="mt-3 flex items-center gap-2">
                   <button
@@ -636,7 +636,7 @@ export function Wallet({
                   </button>
                 </div>
 
-                {scanError ? <p className="mt-3 text-[11px] text-[#9a9a9a]">{scanError}</p> : null}
+                {scanError ? <p className="mt-3 text-[11px] text-arc-text-dim">{scanError}</p> : null}
               </div>
             </div>
           ) : null}
@@ -644,7 +644,7 @@ export function Wallet({
           <button
             type="button"
             onClick={openGogo}
-            className="w-full border px-4 py-4 text-left transition-colors hover:border-[#333333]"
+            className="w-full border px-4 py-4 text-left transition-colors hover:border-arc-borderEmphasis"
             style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}
           >
             <div className="flex items-center gap-3">
@@ -656,9 +656,9 @@ export function Wallet({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-white">{t('wallet.gogoCardTitle')}</p>
-                <p className="mt-1 text-xs leading-relaxed text-[#9a9a9a]">{t('wallet.gogoCardSubtitle')}</p>
+                <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{t('wallet.gogoCardSubtitle')}</p>
               </div>
-              <ChevronRight size={16} className="shrink-0 text-[#6b6b6b]" />
+              <ChevronRight size={16} className="shrink-0 text-arc-hint" />
             </div>
           </button>
 

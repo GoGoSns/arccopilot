@@ -20,7 +20,7 @@ export function ActivityList() {
       {MOCK_TXS.map((tx) => (
         <div key={tx.hash} className="flex items-center gap-3 px-4 py-3 hover:bg-arc-card/50 transition-colors cursor-pointer">
           <div className={`w-9 h-9 rounded-full flex items-center justify-center ${
-            tx.type === 'receive' ? 'bg-arc-success/10 text-arc-success' : 'bg-arc-danger/10 text-arc-danger'
+            tx.type === 'receive' ? 'bg-arc-success/10 text-arc-success' : 'border border-arc-border bg-arc-card text-arc-text-dim'
           }`}>
             {tx.type === 'receive' ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
           </div>
@@ -29,7 +29,7 @@ export function ActivityList() {
             <p className="text-xs text-arc-text-dim truncate">{tx.address}</p>
           </div>
           <div className="text-right">
-            <p className={`text-sm font-medium ${tx.type === 'receive' ? 'text-arc-success' : 'text-arc-danger'}`}>
+            <p className={`text-sm font-medium ${tx.type === 'receive' ? 'text-arc-success' : 'text-arc-text'}`}>
               {tx.amount} USDC
             </p>
             <p className="text-xs text-arc-text-dim">{tx.time}</p>

@@ -129,7 +129,7 @@ export function Receive({ onBack }: ReceiveProps) {
         )}
 
         <div className="flex flex-col items-center gap-4">
-          <div className="rounded-3xl bg-white p-4 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+          <div className="rounded-3xl border border-arc-border bg-arc-card p-4 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
             {qrDataUrl ? (
               <img
                 src={qrDataUrl}
@@ -140,7 +140,7 @@ export function Receive({ onBack }: ReceiveProps) {
               />
             ) : (
               <div className="flex h-[220px] w-[220px] items-center justify-center rounded-2xl bg-white">
-                <div className="h-8 w-8 animate-pulse rounded-full bg-slate-200" />
+                <div className="h-8 w-8 animate-pulse rounded-full bg-slate-300" />
               </div>
             )}
           </div>

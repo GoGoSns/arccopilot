@@ -7,6 +7,7 @@ import { ADDRESS_BOOK_STORAGE_KEY } from '@/lib/storageKeys'
 import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
+import { MONOCHROME_DARK } from '../../theme.js'
 
 type AdapterName = 'genericAdapter' | 'arcscanAdapter' | 'githubAdapter' | 'twitterAdapter'
 
@@ -42,6 +43,17 @@ type AddressMemory = {
 }
 
 type AddressBookRecord = Record<string, AddressMemory>
+
+const C = MONOCHROME_DARK.colors
+
+function rgba(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '')
+  const value = Number.parseInt(normalized, 16)
+  const red = (value >> 16) & 255
+  const green = (value >> 8) & 255
+  const blue = value & 255
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+}
 
 function main(): void {
   debugLog('[ArcCopilot] content script loaded', location.href)
@@ -116,9 +128,9 @@ function main(): void {
     if (type === 'contract') {
       cardTypeBadgeEl.textContent = 'CONTRACT — Tips may be lost'
       cardTypeBadgeEl.style.display = 'flex'
-      cardTypeBadgeEl.style.color = '#ff6b6b'
-      cardTypeBadgeEl.style.borderColor = 'rgba(255,107,107,0.30)'
-      cardTypeBadgeEl.style.background = 'rgba(255,107,107,0.10)'
+      cardTypeBadgeEl.style.color = C.text
+      cardTypeBadgeEl.style.borderColor = rgba(C.borderEmphasis, 0.7)
+      cardTypeBadgeEl.style.background = rgba(C.elevated, 0.95)
       tipButtonEl.disabled = true
       tipButtonEl.style.opacity = '0.38'
       tipButtonEl.style.cursor = 'not-allowed'
@@ -126,9 +138,9 @@ function main(): void {
     } else if (type === 'eoa') {
       cardTypeBadgeEl.textContent = 'Wallet'
       cardTypeBadgeEl.style.display = 'flex'
-      cardTypeBadgeEl.style.color = '#9aa3bf'
-      cardTypeBadgeEl.style.borderColor = 'rgba(255,255,255,0.08)'
-      cardTypeBadgeEl.style.background = 'rgba(255,255,255,0.04)'
+      cardTypeBadgeEl.style.color = C.text
+      cardTypeBadgeEl.style.borderColor = rgba(C.border, 0.45)
+      cardTypeBadgeEl.style.background = rgba(C.elevated, 0.9)
       tipButtonEl.disabled = false
       tipButtonEl.style.opacity = '1'
       tipButtonEl.style.cursor = 'pointer'
@@ -409,10 +421,10 @@ function main(): void {
       maxWidth: 'calc(100vw - 24px)',
       padding: '12px',
       borderRadius: '18px',
-      border: '1px solid rgba(212, 175, 55, 0.45)',
-      background: 'linear-gradient(180deg, rgba(10, 12, 18, 0.98) 0%, rgba(6, 8, 12, 0.98) 100%)',
-      color: '#f7f1df',
-      boxShadow: '0 18px 50px rgba(0,0,0,0.48), 0 0 0 1px rgba(255,255,255,0.08)',
+      border: `1px solid ${rgba(C.border, 0.45)}`,
+      background: `linear-gradient(180deg, ${C.background} 0%, ${C.elevated} 100%)`,
+      color: C.text,
+      boxShadow: `0 18px 50px rgba(0,0,0,0.48), 0 0 0 1px ${rgba(C.text, 0.08)}`,
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
       fontFamily: 'system-ui, sans-serif',
@@ -451,8 +463,8 @@ function main(): void {
       width: '8px',
       height: '8px',
       borderRadius: '999px',
-      background: 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)',
-      boxShadow: '0 0 12px rgba(212, 175, 55, 0.55)',
+      background: C.text,
+      boxShadow: `0 0 12px ${rgba(C.text, 0.14)}`,
       flexShrink: '0',
     } as unknown as CSSStyleDeclaration)
 
@@ -463,7 +475,7 @@ function main(): void {
       fontWeight: '800',
       letterSpacing: '0.14em',
       textTransform: 'uppercase',
-      color: '#f6ddb2',
+      color: C.text,
     } as unknown as CSSStyleDeclaration)
 
     const sourcePill = document.createElement('span')
@@ -474,9 +486,9 @@ function main(): void {
       maxWidth: '100%',
       padding: '3px 8px',
       borderRadius: '999px',
-      border: '1px solid rgba(255,255,255,0.08)',
-      background: 'rgba(255,255,255,0.04)',
-      color: '#b9bfd2',
+      border: `1px solid ${rgba(C.text, 0.08)}`,
+      background: rgba(C.text, 0.04),
+      color: C.muted,
       fontSize: '10px',
       fontWeight: '700',
       overflow: 'hidden',
@@ -496,7 +508,7 @@ function main(): void {
       fontWeight: '800',
       lineHeight: '1.35',
       letterSpacing: '0.01em',
-      color: '#fff5cf',
+      color: C.text,
       wordBreak: 'break-all',
     } as unknown as CSSStyleDeclaration)
 
@@ -506,7 +518,7 @@ function main(): void {
     Object.assign(cardDomainEl.style, {
       fontSize: '11px',
       lineHeight: '1.4',
-      color: '#9aa3bf',
+      color: C.muted,
     } as unknown as CSSStyleDeclaration)
 
     const actions = document.createElement('div')
@@ -523,14 +535,14 @@ function main(): void {
     tipButtonEl.setAttribute('aria-label', 'Tip with Arc')
     Object.assign(tipButtonEl.style, {
       minHeight: '34px',
-      border: '1px solid rgba(212, 175, 55, 0.55)',
+      border: `1px solid ${C.text}`,
       borderRadius: '12px',
-      background: 'linear-gradient(180deg, #ffffff 0%, #ffffff 100%)',
-      color: '#111111',
+      background: C.text,
+      color: C.background,
       fontSize: '12px',
       fontWeight: '800',
       cursor: 'pointer',
-      boxShadow: '0 10px 20px rgba(212, 175, 55, 0.18)',
+      boxShadow: '0 10px 20px rgba(0, 0, 0, 0.16)',
       transition: 'transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease',
       appearance: 'none',
     } as unknown as CSSStyleDeclaration)
@@ -543,10 +555,10 @@ function main(): void {
     saveButtonEl.setAttribute('aria-label', 'Save to Address Book')
     Object.assign(saveButtonEl.style, {
       minHeight: '34px',
-      border: '1px solid rgba(255, 255, 255, 0.10)',
+      border: `1px solid ${rgba(C.border, 0.55)}`,
       borderRadius: '12px',
-      background: 'rgba(255, 255, 255, 0.05)',
-      color: '#f3edd8',
+      background: C.elevated,
+      color: C.text,
       fontSize: '12px',
       fontWeight: '700',
       cursor: 'pointer',
@@ -558,11 +570,11 @@ function main(): void {
 
     tipButtonEl.addEventListener('mouseenter', () => {
       tipButtonEl!.style.transform = 'translateY(-1px)'
-      tipButtonEl!.style.boxShadow = '0 14px 24px rgba(212, 175, 55, 0.24)'
+      tipButtonEl!.style.boxShadow = '0 14px 24px rgba(0, 0, 0, 0.24)'
     })
     tipButtonEl.addEventListener('mouseleave', () => {
       tipButtonEl!.style.transform = 'translateY(0)'
-      tipButtonEl!.style.boxShadow = '0 10px 20px rgba(212, 175, 55, 0.18)'
+      tipButtonEl!.style.boxShadow = '0 10px 20px rgba(0, 0, 0, 0.16)'
     })
     tipButtonEl.addEventListener('click', (event) => {
       event.preventDefault()
@@ -605,7 +617,7 @@ function main(): void {
     cardTypeBadgeEl.style.alignItems = 'center'
     cardTypeBadgeEl.style.padding = '3px 8px'
     cardTypeBadgeEl.style.borderRadius = '999px'
-    cardTypeBadgeEl.style.border = '1px solid rgba(255,255,255,0.08)'
+    cardTypeBadgeEl.style.border = `1px solid ${rgba(C.text, 0.08)}`
     cardTypeBadgeEl.style.fontSize = '10px'
     cardTypeBadgeEl.style.fontWeight = '700'
     cardTypeBadgeEl.style.letterSpacing = '0.04em'
@@ -744,8 +756,8 @@ function main(): void {
       span.dataset.address = address
       span.textContent = address
       Object.assign(span.style, {
-        backgroundColor: 'rgba(212, 175, 55, 0.12)',
-        borderBottom: '1px dotted #ffffff',
+        backgroundColor: rgba(C.text, 0.08),
+        borderBottom: `1px dotted ${C.text}`,
         cursor: 'pointer',
         padding: '0 2px',
         borderRadius: '2px',

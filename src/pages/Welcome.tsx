@@ -95,11 +95,11 @@ export function Welcome() {
 
       {/* Content */}
       <div className="flex flex-col items-center justify-center flex-1 px-6 gap-6">
-        {/* Gold hexagon logo */}
+        {/* Monochrome hexagon logo */}
         <div
-          className="w-24 h-24 flex items-center justify-center text-4xl font-black text-black select-none"
+          className="w-24 h-24 flex items-center justify-center text-4xl font-black text-white select-none border border-arc-border"
           style={{
-            background: '#ffffff',
+            background: '#141414',
             clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
           }}
         >
@@ -119,7 +119,7 @@ export function Welcome() {
             <Button variant="primary" fullWidth size="lg" disabled>
               {t('welcome.createWallet')}
             </Button>
-            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-accent/20 text-arc-accent border border-arc-accent/30 pointer-events-none">
+            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-card text-white border border-arc-border pointer-events-none">
               {t('welcome.comingSoon')}
             </span>
           </div>
@@ -129,7 +129,7 @@ export function Welcome() {
             <Button variant="outline" fullWidth size="lg" disabled>
               {t('welcome.importWallet')}
             </Button>
-            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-accent/20 text-arc-accent border border-arc-accent/30 pointer-events-none">
+            <span className="absolute -top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-arc-card text-white border border-arc-border pointer-events-none">
               {t('welcome.comingSoon')}
             </span>
           </div>
@@ -151,7 +151,7 @@ export function Welcome() {
 
         {/* Error */}
         {errorMsg && (
-          <p className="text-xs text-arc-danger text-center leading-relaxed max-w-xs">
+          <p className="text-xs text-arc-text-dim text-center leading-relaxed max-w-xs">
             {errorMsg}
           </p>
         )}
@@ -165,9 +165,9 @@ export function Welcome() {
       <div className="px-6 py-3 text-center">
         <p className="text-[10px] text-arc-text-dim">
           By continuing, you agree to our{' '}
-          <button className="text-arc-accent/80 hover:text-arc-accent underline-offset-2 hover:underline">{t('welcome.terms')}</button>
+          <button className="text-white/80 hover:text-white underline-offset-2 hover:underline">{t('welcome.terms')}</button>
           {' '}and{' '}
-          <button className="text-arc-accent/80 hover:text-arc-accent underline-offset-2 hover:underline">{t('welcome.privacyPolicy')}</button>
+          <button className="text-white/80 hover:text-white underline-offset-2 hover:underline">{t('welcome.privacyPolicy')}</button>
         </p>
       </div>
     </div>

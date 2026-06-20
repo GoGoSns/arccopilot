@@ -22,7 +22,7 @@ export function EmptyState({
   return (
     <Card className={`border-arc-border bg-arc-card p-4 ${className}`}>
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-accent/10 text-arc-accent">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-arc-border bg-arc-card text-white">
           <Icon size={20} />
         </div>
         <div className="space-y-1">

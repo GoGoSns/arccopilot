@@ -183,12 +183,12 @@ function getVoiceRecognitionErrorFeedback(error: unknown): VoiceInputFeedback {
 function getVoiceFeedbackClassName(tone: VoiceInputFeedbackTone): string {
   switch (tone) {
     case 'warning':
-      return 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+      return 'border-arc-border bg-arc-card text-arc-text-dim'
     case 'error':
-      return 'border-arc-danger/30 bg-arc-danger/10 text-arc-danger'
+      return 'border-arc-borderEmphasis bg-arc-card text-arc-text-dim'
     case 'info':
     default:
-      return 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent'
+      return 'border-white/25 bg-white/10 text-white'
   }
 }
 
@@ -275,28 +275,28 @@ function getRiskStyles(tone: 'contract' | 'unknown' | 'empty' | 'normal') {
   switch (tone) {
     case 'contract':
       return {
-        card: 'border-arc-danger/30 bg-arc-danger/10',
-        badge: 'border-arc-danger/30 bg-arc-danger/20 text-arc-danger',
-        accent: 'text-arc-danger',
+        card: 'border-arc-borderEmphasis bg-arc-card',
+        badge: 'border-arc-borderEmphasis bg-arc-elevated text-arc-text-dim',
+        accent: 'text-arc-text-dim',
       }
     case 'unknown':
       return {
-        card: 'border-amber-400/20 bg-arc-card/90',
-        badge: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
-        accent: 'text-amber-200',
+        card: 'border-arc-border bg-arc-card',
+        badge: 'border-arc-border bg-arc-elevated text-arc-text-dim',
+        accent: 'text-arc-text-dim',
       }
     case 'empty':
       return {
-        card: 'border-amber-400/30 bg-amber-400/10',
-        badge: 'border-amber-400/30 bg-amber-400/20 text-amber-200',
-        accent: 'text-amber-200',
+        card: 'border-arc-border bg-arc-card',
+        badge: 'border-arc-border bg-arc-elevated text-arc-text-dim',
+        accent: 'text-arc-text-dim',
       }
     case 'normal':
     default:
       return {
-        card: 'border-emerald-400/30 bg-emerald-400/10',
-        badge: 'border-emerald-400/30 bg-emerald-400/20 text-emerald-200',
-        accent: 'text-emerald-200',
+        card: 'border-arc-success/20 bg-arc-success/10',
+        badge: 'border-arc-success/20 bg-arc-success/10 text-arc-success',
+        accent: 'text-arc-success',
       }
   }
 }
@@ -337,15 +337,15 @@ function getSpendingStyles(tone: 'negative' | 'neutral' | 'positive') {
   switch (tone) {
     case 'negative':
       return {
-        card: 'border-arc-danger/30 bg-arc-danger/10',
-        badge: 'border-arc-danger/30 bg-arc-danger/20 text-arc-danger',
-        accent: 'text-arc-danger',
+        card: 'border-arc-border bg-arc-card',
+        badge: 'border-arc-border bg-arc-elevated text-arc-text-dim',
+        accent: 'text-arc-text-dim',
       }
     case 'positive':
       return {
-        card: 'border-emerald-400/30 bg-emerald-400/10',
-        badge: 'border-emerald-400/30 bg-emerald-400/20 text-emerald-200',
-        accent: 'text-emerald-200',
+        card: 'border-arc-success/20 bg-arc-success/10',
+        badge: 'border-arc-success/20 bg-arc-success/10 text-arc-success',
+        accent: 'text-arc-success',
       }
     case 'neutral':
     default:
@@ -1320,7 +1320,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               </div>
 
               {analysis.activityPartial && (
-                <p className="mt-2 text-xs text-amber-200">
+                <p className="mt-2 text-xs text-arc-text-dim">
                   {t('gogo.partialActivityData')}
                 </p>
               )}
@@ -1992,7 +1992,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     </div>
 
                     {analysis.activityPartial && (
-                      <p className="mt-2 text-xs text-amber-200">
+                      <p className="mt-2 text-xs text-arc-text-dim">
                         {t('gogo.partialActivityData')}
                       </p>
                     )}
@@ -2459,7 +2459,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                           </div>
 
                           {analysis.activityPartial && (
-                            <p className="mt-2 text-xs text-amber-200">
+                            <p className="mt-2 text-xs text-arc-text-dim">
                               {t('gogo.partialActivityData')}
                             </p>
                           )}

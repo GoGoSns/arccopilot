@@ -1,19 +1,25 @@
 /** @type {import('tailwindcss').Config} */
+import { MONOCHROME_DARK } from './theme.js'
+
 export default {
   content: ['./src/**/*.{ts,tsx,html}'],
   theme: {
     extend: {
       colors: {
-        'arc-accent':    '#ffffff',
-        'arc-purple':  '#7f77dd',
-        'arc-bg':      '#0a0a0a',
-        'arc-card':    '#141414',
-        'arc-border':  '#2a2a2a',
-        'arc-text':    '#ffffff',
-        'arc-text-dim':'#9a9a9a',
-        'arc-success': '#97c459',
-        'arc-danger':  '#e24b4a',
-        'arc-info':    '#1d9bf0',
+        'arc-accent': MONOCHROME_DARK.colors.accent,
+        'arc-bg': MONOCHROME_DARK.colors.background,
+        'arc-card': MONOCHROME_DARK.colors.surface,
+        'arc-elevated': MONOCHROME_DARK.colors.elevated,
+        'arc-border': MONOCHROME_DARK.colors.border,
+        'arc-border-emphasis': MONOCHROME_DARK.colors.borderEmphasis,
+        'arc-elevated-border': MONOCHROME_DARK.colors.elevatedBorder,
+        'arc-text': MONOCHROME_DARK.colors.text,
+        'arc-text-dim': MONOCHROME_DARK.colors.muted,
+        'arc-hint': MONOCHROME_DARK.colors.hint,
+        'arc-success': MONOCHROME_DARK.colors.success,
+        'arc-danger': MONOCHROME_DARK.colors.danger,
+        'arc-info': MONOCHROME_DARK.colors.info,
+        'arc-purple': MONOCHROME_DARK.colors.purple,
       },
       fontFamily: {
         sans:    ['Inter', 'system-ui', 'sans-serif'],

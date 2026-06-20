@@ -14,12 +14,12 @@ interface MemoryCardProps {
 }
 
 const TAG_COLORS: Record<NonNullable<AddressMemory['tag']>, string> = {
-  friend: 'text-green-500 bg-green-500/10',
-  work: 'text-blue-500 bg-blue-500/10',
-  warning: 'text-red-500 bg-red-500/10',
-  self: 'text-arc-accent bg-arc-accent/10',
-  whale: 'text-arc-accent bg-arc-accent/10',
-  other: 'text-gray-400 bg-gray-400/10',
+  friend: 'text-arc-text bg-arc-card',
+  work: 'text-arc-text-dim bg-arc-card',
+  warning: 'text-arc-text-dim bg-arc-card',
+  self: 'text-arc-text bg-arc-card',
+  whale: 'text-arc-text bg-arc-card',
+  other: 'text-arc-text-dim bg-arc-card',
 }
 
 const TAG_ICONS: Record<NonNullable<AddressMemory['tag']>, typeof User> = {
@@ -44,7 +44,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
       <Card className="p-2 border-arc-border/50 bg-arc-card/30">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-arc-border/50 ${memory ? tagColor : ''}`}>
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border ${memory ? tagColor : 'bg-arc-card text-arc-text-dim'}`}>
               {memory ? <TagIcon size={14} /> : <User size={14} className="text-arc-text-dim" />}
             </div>
             <div className="min-w-0">
@@ -61,19 +61,19 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
             </div>
           </div>
           {memory ? (
-            <button
-              onClick={onEdit}
-              className="p-1 text-arc-text-dim hover:text-arc-accent transition-colors"
-            >
-              <Edit2 size={14} />
-            </button>
-          ) : (
-            <button
-              onClick={onSave}
-              className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-arc-accent bg-arc-accent/10 hover:bg-arc-accent/20 transition-colors"
-            >
-              <Plus size={12} />
-              {t('memory.save')}
+          <button
+            onClick={onEdit}
+            className="p-1 text-arc-text-dim hover:text-arc-text transition-colors"
+          >
+            <Edit2 size={14} />
+          </button>
+        ) : (
+          <button
+            onClick={onSave}
+            className="flex items-center gap-1 rounded-lg border border-white/20 bg-white px-2 py-1 text-[10px] font-medium text-black transition-colors hover:bg-white/90"
+          >
+            <Plus size={12} />
+            {t('memory.save')}
             </button>
           )}
         </div>
@@ -85,7 +85,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
     <Card className="p-4 space-y-4">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-arc-border/50 ${tagColor}`}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-arc-border ${tagColor}`}>
             <TagIcon size={24} />
           </div>
           <div className="space-y-0.5">
@@ -100,7 +100,7 @@ export function MemoryCard({ address, compact, onEdit, onSave }: MemoryCardProps
         {onEdit && (
           <button
             onClick={onEdit}
-            className="rounded-lg p-2 text-arc-text-dim hover:bg-arc-border/30 hover:text-arc-text transition-colors"
+            className="rounded-lg p-2 text-arc-text-dim hover:bg-arc-card hover:text-arc-text transition-colors"
           >
             <Edit2 size={18} />
           </button>

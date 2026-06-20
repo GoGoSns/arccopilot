@@ -14,12 +14,12 @@ interface AddressDetailProps {
 }
 
 const TAG_OPTIONS = [
-  { value: 'friend', label: t('tag.friend'), icon: User, color: 'text-green-500' },
-  { value: 'work', label: t('tag.work'), icon: Briefcase, color: 'text-blue-500' },
-  { value: 'warning', label: t('tag.warning'), icon: AlertTriangle, color: 'text-red-500' },
-  { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-arc-accent' },
-  { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-arc-accent' },
-  { value: 'other', label: t('tag.other'), icon: HelpCircle, color: 'text-gray-400' },
+  { value: 'friend', label: t('tag.friend'), icon: User, color: 'text-white' },
+  { value: 'work', label: t('tag.work'), icon: Briefcase, color: 'text-arc-text-dim' },
+  { value: 'warning', label: t('tag.warning'), icon: AlertTriangle, color: 'text-arc-text-dim' },
+  { value: 'self', label: t('tag.self'), icon: ShieldCheck, color: 'text-white' },
+  { value: 'whale', label: t('tag.whale'), icon: Eye, color: 'text-white' },
+  { value: 'other', label: t('tag.other'), icon: HelpCircle, color: 'text-arc-text-dim' },
 ] as const
 
 export function AddressDetail({ onBack }: AddressDetailProps) {

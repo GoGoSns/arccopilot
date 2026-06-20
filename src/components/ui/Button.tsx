@@ -14,12 +14,12 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
-  const base = 'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-arc-accent/60 disabled:opacity-40 disabled:cursor-not-allowed'
+  const base = 'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-40 disabled:cursor-not-allowed'
 
   const variants = {
-    primary: 'bg-arc-accent text-black hover:bg-arc-accent/90 active:scale-95',
-    outline: 'border border-arc-accent text-arc-accent hover:bg-arc-accent/10 active:scale-95',
-    ghost:   'border border-arc-border text-arc-text-dim hover:text-arc-text hover:border-arc-text-dim active:scale-95',
+    primary: 'bg-white text-black hover:bg-white/90 active:scale-95',
+    outline: 'border border-white/25 text-white hover:border-white hover:bg-white/10 active:scale-95',
+    ghost:   'border border-arc-border text-arc-text-dim hover:border-arc-borderEmphasis hover:bg-arc-card hover:text-arc-text active:scale-95',
   }
 
   const sizes = {
