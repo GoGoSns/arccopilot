@@ -17,6 +17,7 @@ import {
 } from 'viem'
 import { CHAIN_CONFIGS, GATEWAY_DOMAINS } from '@circle-fin/x402-batching/client'
 import { fetchWithTimeout } from '@/lib/external'
+import { t } from '@/lib/i18n'
 import {
   ensureMetaMaskAccounts,
   getMetaMaskFriendlyError,
@@ -25,6 +26,7 @@ import {
 import { useStore } from '@/lib/store'
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1'
+const GATEWAY_REQUEST_TIMEOUT_MS = 60_000
 const DEFAULT_GATEWAY_MAX_FEE_USDC = '0.01'
 const GATEWAY_WALLET_ADDRESS = '0x0077777d7EBA4688BDeF3E311b846F25870A19B9' as Address
 const GATEWAY_MINTER_ADDRESS = '0x0022222ABE238Cc2C7Bb1f21003F0a260052475B' as Address
@@ -254,6 +256,17 @@ function bigintReplacer(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? value.toString() : value
 }
 
+async function gatewayFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetchWithTimeout(input, init ?? {}, GATEWAY_REQUEST_TIMEOUT_MS)
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.message.toLowerCase().includes('abort'))) {
+      throw new Error(t('gogo.gatewayRequestTimedOut'))
+    }
+    throw error
+  }
+}
+
 function getChainConfigForDomain(destinationDomain: number): (typeof CHAIN_CONFIGS)[keyof typeof CHAIN_CONFIGS] {
   const chainName = TESTNET_DOMAIN_TO_CHAIN[destinationDomain]
   if (!chainName) {
@@ -424,7 +437,7 @@ async function ensureChain(tabId: number, chain: Chain): Promise<void> {
 }
 
 async function readGatewayBalance(account: Address): Promise<GatewayBalanceEntry> {
-  const response = await fetchWithTimeout(`${GATEWAY_API_TESTNET}/balances`, {
+  const response = await gatewayFetch(`${GATEWAY_API_TESTNET}/balances`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -680,7 +693,7 @@ export async function gatewayWithdraw(
     message: burnIntent,
   })
 
-  const response = await fetchWithTimeout(`${GATEWAY_API_TESTNET}/transfer`, {
+  const response = await gatewayFetch(`${GATEWAY_API_TESTNET}/transfer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify([{ burnIntent, signature }], bigintReplacer),

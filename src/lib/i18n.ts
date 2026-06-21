@@ -528,6 +528,7 @@ const EN = {
   'gogo.gatewayDepositSuccess': 'Deposited {amount} USDC to Gateway successfully. View on ArcScan: {url}',
   'gogo.gatewayBalanceDisplay': 'Gateway balance — Available: {available} USDC | Total: {total} USDC | Wallet: {wallet} USDC',
   'gogo.gatewayInsufficientBalance': 'Your Gateway balance is insufficient (have: {current} USDC, need: {needed} USDC). Say "deposit {needed} USDC to gateway" to fund your Gateway balance first.',
+  'gogo.gatewayRequestTimedOut': 'Gateway request timed out. Please try again.',
 
   'dailyBrief.recommendations': 'Recommendations',
   'dailyBrief.forYou': 'For You',
@@ -1130,6 +1131,7 @@ const TR = {
   'gogo.gatewayDepositSuccess': "Gateway'e {amount} USDC başarıyla yatırıldı. ArcScan'de görüntüle: {url}",
   'gogo.gatewayBalanceDisplay': 'Gateway bakiyesi — Kullanılabilir: {available} USDC | Toplam: {total} USDC | Cüzdan: {wallet} USDC',
   'gogo.gatewayInsufficientBalance': "Gateway bakiyen yetersiz (mevcut: {current} USDC, gerekli: {needed} USDC). Önce \"gateway'e {needed} USDC yatır\" diyerek Gateway bakiyeni fonla.",
+  'gogo.gatewayRequestTimedOut': 'Gateway isteği zaman aşımına uğradı. Lütfen tekrar dene.',
 
   'dailyBrief.recommendations': 'Önerilerim',
   'dailyBrief.forYou': 'Senin için',
