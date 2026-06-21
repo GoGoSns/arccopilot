@@ -44,6 +44,7 @@ export default defineManifest({
     'https://community.arc.network/*',
     'https://discord.com/*',
     `${ARC_RPC_URL}/*`,
+    'https://gateway-api-testnet.circle.com/*',
     `${BLOCKSCOUT_BASE}/*`,
     `${TWITTERAPI_BASE}/*`,
   ],
