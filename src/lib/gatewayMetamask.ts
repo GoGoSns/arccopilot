@@ -16,6 +16,7 @@ import {
   zeroAddress,
 } from 'viem'
 import { CHAIN_CONFIGS, GATEWAY_DOMAINS } from '@circle-fin/x402-batching/client'
+import { debugLog } from '@/lib/debug'
 import { fetchWithTimeout } from '@/lib/external'
 import { t } from '@/lib/i18n'
 import {
@@ -657,75 +658,104 @@ export async function gatewayWithdraw(
     maxFee: parseUnits(DEFAULT_GATEWAY_MAX_FEE_USDC, 6),
   })
 
-  const signature = await signer.signTypedData({
-    domain: {
-      name: 'GatewayWallet',
-      version: '1',
-    },
-    types: {
-      EIP712Domain: [
-        { name: 'name', type: 'string' },
-        { name: 'version', type: 'string' },
-      ],
-      TransferSpec: [
-        { name: 'version', type: 'uint32' },
-        { name: 'sourceDomain', type: 'uint32' },
-        { name: 'destinationDomain', type: 'uint32' },
-        { name: 'sourceContract', type: 'bytes32' },
-        { name: 'destinationContract', type: 'bytes32' },
-        { name: 'sourceToken', type: 'bytes32' },
-        { name: 'destinationToken', type: 'bytes32' },
-        { name: 'sourceDepositor', type: 'bytes32' },
-        { name: 'destinationRecipient', type: 'bytes32' },
-        { name: 'sourceSigner', type: 'bytes32' },
-        { name: 'destinationCaller', type: 'bytes32' },
-        { name: 'value', type: 'uint256' },
-        { name: 'salt', type: 'bytes32' },
-        { name: 'hookData', type: 'bytes' },
-      ],
-      BurnIntent: [
-        { name: 'maxBlockHeight', type: 'uint256' },
-        { name: 'maxFee', type: 'uint256' },
-        { name: 'spec', type: 'TransferSpec' },
-      ],
-    },
-    primaryType: 'BurnIntent',
-    message: burnIntent,
-  })
+  debugLog('[Gateway] Stage (a): signing BurnIntent via MetaMask EIP-712')
+  let burnIntentSignature: Hex
+  try {
+    burnIntentSignature = await signer.signTypedData({
+      domain: {
+        name: 'GatewayWallet',
+        version: '1',
+      },
+      types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+        ],
+        TransferSpec: [
+          { name: 'version', type: 'uint32' },
+          { name: 'sourceDomain', type: 'uint32' },
+          { name: 'destinationDomain', type: 'uint32' },
+          { name: 'sourceContract', type: 'bytes32' },
+          { name: 'destinationContract', type: 'bytes32' },
+          { name: 'sourceToken', type: 'bytes32' },
+          { name: 'destinationToken', type: 'bytes32' },
+          { name: 'sourceDepositor', type: 'bytes32' },
+          { name: 'destinationRecipient', type: 'bytes32' },
+          { name: 'sourceSigner', type: 'bytes32' },
+          { name: 'destinationCaller', type: 'bytes32' },
+          { name: 'value', type: 'uint256' },
+          { name: 'salt', type: 'bytes32' },
+          { name: 'hookData', type: 'bytes' },
+        ],
+        BurnIntent: [
+          { name: 'maxBlockHeight', type: 'uint256' },
+          { name: 'maxFee', type: 'uint256' },
+          { name: 'spec', type: 'TransferSpec' },
+        ],
+      },
+      primaryType: 'BurnIntent',
+      message: burnIntent,
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    throw new Error(`Gateway withdraw failed at BurnIntent signing: ${msg}`)
+  }
+  debugLog('[Gateway] Stage (a): BurnIntent signed OK')
 
-  const response = await gatewayFetch(`${GATEWAY_API_TESTNET}/transfer`, {
+  debugLog('[Gateway] Stage (b): POST /transfer to Circle Gateway API')
+  const transferResponse = await gatewayFetch(`${GATEWAY_API_TESTNET}/transfer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify([{ burnIntent, signature }], bigintReplacer),
+    body: JSON.stringify([{ burnIntent, signature: burnIntentSignature }], bigintReplacer),
   })
 
-  const result = await response.json() as {
+  const rawTransferBody = await transferResponse.text()
+  debugLog(`[Gateway] Stage (b): HTTP ${transferResponse.status} — ${rawTransferBody.slice(0, 300)}`)
+
+  let transferResult: {
     success?: boolean
     error?: string
     message?: string
     attestation?: Hex
     signature?: Hex
   }
-
-  if (!response.ok || result.success === false || result.error || !result.attestation || !result.signature) {
-    throw new Error(`Gateway API error: ${result.message || result.error || response.statusText}`)
+  try {
+    transferResult = JSON.parse(rawTransferBody) as typeof transferResult
+  } catch {
+    throw new Error(`Gateway /transfer: HTTP ${transferResponse.status} — ${rawTransferBody.slice(0, 300)}`)
   }
+
+  if (!transferResponse.ok || transferResult.success === false || transferResult.error || !transferResult.attestation || !transferResult.signature) {
+    const detail = transferResult.message ?? transferResult.error ?? rawTransferBody.slice(0, 300) ?? transferResponse.statusText
+    throw new Error(`Gateway /transfer: HTTP ${transferResponse.status} — ${detail}`)
+  }
+  debugLog('[Gateway] Stage (b): /transfer OK, got attestation')
 
   await ensureChain(tabId, destinationChain.chain)
   const destinationWalletClient = createGatewayWalletClient(tabId, account, destinationChain.chain)
   const destinationPublicClient = createGatewayPublicClient(destinationChain.chain)
-  const mintTxHash = await destinationWalletClient.writeContract({
-    address: destinationChain.gatewayMinter,
-    abi: GATEWAY_MINTER_ABI,
-    functionName: 'gatewayMint',
-    args: [result.attestation, result.signature],
-  })
+
+  debugLog('[Gateway] Stage (c): calling gatewayMint on-chain')
+  let mintTxHash: Hex
+  try {
+    mintTxHash = await destinationWalletClient.writeContract({
+      address: destinationChain.gatewayMinter,
+      abi: GATEWAY_MINTER_ABI,
+      functionName: 'gatewayMint',
+      args: [transferResult.attestation, transferResult.signature],
+    })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    throw new Error(`Gateway withdraw failed at gatewayMint: ${msg}`)
+  }
+  debugLog(`[Gateway] Stage (c): gatewayMint submitted — ${mintTxHash}`)
 
   try {
     await destinationPublicClient.waitForTransactionReceipt({ hash: mintTxHash })
   } catch (error) {
     throw Object.assign(new Error(`Mint transaction failed: ${mintTxHash}`), { cause: error })
   }
+  debugLog(`[Gateway] Stage (c): gatewayMint confirmed — ${mintTxHash}`)
 
   return {
     mintTxHash,
