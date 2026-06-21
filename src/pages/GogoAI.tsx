@@ -1804,7 +1804,14 @@ export function GogoAI({ onBack }: GogoAIProps) {
           })
         } catch (error) {
           console.error('[GogoAI] gateway tip failed:', error)
-          const errorMessage = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+          const rawError = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+          const insufficientMatch = rawError.match(/Insufficient available balance\. Have: ([\d.]+), Need: ([\d.]+)/)
+          const errorMessage = insufficientMatch
+            ? formatText('gogo.gatewayInsufficientBalance', {
+                current: insufficientMatch[1] ?? '0',
+                needed: insufficientMatch[2] ?? '?',
+              })
+            : rawError
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {

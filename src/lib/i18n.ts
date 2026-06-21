@@ -525,6 +525,9 @@ const EN = {
   'gogo.invalidAddress': "I couldn't use that address. Please provide a full 0x address.",
   'gogo.invalidAmount': "I couldn't use that amount. Use a positive USDC amount with up to 6 decimals.",
   'gogo.amountOverBalance': 'That amount is above your balance.',
+  'gogo.gatewayDepositSuccess': 'Deposited {amount} USDC to Gateway successfully. View on ArcScan: {url}',
+  'gogo.gatewayBalanceDisplay': 'Gateway balance — Available: {available} USDC | Total: {total} USDC | Wallet: {wallet} USDC',
+  'gogo.gatewayInsufficientBalance': 'Your Gateway balance is insufficient (have: {current} USDC, need: {needed} USDC). Say "deposit {needed} USDC to gateway" to fund your Gateway balance first.',
 
   'dailyBrief.recommendations': 'Recommendations',
   'dailyBrief.forYou': 'For You',
@@ -1124,6 +1127,9 @@ const TR = {
   'gogo.invalidAddress': 'Bu adresi kullanamadım. Lütfen tam bir 0x adresi gir.',
   'gogo.invalidAmount': 'Bu miktarı kullanamadım. Pozitif bir USDC miktarı gir ve en fazla 6 ondalık kullan.',
   'gogo.amountOverBalance': 'Bu miktar bakiyenden yüksek.',
+  'gogo.gatewayDepositSuccess': "Gateway'e {amount} USDC başarıyla yatırıldı. ArcScan'de görüntüle: {url}",
+  'gogo.gatewayBalanceDisplay': 'Gateway bakiyesi — Kullanılabilir: {available} USDC | Toplam: {total} USDC | Cüzdan: {wallet} USDC',
+  'gogo.gatewayInsufficientBalance': "Gateway bakiyen yetersiz (mevcut: {current} USDC, gerekli: {needed} USDC). Önce \"gateway'e {needed} USDC yatır\" diyerek Gateway bakiyeni fonla.",
 
   'dailyBrief.recommendations': 'Önerilerim',
   'dailyBrief.forYou': 'Senin için',

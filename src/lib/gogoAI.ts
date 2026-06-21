@@ -1,5 +1,5 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
-import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
+import { BLOCKSCOUT_API_BASE, BLOCKSCOUT_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 import { formatText, getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
@@ -23,6 +23,7 @@ import {
   type TipBudgetLogEntry,
 } from '@/lib/tipBudget'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
+import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
@@ -557,6 +558,33 @@ function parseGatewayTipIntent(message: string): GatewayTipIntent | null {
   if (!hasGatewayHint || !hasTipVerb) return null
 
   return parseCreatorTipIntent(text)
+}
+
+type GatewayDepositIntent = {
+  amount: string
+}
+
+function parseGatewayDepositIntent(message: string): GatewayDepositIntent | null {
+  const text = message.trim()
+  if (!text) return null
+
+  const lowered = normalizeIntentText(text)
+  if (!/gateway/.test(lowered)) return null
+  if (!/yatir|yatır|deposit|fund/.test(lowered)) return null
+
+  const amountMatch = text.match(/(\d+(?:[.,]\d{1,6})?)/)
+  const amount = amountMatch ? normalizeUsdcAmountText(amountMatch[1]) : ''
+  if (!amount || Number.isNaN(Number(amount)) || Number(amount) <= 0) return null
+
+  return { amount }
+}
+
+function parseGatewayBalanceIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return /gateway/.test(lowered) && /balance|bakiye|ne kadar|nedir|how much/.test(lowered)
 }
 
 function buildGatewayTipAction(options: {
@@ -1729,6 +1757,47 @@ export async function askGogo(
   context: GogoContext,
   history: Message[],
 ): Promise<GogoResponse> {
+  // Gateway deposit intent — no Gemini key required; triggers MetaMask approve + deposit
+  const gatewayDepositIntent = parseGatewayDepositIntent(userMessage)
+  if (gatewayDepositIntent) {
+    try {
+      const result = await gatewayDeposit(gatewayDepositIntent.amount)
+      const arcScanUrl = `${BLOCKSCOUT_BASE}/tx/${result.depositTxHash}`
+      return {
+        reply: formatText('gogo.gatewayDepositSuccess', {
+          amount: result.formattedAmount,
+          url: arcScanUrl,
+        }),
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway'),
+        actions: [],
+      }
+    }
+  }
+
+  // Gateway balance intent — no Gemini key required
+  if (parseGatewayBalanceIntent(userMessage)) {
+    try {
+      const snapshot = await gatewayBalance()
+      return {
+        reply: formatText('gogo.gatewayBalanceDisplay', {
+          available: snapshot.gateway.formattedAvailable,
+          total: snapshot.gateway.formattedTotal,
+          wallet: snapshot.wallet.formattedBalance,
+        }),
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('state.error'),
+        actions: [],
+      }
+    }
+  }
+
   const apiKey = await getApiKey()
   if (!apiKey) throw new Error('NO_API_KEY')
 
