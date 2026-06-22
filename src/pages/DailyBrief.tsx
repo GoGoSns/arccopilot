@@ -29,6 +29,9 @@ import { Button } from '@/components/ui/Button'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { ARC_DISCORD_INVITE_URL, fetchArcDiscord, type ArcDiscordResult } from '@/lib/arcDiscord'
 import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
+import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
+import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
+import { recordTip } from '@/lib/tipBudget'
 import {
   categorizeTweets,
   fetchArcTweetFeed,
@@ -43,6 +46,7 @@ import {
 } from '@/lib/reminders'
 import { getExternalErrorMessage } from '@/lib/externalErrors'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
+import { shortenTxHash } from '@/lib/utils'
 
 // --- constants ---------------------------------------------------------------
 const USDC_DECIMALS = 6
@@ -90,6 +94,13 @@ interface RecommendationItem {
   actionLabel: string
   actionStyle?: 'primary' | 'outline'
   onAction: () => void
+}
+
+type TipAdvisorExecutionState = {
+  status: 'sending' | 'sent' | 'failed'
+  txHash?: string
+  explorerUrl?: string
+  error?: string
 }
 
 // --- localStorage cache -------------------------------------------------------
@@ -407,6 +418,12 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [transferError,  setTransferError]  = useState<string | null>(null)
   const [officialTweetsError, setOfficialTweetsError] = useState<string | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
+  const [tipAdvisor, setTipAdvisor] = useState<TipAdvisorResult | null>(null)
+  const [tipAdvisorLoading, setTipAdvisorLoading] = useState(true)
+  const [tipAdvisorError, setTipAdvisorError] = useState<string | null>(null)
+  const [tipAdvisorExecution, setTipAdvisorExecution] = useState<Record<string, TipAdvisorExecutionState>>({})
+  const [tipAdvisorBatchLoading, setTipAdvisorBatchLoading] = useState(false)
+  const [tipAdvisorBatchMessage, setTipAdvisorBatchMessage] = useState<string | null>(null)
 
   // -- Twitter State --
   const [tweets,         setTweets]         = useState<TwitterTweet[]>([])
@@ -847,6 +864,49 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
   }, [refreshNonce])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadTipAdvisor = async () => {
+      if (!address) {
+        setTipAdvisor(null)
+        setTipAdvisorError(null)
+        setTipAdvisorExecution({})
+        setTipAdvisorBatchLoading(false)
+        setTipAdvisorBatchMessage(null)
+        setTipAdvisorLoading(false)
+        return
+      }
+
+      setTipAdvisorLoading(true)
+      setTipAdvisorError(null)
+      setTipAdvisorExecution({})
+      setTipAdvisorBatchLoading(false)
+      setTipAdvisorBatchMessage(null)
+
+      try {
+        const result = await generateTipSuggestions()
+        if (cancelled) return
+        setTipAdvisor(result)
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] tip advisor load failed:', error)
+        setTipAdvisor(null)
+        setTipAdvisorError(getExternalErrorMessage(error, 'state.error'))
+      } finally {
+        if (!cancelled) {
+          setTipAdvisorLoading(false)
+        }
+      }
+    }
+
+    void loadTipAdvisor()
+
+    return () => {
+      cancelled = true
+    }
+  }, [address, refreshNonce])
+
   const isPositive     = balanceChange?.startsWith('+')
   const isNegative     = balanceChange?.startsWith('-')
   const anyWhaleRecent = whaleEntries.some((e) => e.hasRecent)
@@ -930,6 +990,104 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
   const retryBrief = () => {
     setRefreshNonce((value) => value + 1)
+  }
+
+  const updateTipAdvisorExecution = (handle: string, nextState: TipAdvisorExecutionState) => {
+    setTipAdvisorExecution((current) => ({
+      ...current,
+      [handle]: nextState,
+    }))
+  }
+
+  const tipAdvisorAnySending = Object.values(tipAdvisorExecution).some((state) => state.status === 'sending')
+  const pendingTipSuggestions = tipAdvisor?.suggestions.filter(
+    (suggestion) => tipAdvisorExecution[suggestion.handle]?.status !== 'sent',
+  ) ?? []
+
+  const handleTipSuggestionSend = async (suggestion: TipSuggestion) => {
+    if (!address || tipAdvisorBatchLoading || tipAdvisorAnySending) return
+
+    const normalizedAddress = suggestion.address.trim().toLowerCase()
+    if (!normalizedAddress) return
+
+    setTipAdvisorBatchMessage(null)
+    updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
+
+    try {
+      const gatewayResult = await gatewayWithdraw(normalizedAddress, suggestion.amount, 26)
+      await recordTip(suggestion.handle, suggestion.amount).catch((error) => {
+        debugWarn('[DailyBrief] tip budget record failed:', error)
+      })
+
+      updateTipAdvisorExecution(suggestion.handle, {
+        status: 'sent',
+        txHash: gatewayResult.mintTxHash,
+        explorerUrl: gatewayResult.destinationExplorerUrl,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+      updateTipAdvisorExecution(suggestion.handle, {
+        status: 'failed',
+        error: message,
+      })
+    }
+  }
+
+  const handleTipAdvisorSendAll = async () => {
+    if (!tipAdvisor || tipAdvisorBatchLoading || tipAdvisorAnySending || pendingTipSuggestions.length === 0) return
+
+    setTipAdvisorBatchLoading(true)
+    setTipAdvisorBatchMessage(null)
+
+    for (const suggestion of pendingTipSuggestions) {
+      updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
+    }
+
+    try {
+      const gatewayResult = await gatewayBatchTip(
+        pendingTipSuggestions.map((suggestion) => ({
+          handle: suggestion.handle,
+          address: suggestion.address,
+          amount: suggestion.amount,
+        })),
+      )
+
+      for (const recipient of gatewayResult.recipients) {
+        if (recipient.txHash) {
+          await recordTip(recipient.handle, recipient.amount).catch((error) => {
+            debugWarn('[DailyBrief] tip budget record failed:', error)
+          })
+          updateTipAdvisorExecution(recipient.handle, {
+            status: 'sent',
+            txHash: recipient.txHash,
+            explorerUrl: recipient.explorerUrl,
+          })
+        } else {
+          updateTipAdvisorExecution(recipient.handle, {
+            status: 'failed',
+            error: recipient.error ?? t('gogo.couldNotSendViaGateway'),
+          })
+        }
+      }
+
+      setTipAdvisorBatchMessage(
+        `${formatText('gogo.gatewayBatchTipSuccess', {
+          count: gatewayResult.paidCount,
+          total: gatewayResult.totalSentAmount,
+        })}${gatewayResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+      for (const suggestion of pendingTipSuggestions) {
+        updateTipAdvisorExecution(suggestion.handle, {
+          status: 'failed',
+          error: message,
+        })
+      }
+      setTipAdvisorBatchMessage(message)
+    } finally {
+      setTipAdvisorBatchLoading(false)
+    }
   }
 
   if (activePattern && address) {
@@ -1112,6 +1270,149 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               })}
             </div>
           ) : null}
+
+          <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                  {t('dailyBrief.tipAdvisorTitle')}
+                </p>
+                {tipAdvisor?.summary && (
+                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                    {tipAdvisor.summary}
+                  </p>
+                )}
+              </div>
+              {pendingTipSuggestions.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-[10px]"
+                    onClick={() => void handleTipAdvisorSendAll()}
+                    disabled={tipAdvisorBatchLoading || tipAdvisorLoading || tipAdvisorAnySending || pendingTipSuggestions.length === 0}
+                  >
+                  {tipAdvisorBatchLoading ? t('gogo.working') : t('dailyBrief.tipAdvisorSendAll')}
+                </Button>
+              )}
+            </div>
+
+            {tipAdvisorLoading ? (
+              <div className="space-y-2">
+                {[0, 90].map((delay) => (
+                  <div key={delay} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 h-8 w-8 shrink-0 rounded-full bg-arc-border/70" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="h-3 w-3/4 rounded bg-arc-border/70" />
+                        <div className="h-2 w-1/3 rounded bg-arc-border/70" />
+                        <div className="h-8 w-28 rounded-xl bg-arc-border/70" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : tipAdvisorError ? (
+              <ErrorState
+                title={t('state.error')}
+                description={tipAdvisorError}
+                actionLabel={t('state.retry')}
+                onAction={retryBrief}
+              />
+            ) : tipAdvisor?.suggestions.length ? (
+              <div className="space-y-2">
+                {tipAdvisorBatchMessage && (
+                  <p className="text-[10px] text-arc-text-dim">
+                    {tipAdvisorBatchMessage}
+                  </p>
+                )}
+                {tipAdvisor.suggestions.map((suggestion) => {
+                  const execution = tipAdvisorExecution[suggestion.handle]
+                  const isSending = execution?.status === 'sending'
+                  const isSent = execution?.status === 'sent'
+                  const isFailed = execution?.status === 'failed'
+
+                  return (
+                    <div key={suggestion.handle} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${isSent ? 'border-arc-success/30 bg-arc-success/10 text-arc-success' : isFailed ? 'border-arc-danger/30 bg-arc-danger/10 text-arc-danger' : 'border-arc-border bg-arc-card text-white'}`}>
+                          {isSent ? <BadgeCheck size={14} /> : <Send size={14} />}
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-arc-text">
+                                @{suggestion.handle}
+                              </p>
+                              <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                                {suggestion.amount} {t('common.usdc')}
+                              </p>
+                            </div>
+                            <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isSent ? 'border-arc-success/20 bg-arc-success/10 text-arc-success' : isFailed ? 'border-arc-danger/20 bg-arc-danger/10 text-arc-danger' : 'border-arc-border bg-arc-elevated text-arc-text-dim'}`}>
+                              {isSent ? t('common.done') : isFailed ? t('gogo.gatewayBatchFailed') : isSending ? t('gogo.working') : t('dailyBrief.tipAdvisorApprove')}
+                            </span>
+                          </div>
+
+                          <p className="text-xs leading-relaxed text-arc-text-dim">
+                            {suggestion.reason}
+                          </p>
+
+                          {isSent && execution?.txHash && (
+                            <div className="rounded-lg border border-arc-success/20 bg-arc-success/10 px-2.5 py-2">
+                              <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                                {t('gogo.txHash')}
+                              </p>
+                              <div className="mt-1 flex items-center justify-between gap-2">
+                                <p className="font-mono text-[11px] text-arc-text">
+                                  {shortenTxHash(execution.txHash)}
+                                </p>
+                                <a
+                                  href={`${execution.explorerUrl ?? 'https://arcscan.io'}/tx/${execution.txHash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] font-medium text-arc-accent hover:underline"
+                                >
+                                  {t('gogo.viewOnArcScan')}
+                                </a>
+                              </div>
+                            </div>
+                          )}
+
+                          {isFailed && execution?.error && (
+                            <p className="text-xs leading-relaxed text-arc-danger">
+                              {execution.error}
+                            </p>
+                          )}
+
+                          <div className="flex flex-wrap gap-2">
+                            {!isSent && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="h-8 px-3 text-[10px]"
+                                onClick={() => void handleTipSuggestionSend(suggestion)}
+                                disabled={tipAdvisorBatchLoading || isSending}
+                              >
+                                {isSending ? t('gogo.working') : t('dailyBrief.tipAdvisorApprove')}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-arc-border bg-arc-bg/70 px-3 py-4 text-center">
+                <p className="text-sm font-medium text-arc-text">
+                  {tipAdvisor?.summary ?? t('dailyBrief.tipAdvisorEmpty')}
+                </p>
+                <p className="mt-1 text-xs text-arc-text-dim">
+                  {tipAdvisor?.explanation ?? t('dailyBrief.tipAdvisorEmpty')}
+                </p>
+              </div>
+            )}
+          </div>
 
           {recommendations.length === 0 && recommendationsLoading ? (
             <div className="space-y-3">

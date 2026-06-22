@@ -510,6 +510,11 @@ export async function fetchArcTweetFeed(): Promise<TwitterFeedFetchResult> {
   return fetchTweetsByQueryWithCache(query, apiKey, 5, 'community')
 }
 
+export async function fetchTweetsByQuery(query: string, limit = 5): Promise<TwitterFeedFetchResult> {
+  const apiKey = await getTwitterApiKey()
+  return fetchTweetsByQueryWithCache(query, apiKey, limit, 'community')
+}
+
 export async function fetchArcTweets(): Promise<TwitterTweet[]> {
   const result = await fetchArcTweetFeed()
   return result.tweets

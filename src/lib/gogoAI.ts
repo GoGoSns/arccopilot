@@ -28,6 +28,7 @@ import {
   setAutoTipRule,
   type AutoTipWeighting,
 } from '@/lib/autoTip'
+import { generateTipSuggestions } from '@/lib/tipAdvisor'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { useStore } from '@/lib/store'
@@ -719,6 +720,14 @@ function parseAutoTipIntent(message: string): AutoTipIntent | null {
     periodBudgetUsdc: extractAutoTipBudget(text),
     weighting: inferAutoTipWeighting(text) ?? undefined,
   }
+}
+
+function parseTipAdvisorIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return /\b(what tips do you suggest|suggest tips|suggest a tip|who should i tip|who should i support|what should i tip|kime tip atmami onerirsin|kime tip onerirsin|tip onerisi|tip tavsiyesi|tip suggestions?|tip suggestion)\b/.test(lowered)
 }
 
 function buildGatewayTipAction(options: {
@@ -2025,6 +2034,46 @@ export async function askGogo(
 
       return {
         reply: plan.explanation,
+        actions: [gatewayAction],
+        action: gatewayAction,
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('state.error'),
+        actions: [],
+      }
+    }
+  }
+
+  const tipAdvisorIntent = parseTipAdvisorIntent(userMessage)
+  if (tipAdvisorIntent) {
+    try {
+      const advisor = await generateTipSuggestions()
+      if (!advisor.canExecute || advisor.suggestions.length === 0) {
+        return {
+          reply: advisor.explanation,
+          actions: [],
+        }
+      }
+
+      const topSuggestions = advisor.suggestions.slice(0, 3)
+      const gatewayAction = topSuggestions.length === 1
+        ? buildGatewayTipAction({
+            handle: topSuggestions[0]?.handle ?? '',
+            amount: topSuggestions[0]?.amount,
+            recipient: topSuggestions[0]?.address ?? '',
+            destinationDomain: DEFAULT_GATEWAY_DOMAIN,
+          })
+        : buildGatewayBatchTipActionFromRecipients(
+            topSuggestions.map((suggestion) => ({
+              handle: suggestion.handle,
+              address: suggestion.address,
+              amount: suggestion.amount,
+            })),
+          )
+
+      return {
+        reply: advisor.explanation,
         actions: [gatewayAction],
         action: gatewayAction,
       }
