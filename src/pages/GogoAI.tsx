@@ -465,7 +465,20 @@ function getMultiStepActionTitle(
     }
     case 'gateway_batch_tip': {
       const recipients = Array.isArray(params.recipients) ? params.recipients : []
-      const amount = typeof recipients[0]?.amount === 'string' ? recipients[0].amount.trim() : ''
+      const amounts = recipients
+        .map((recipient) => (typeof recipient?.amount === 'string' ? normalizeUsdcAmountText(recipient.amount) : ''))
+        .filter((amount): amount is string => Boolean(amount))
+      const uniqueAmounts = new Set(amounts)
+
+      if (uniqueAmounts.size > 1) {
+        const totalAmount = recipients.reduce((sum, recipient) => sum + Number(normalizeUsdcAmountText(typeof recipient?.amount === 'string' ? recipient.amount : '') || 0), 0)
+        return formatText('gogo.gatewayBatchTipPlanTitle', {
+          count: recipients.length,
+          total: formatUsdcAmount(totalAmount),
+        })
+      }
+
+      const amount = amounts[0] ?? ''
       const amountLabel = amount ? formatUsdcAmount(amount) : t('common.usdc')
       return formatText('gogo.gatewayBatchTipTitle', {
         amount: amountLabel,

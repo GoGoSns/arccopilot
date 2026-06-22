@@ -17,7 +17,16 @@ import {
 } from '@/lib/twitterApi'
 import { listCreators, registerCreator, removeCreator, type CreatorEntry } from '@/lib/creatorRegistry'
 import {
+  DEFAULT_AUTO_TIP_RULE,
+  calculateAutoTipPlan,
+  getAutoTipRule,
+  setAutoTipRule as saveAutoTipRule,
+  type AutoTipRule,
+  type AutoTipWeighting,
+} from '@/lib/autoTip'
+import {
   CREATORS,
+  AUTO_TIP_RULE,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   REMINDERS,
@@ -47,6 +56,17 @@ function readStoredBoolean(value: unknown, fallback: boolean): boolean {
   return fallback
 }
 
+function parseAutoTipAmount(value: string): number | null {
+  const trimmed = value.trim().replace(',', '.')
+  if (!trimmed) return null
+  if (!/^\d+(?:\.\d{1,6})?$/.test(trimmed)) return null
+
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+
+  return parsed
+}
+
 function getSavedKeyLabel(key: string | null): string {
   if (!key) return t('settings.notSet')
   return formatText('settings.savedMasked', { suffix: key.slice(-4) })
@@ -73,6 +93,14 @@ export function Settings({ onBack }: SettingsProps) {
   const [tipBudgetLimitInput, setTipBudgetLimitInput] = useState('')
   const [tipBudgetError, setTipBudgetError] = useState('')
   const [isSavingTipBudget, setIsSavingTipBudget] = useState(false)
+  const [autoTipRule, setAutoTipRuleState] = useState<AutoTipRule | null>(null)
+  const [autoTipEnabled, setAutoTipEnabled] = useState(DEFAULT_AUTO_TIP_RULE.enabled)
+  const [autoTipPeriodBudgetInput, setAutoTipPeriodBudgetInput] = useState('')
+  const [autoTipWeighting, setAutoTipWeightingState] = useState<AutoTipWeighting>(DEFAULT_AUTO_TIP_RULE.weighting)
+  const [autoTipPerCreatorMinInput, setAutoTipPerCreatorMinInput] = useState('')
+  const [autoTipPerCreatorMaxInput, setAutoTipPerCreatorMaxInput] = useState('')
+  const [autoTipError, setAutoTipError] = useState('')
+  const [isSavingAutoTip, setIsSavingAutoTip] = useState(false)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -81,6 +109,10 @@ export function Settings({ onBack }: SettingsProps) {
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
   const tipBudgetRemaining = tipBudget ? Math.max(0, tipBudget.dailyLimitUsdc - tipBudget.spentTodayUsdc) : 0
   const recentTipEntries = tipBudget ? [...tipBudget.log].slice(-5).reverse() : []
+  const autoTipPreview = autoTipRule && tipBudget ? calculateAutoTipPlan(autoTipRule, creators, tipBudget) : null
+  const autoTipPreviewReady = Boolean(autoTipRule && tipBudget)
+  const autoTipPreviewRecipients = autoTipPreview?.recipients.slice(0, 3) ?? []
+  const autoTipPreviewHasMore = Boolean(autoTipPreview && autoTipPreview.recipients.length > autoTipPreviewRecipients.length)
 
   useEffect(() => {
     let active = true
@@ -207,6 +239,49 @@ export function Settings({ onBack }: SettingsProps) {
 
     return () => {
       active = false
+    chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadAutoTipRule = async () => {
+      try {
+        const rule = await getAutoTipRule()
+        if (!active) return
+
+        setAutoTipRuleState(rule)
+        setAutoTipEnabled(rule.enabled)
+        setAutoTipPeriodBudgetInput(formatTipBudgetAmount(rule.periodBudgetUsdc))
+        setAutoTipWeightingState(rule.weighting)
+        setAutoTipPerCreatorMinInput(formatTipBudgetAmount(rule.perCreatorMin))
+        setAutoTipPerCreatorMaxInput(formatTipBudgetAmount(rule.perCreatorMax))
+      } catch (error) {
+        debugWarn('[Settings] auto tip rule load failed:', error)
+        if (!active) return
+
+        setAutoTipRuleState(DEFAULT_AUTO_TIP_RULE)
+        setAutoTipEnabled(DEFAULT_AUTO_TIP_RULE.enabled)
+        setAutoTipPeriodBudgetInput(formatTipBudgetAmount(DEFAULT_AUTO_TIP_RULE.periodBudgetUsdc))
+        setAutoTipWeightingState(DEFAULT_AUTO_TIP_RULE.weighting)
+        setAutoTipPerCreatorMinInput(formatTipBudgetAmount(DEFAULT_AUTO_TIP_RULE.perCreatorMin))
+        setAutoTipPerCreatorMaxInput(formatTipBudgetAmount(DEFAULT_AUTO_TIP_RULE.perCreatorMax))
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[AUTO_TIP_RULE]) {
+        void loadAutoTipRule()
+      }
+    }
+
+    void loadAutoTipRule()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
       chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [])
@@ -287,6 +362,16 @@ export function Settings({ onBack }: SettingsProps) {
     setTipBudgetLimitInput(formatTipBudgetAmount(state.dailyLimitUsdc))
   }
 
+  const refreshAutoTipRule = async (): Promise<void> => {
+    const rule = await getAutoTipRule()
+    setAutoTipRuleState(rule)
+    setAutoTipEnabled(rule.enabled)
+    setAutoTipPeriodBudgetInput(formatTipBudgetAmount(rule.periodBudgetUsdc))
+    setAutoTipWeightingState(rule.weighting)
+    setAutoTipPerCreatorMinInput(formatTipBudgetAmount(rule.perCreatorMin))
+    setAutoTipPerCreatorMaxInput(formatTipBudgetAmount(rule.perCreatorMax))
+  }
+
   const handleSaveTipBudget = async () => {
     const nextLimit = tipBudgetLimitInput.trim()
     if (!nextLimit) {
@@ -305,6 +390,48 @@ export function Settings({ onBack }: SettingsProps) {
       setTipBudgetError(message)
     } finally {
       setIsSavingTipBudget(false)
+    }
+  }
+
+  const handleSaveAutoTipRule = async () => {
+    const periodBudget = parseAutoTipAmount(autoTipPeriodBudgetInput)
+    const minAmount = parseAutoTipAmount(autoTipPerCreatorMinInput)
+    const maxAmount = parseAutoTipAmount(autoTipPerCreatorMaxInput)
+
+    if (periodBudget == null) {
+      setAutoTipError(t('settings.autoTipInvalidBudget'))
+      return
+    }
+
+    if (minAmount == null || maxAmount == null) {
+      setAutoTipError(t('settings.autoTipInvalidRange'))
+      return
+    }
+
+    if (minAmount > maxAmount) {
+      setAutoTipError(t('settings.autoTipInvalidRange'))
+      return
+    }
+
+    const nextRule: AutoTipRule = {
+      enabled: autoTipEnabled,
+      periodBudgetUsdc: periodBudget,
+      weighting: autoTipWeighting,
+      perCreatorMin: minAmount,
+      perCreatorMax: maxAmount,
+    }
+
+    setIsSavingAutoTip(true)
+    setAutoTipError('')
+
+    try {
+      await saveAutoTipRule(nextRule)
+      await refreshAutoTipRule()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setAutoTipError(message)
+    } finally {
+      setIsSavingAutoTip(false)
     }
   }
 
@@ -686,6 +813,148 @@ export function Settings({ onBack }: SettingsProps) {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="border-b border-arc-border bg-arc-card px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-arc-border bg-arc-bg text-[11px] font-semibold tracking-[0.18em] text-white">
+              AT
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white">{t('settings.autoTipTitle')}</p>
+                  <p className="text-[10px] text-arc-text-dim">{t('settings.autoTipDescription')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutoTipEnabled((current) => !current)
+                    setAutoTipError('')
+                  }}
+                  className="inline-flex items-center gap-2 rounded-full border border-arc-border bg-arc-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:border-white/30"
+                >
+                  <span className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full border transition-colors ${autoTipEnabled ? 'border-white/40 bg-white' : 'border-arc-border bg-arc-border/60'}`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-arc-bg shadow transition-transform ${autoTipEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </span>
+                  <span>{autoTipEnabled ? t('settings.autoTipStateOn') : t('settings.autoTipStateOff')}</span>
+                </button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input
+                  label={t('settings.autoTipPeriodBudget')}
+                  value={autoTipPeriodBudgetInput}
+                  onChange={(e) => {
+                    setAutoTipPeriodBudgetInput(e.target.value)
+                    setAutoTipError('')
+                  }}
+                  placeholder={formatTipBudgetAmount(DEFAULT_AUTO_TIP_RULE.periodBudgetUsdc)}
+                  aria-label={t('settings.autoTipPeriodBudget')}
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
+                />
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">
+                    {t('settings.autoTipWeighting')}
+                  </label>
+                  <select
+                    value={autoTipWeighting}
+                    onChange={(e) => {
+                      setAutoTipWeightingState(e.target.value as AutoTipWeighting)
+                      setAutoTipError('')
+                    }}
+                    className="w-full rounded-lg border border-arc-border bg-arc-bg px-3 py-2 text-xs font-medium text-white outline-none transition-colors focus:border-arc-accent"
+                  >
+                    <option value="equal">{t('settings.autoTipWeightingEqual')}</option>
+                    <option value="engagement">{t('settings.autoTipWeightingEngagement')}</option>
+                    <option value="recency">{t('settings.autoTipWeightingRecency')}</option>
+                  </select>
+                </div>
+
+                <Input
+                  label={t('settings.autoTipPerCreatorMin')}
+                  value={autoTipPerCreatorMinInput}
+                  onChange={(e) => {
+                    setAutoTipPerCreatorMinInput(e.target.value)
+                    setAutoTipError('')
+                  }}
+                  placeholder="0.05"
+                  aria-label={t('settings.autoTipPerCreatorMin')}
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
+                />
+                <Input
+                  label={t('settings.autoTipPerCreatorMax')}
+                  value={autoTipPerCreatorMaxInput}
+                  onChange={(e) => {
+                    setAutoTipPerCreatorMaxInput(e.target.value)
+                    setAutoTipError('')
+                  }}
+                  placeholder="1.00"
+                  aria-label={t('settings.autoTipPerCreatorMax')}
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
+                />
+              </div>
+
+              {autoTipError && <p className="text-xs text-arc-danger">{autoTipError}</p>}
+
+              <div className="flex items-center justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void handleSaveAutoTipRule()}
+                  disabled={isSavingAutoTip}
+                  className="min-w-28"
+                >
+                  {isSavingAutoTip ? t('common.loading') : t('settings.autoTipSaveRule')}
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-arc-border bg-arc-bg px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.autoTipPreviewTitle')}</p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {autoTipPreview ? autoTipPreview.summary : (autoTipPreviewReady ? t('settings.autoTipPreviewOff') : t('state.loading'))}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-arc-border bg-arc-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                    {autoTipEnabled ? t('settings.autoTipStateOn') : t('settings.autoTipStateOff')}
+                  </span>
+                </div>
+
+                {autoTipPreview ? (
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs leading-5 text-arc-text-dim">{autoTipPreview.explanation}</p>
+                    {autoTipPreview.canExecute ? (
+                      <div className="space-y-2">
+                        {autoTipPreviewRecipients.map((recipient) => (
+                          <div key={`${recipient.handle}-${recipient.address}`} className="rounded-xl border border-arc-border bg-arc-card px-3 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-white">@{recipient.handle}</p>
+                                <p className="text-[10px] text-arc-text-dim">{formatAddress(recipient.address, 4)}</p>
+                              </div>
+                              <p className="shrink-0 text-sm font-semibold text-white">
+                                {formatTipBudgetAmount(Number(recipient.amount))} {t('common.usdc')}
+                              </p>
+                            </div>
+                            <p className="mt-2 text-[10px] leading-4 text-arc-text-dim">{recipient.reason}</p>
+                          </div>
+                        ))}
+                        {autoTipPreviewHasMore && (
+                          <p className="text-[10px] text-arc-text-dim">
+                            +{autoTipPreview ? autoTipPreview.recipients.length - autoTipPreviewRecipients.length : 0} more
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-arc-text-dim">{autoTipPreviewReady ? t('settings.autoTipPreviewOff') : t('state.loading')}</p>
                 )}
               </div>
             </div>
