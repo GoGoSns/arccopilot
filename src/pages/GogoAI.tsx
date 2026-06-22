@@ -21,6 +21,7 @@ import {
   sanitizeActions,
   setApiKey as saveGeminiApiKey,
   type AddressAnalysis,
+  type GatewayBatchTipRecipientAction,
   type GogoAction,
   type GogoContext,
   type GogoImageResult,
@@ -32,7 +33,7 @@ import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
-import { gatewayWithdraw } from '@/lib/gatewayMetamask'
+import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
 import { canTip, formatTipBudgetAmount, getBudgetState, recordTip } from '@/lib/tipBudget'
 import {
   addReminder,
@@ -205,6 +206,8 @@ function getActionLabel(action?: GogoAction | null): string {
       return t('gogo.tipCreator')
     case 'gateway_tip':
       return t('gogo.gatewayTip')
+    case 'gateway_batch_tip':
+      return t('gogo.gatewayBatchTip')
     case 'view_address':
       return t('gogo.viewAddress')
     case 'track_whale':
@@ -239,6 +242,8 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
       return t('gogo.preparingTip')
     case 'gateway_tip':
       return t('gogo.preparingGatewayTip')
+    case 'gateway_batch_tip':
+      return t('gogo.preparingGatewayBatchTip')
     default:
       return t('gogo.working')
   }
@@ -255,6 +260,11 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
 
   if (action?.type === 'gateway_tip') {
     return action.params?.txHash ? t('gogo.gatewayTipSent') : t('gogo.done')
+  }
+
+  if (action?.type === 'gateway_batch_tip') {
+    const { paidCount } = getGatewayBatchTipStats(action)
+    return formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })
   }
 
   return t('gogo.done')
@@ -453,6 +463,15 @@ function getMultiStepActionTitle(
         amount: amountLabel,
       })
     }
+    case 'gateway_batch_tip': {
+      const recipients = Array.isArray(params.recipients) ? params.recipients : []
+      const amount = typeof recipients[0]?.amount === 'string' ? recipients[0].amount.trim() : ''
+      const amountLabel = amount ? formatUsdcAmount(amount) : t('common.usdc')
+      return formatText('gogo.gatewayBatchTipTitle', {
+        amount: amountLabel,
+        count: recipients.length,
+      })
+    }
     case 'view_address':
       return `${t('gogo.viewAddress')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'track_whale':
@@ -491,6 +510,42 @@ function getMultiStepActionTitle(
     case 'none':
     default:
       return t('gogo.nextStep')
+  }
+}
+
+function getGatewayBatchTipStats(action?: GogoAction | null): {
+  recipients: GatewayBatchTipRecipientAction[]
+  paidCount: number
+  failedCount: number
+  totalSentAmount: string
+  totalRequestedAmount: string
+} {
+  if (!action || action.type !== 'gateway_batch_tip') {
+    return {
+      recipients: [],
+      paidCount: 0,
+      failedCount: 0,
+      totalSentAmount: '0',
+      totalRequestedAmount: '0',
+    }
+  }
+
+  const recipients = Array.isArray(action.params?.recipients) ? action.params.recipients : []
+  const paidRecipients = recipients.filter((recipient) => Boolean(recipient.txHash))
+  const failedCount = recipients.filter((recipient) => Boolean(recipient.error)).length
+  const totalRequestedAmount = typeof action.params.totalRequestedAmount === 'string' && action.params.totalRequestedAmount.trim()
+    ? action.params.totalRequestedAmount.trim()
+    : recipients.reduce((sum, recipient) => sum + Number(recipient.amount || 0), 0).toString()
+  const totalSentAmount = typeof action.params.totalSentAmount === 'string' && action.params.totalSentAmount.trim()
+    ? action.params.totalSentAmount.trim()
+    : paidRecipients.reduce((sum, recipient) => sum + Number(recipient.amount || 0), 0).toString()
+
+  return {
+    recipients,
+    paidCount: typeof action.params.paidCount === 'number' ? action.params.paidCount : paidRecipients.length,
+    failedCount,
+    totalSentAmount,
+    totalRequestedAmount,
   }
 }
 
@@ -1365,6 +1420,144 @@ export function GogoAI({ onBack }: GogoAIProps) {
     )
   }
 
+  const renderGatewayBatchTipCard = (
+    action: GogoAction | null | undefined,
+    isUser: boolean,
+    isActionLoading: boolean,
+  ) => {
+    if (!action || action.type !== 'gateway_batch_tip') return null
+    if (!action.completed && !isActionLoading) return null
+
+    const { recipients, paidCount, failedCount, totalSentAmount } = getGatewayBatchTipStats(action)
+    const hasPartialFailure = failedCount > 0
+    const batchAmount = typeof recipients[0]?.amount === 'string' ? recipients[0].amount : ''
+
+    return (
+      <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+        <Card className="border border-arc-border bg-arc-card p-4 shadow-lg shadow-black/10">
+          {isActionLoading ? (
+            <div className="flex items-center gap-3">
+              <Loader2 size={18} className="animate-spin text-arc-accent" />
+              <div>
+                <p className="text-sm font-medium text-arc-text">{t('gogo.preparingGatewayBatchTip')}</p>
+                <p className="text-xs text-arc-text-dim">
+                  {formatText('gogo.gatewayBatchTipTitle', {
+                    amount: batchAmount ? formatUsdcAmount(batchAmount) : t('common.usdc'),
+                    count: recipients.length,
+                  })}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
+                    {t('gogo.gatewayBatchSummaryTitle')}
+                  </p>
+                  <h4 className="mt-1 text-base font-semibold text-arc-text">
+                    {formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })}
+                  </h4>
+                </div>
+                <span className="rounded-full border border-arc-border bg-arc-elevated px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                  ArcScan
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">
+                    {t('gogo.gatewayBatchTotalSent')}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-arc-text">
+                    {formatUsdcAmount(totalSentAmount)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">
+                    {t('gogo.gatewayBatchCreatorsPaid')}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-arc-text">
+                    {paidCount}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-arc-border bg-arc-bg/60">
+                <div className="grid grid-cols-[1.4fr_0.8fr_1fr] gap-2 border-b border-arc-border px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">
+                  <span>{t('gogo.gatewayBatchCreator')}</span>
+                  <span className="text-right">{t('gogo.gatewayBatchAmount')}</span>
+                  <span className="text-right">{t('gogo.gatewayBatchStatus')}</span>
+                </div>
+                <div className="space-y-2 p-2">
+                  {recipients.map((recipient, recipientIndex) => {
+                    const txHash = recipient.txHash?.trim() ?? ''
+                    const explorerUrl = recipient.explorerUrl?.trim() || EXPLORER_URL
+                    const handleLabel = recipient.handle ? `@${recipient.handle}` : formatAddress(recipient.address, 4)
+                    const statusLabel = txHash
+                      ? t('gogo.gatewayBatchPaid')
+                      : t('gogo.gatewayBatchFailed')
+                    const statusClassName = txHash
+                      ? 'border-arc-success/20 bg-arc-success/10 text-arc-success'
+                      : 'border-arc-danger/20 bg-arc-danger/10 text-arc-danger'
+
+                    return (
+                      <div key={`${recipient.handle}-${recipient.address}-${recipientIndex}`} className="rounded-xl border border-arc-border bg-arc-card px-3 py-2">
+                        <div className="grid grid-cols-[1.4fr_0.8fr_1fr] items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-arc-text">
+                              {handleLabel}
+                            </p>
+                            <p className="mt-0.5 text-[11px] text-arc-text-dim">
+                              {formatAddress(recipient.address, 4)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-arc-text">
+                              {formatUsdcAmount(recipient.amount)}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 text-right">
+                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusClassName}`}>
+                              {statusLabel}
+                            </span>
+                            {txHash ? (
+                              <a
+                                href={`${explorerUrl}/tx/${txHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
+                              >
+                                {shortenTxHash(txHash)}
+                                <ExternalLink size={10} />
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {recipient.error && (
+                          <p className="mt-2 text-xs text-arc-danger">
+                            {recipient.error}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {hasPartialFailure && (
+                <p className="mt-3 text-xs text-arc-text-dim">
+                  {t('gogo.gatewayBatchPartialFailureNote')}
+                </p>
+              )}
+            </>
+          )}
+        </Card>
+      </div>
+    )
+  }
+
   const speakMessage = (messageKey: string, text: string) => {
     if (!voiceResponsesReady || !speechSynthesisSupported) {
       debugWarn('[GogoAI] voice responses unavailable in this context')
@@ -1486,7 +1679,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
     if (!action || action.type === 'none' || action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
@@ -1828,6 +2021,100 @@ export function GogoAI({ onBack }: GogoAIProps) {
         }
         break
       }
+      case 'gateway_batch_tip': {
+        setAnalysisLoadingKey(messageKey)
+
+        try {
+          const recipients = Array.isArray(action.params?.recipients)
+            ? action.params.recipients
+                .map((recipient) => {
+                  const handle = typeof recipient?.handle === 'string' ? normalizeCreatorHandle(recipient.handle) : ''
+                  const address = typeof recipient?.address === 'string' ? recipient.address.trim() : ''
+                  const amount = normalizeUsdcAmountText(typeof recipient?.amount === 'string' ? recipient.amount : '')
+
+                  if (!handle || !address || !amount) return null
+
+                  return {
+                    handle,
+                    address,
+                    amount,
+                  }
+                })
+                .filter((recipient): recipient is { handle: string; address: string; amount: string } => Boolean(recipient))
+            : []
+
+          if (recipients.length === 0) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: t('gogo.gatewayBatchEmpty'),
+              }),
+            )
+            break
+          }
+
+          const gatewayBatchResult = await gatewayBatchTip(recipients)
+
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) =>
+              currentAction.type === 'gateway_batch_tip'
+                ? {
+                    ...currentAction,
+                    completed: true,
+                    params: {
+                      ...currentAction.params,
+                      recipients: gatewayBatchResult.recipients,
+                      totalRequestedAmount: gatewayBatchResult.totalRequestedAmount,
+                      totalSentAmount: gatewayBatchResult.totalSentAmount,
+                      paidCount: gatewayBatchResult.paidCount,
+                      failedCount: gatewayBatchResult.failedCount,
+                      availableBalance: gatewayBatchResult.availableBalance,
+                      prepared: true,
+                    },
+                  }
+                : currentAction,
+            (message) => ({
+              ...message,
+              content: `${formatText('gogo.gatewayBatchTipSuccess', {
+                count: gatewayBatchResult.paidCount,
+                total: gatewayBatchResult.totalSentAmount,
+              })}${gatewayBatchResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+            }),
+          )
+
+          for (const recipient of gatewayBatchResult.recipients) {
+            if (!recipient.txHash) continue
+            await recordTip(recipient.handle, recipient.amount).catch((recordError) => {
+              console.error('[GogoAI] gateway batch tip budget record failed:', recordError)
+            })
+          }
+        } catch (error) {
+          console.error('[GogoAI] gateway batch tip failed:', error)
+          const rawError = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+          const nextMessages = messagesRef.current.map((message, index) => {
+            if (index !== messageIndex) return message
+            return {
+              ...message,
+              content: rawError,
+            }
+          })
+
+          messagesRef.current = nextMessages
+          setMessages(nextMessages)
+          void saveGogoHistory(nextMessages)
+        } finally {
+          setAnalysisLoadingKey(null)
+        }
+        break
+      }
       case 'create_reminder': {
         setAnalysisLoadingKey(messageKey)
 
@@ -2042,7 +2329,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       action &&
       analysisLoadingKey === actionKey &&
       !action.completed &&
-      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip'),
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'),
     )
     const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
@@ -2117,6 +2404,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 </p>
               </div>
             )}
+
+            {renderGatewayBatchTipCard(action, isUser, isActionLoading)}
 
             {draftTweetAction && (
               <div className="rounded-xl border border-arc-border bg-arc-bg/80 p-3">
@@ -2487,7 +2776,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip'))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null
@@ -2621,6 +2910,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       </div>
                     </div>
                   )}
+
+                  {renderGatewayBatchTipCard(action, isUser, isActionLoading)}
 
                   {gatewayTipTxHash && (
                     <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>

@@ -18,12 +18,13 @@ import {
 import { CHAIN_CONFIGS, GATEWAY_DOMAINS } from '@circle-fin/x402-batching/client'
 import { debugLog } from '@/lib/debug'
 import { fetchWithTimeout } from '@/lib/external'
-import { t } from '@/lib/i18n'
+import { formatText, t } from '@/lib/i18n'
 import {
   ensureMetaMaskAccounts,
   getMetaMaskFriendlyError,
   type MetaMaskErrorInfo,
 } from '@/lib/metamask'
+import { normalizeCreatorHandle } from '@/lib/creatorRegistry'
 import { useStore } from '@/lib/store'
 
 const GATEWAY_API_TESTNET = 'https://gateway-api-testnet.circle.com/v1'
@@ -205,6 +206,30 @@ export type GatewayWithdrawResult = {
   recipient: Address
   destinationDomain: number
   destinationExplorerUrl: string
+}
+
+export type GatewayBatchTipRecipientInput = {
+  handle: string
+  address: string
+  amount: string | number
+}
+
+export type GatewayBatchTipRecipientResult = {
+  handle: string
+  address: string
+  amount: string
+  txHash?: Hex
+  explorerUrl?: string
+  error?: string
+}
+
+export type GatewayBatchTipResult = {
+  recipients: GatewayBatchTipRecipientResult[]
+  totalRequestedAmount: string
+  totalSentAmount: string
+  paidCount: number
+  failedCount: number
+  availableBalance: string
 }
 
 type GatewayWalletClient = {
@@ -490,6 +515,40 @@ function normalizeAddressForTransfer(address: string): Address {
   return getAddress(address)
 }
 
+function prepareBatchRecipient(input: GatewayBatchTipRecipientInput): {
+  recipient?: {
+    handle: string
+    address: Address
+    amount: string
+    amountMicros: bigint
+  }
+  error?: string
+} {
+  const handle = normalizeCreatorHandle(typeof input.handle === 'string' ? input.handle : '')
+  if (!handle) {
+    return { error: t('settings.invalidCreatorHandle') }
+  }
+
+  const addressText = typeof input.address === 'string' ? input.address.trim() : ''
+  if (!isValidAddress(addressText)) {
+    return { error: t('gogo.invalidAddress') }
+  }
+
+  const amount = normalizeUsdcAmountInput(input.amount)
+  if (!amount || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
+    return { error: t('gogo.invalidAmount') }
+  }
+
+  return {
+    recipient: {
+      handle,
+      address: normalizeAddressForTransfer(addressText),
+      amount,
+      amountMicros: parseUnits(amount, 6),
+    },
+  }
+}
+
 function buildBurnIntent(params: {
   sourceAccount: Address
   recipient: Address
@@ -766,5 +825,126 @@ export async function gatewayWithdraw(
     recipient,
     destinationDomain,
     destinationExplorerUrl: getExplorerUrl(destinationChain.chain),
+  }
+}
+
+export async function gatewayBatchTip(recipients: GatewayBatchTipRecipientInput[]): Promise<GatewayBatchTipResult> {
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error(t('gogo.gatewayBatchEmpty'))
+  }
+
+  const indexedResults: Array<GatewayBatchTipRecipientResult & { index: number }> = []
+  const validRecipients: Array<{
+    index: number
+    handle: string
+    address: Address
+    amount: string
+    amountMicros: bigint
+  }> = []
+
+  let requestedMicros = 0n
+
+  for (const [index, input] of recipients.entries()) {
+    const prepared = prepareBatchRecipient(input)
+    if (!prepared.recipient) {
+      indexedResults.push({
+        index,
+        handle: normalizeCreatorHandle(typeof input.handle === 'string' ? input.handle : '') || (typeof input.handle === 'string' ? input.handle.trim() : ''),
+        address: typeof input.address === 'string' ? input.address.trim() : '',
+        amount: normalizeUsdcAmountInput(input.amount),
+        error: prepared.error ?? t('gogo.couldNotSendViaGateway'),
+      })
+      continue
+    }
+
+    validRecipients.push({
+      index,
+      ...prepared.recipient,
+    })
+    requestedMicros += prepared.recipient.amountMicros
+  }
+
+  if (validRecipients.length === 0) {
+    return {
+      recipients: indexedResults
+        .sort((left, right) => left.index - right.index)
+        .map(({ index: _index, ...recipient }) => recipient),
+      totalRequestedAmount: '0',
+      totalSentAmount: '0',
+      paidCount: 0,
+      failedCount: indexedResults.length,
+      availableBalance: '0',
+    }
+  }
+
+  const balanceSnapshot = await gatewayBalance()
+  const availableMicros = balanceSnapshot.gateway.available
+  const availableBalance = balanceSnapshot.gateway.formattedAvailable
+
+  if (requestedMicros > availableMicros) {
+    const insufficientError = formatText('gogo.gatewayInsufficientBalance', {
+      current: availableBalance,
+      needed: formatUnits(requestedMicros, 6),
+    })
+
+    return {
+      recipients: [
+        ...indexedResults,
+        ...validRecipients.map((recipient) => ({
+          index: recipient.index,
+          handle: recipient.handle,
+          address: recipient.address,
+          amount: recipient.amount,
+          error: insufficientError,
+        })),
+      ]
+        .sort((left, right) => left.index - right.index)
+        .map(({ index: _index, ...recipient }) => recipient),
+      totalRequestedAmount: formatUnits(requestedMicros, 6),
+      totalSentAmount: '0',
+      paidCount: 0,
+      failedCount: validRecipients.length + indexedResults.length,
+      availableBalance,
+    }
+  }
+
+  let sentMicros = 0n
+
+  for (const recipient of validRecipients) {
+    try {
+      const result = await gatewayWithdraw(recipient.address, recipient.amount, GATEWAY_DOMAINS.arcTestnet)
+      indexedResults.push({
+        index: recipient.index,
+        handle: recipient.handle,
+        address: recipient.address,
+        amount: recipient.amount,
+        txHash: result.mintTxHash,
+        explorerUrl: result.destinationExplorerUrl,
+      })
+      sentMicros += result.amount
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+      indexedResults.push({
+        index: recipient.index,
+        handle: recipient.handle,
+        address: recipient.address,
+        amount: recipient.amount,
+        error: message,
+      })
+    }
+  }
+
+  const paidCount = indexedResults.filter((recipient) => Boolean(recipient.txHash)).length
+  const failedCount = indexedResults.length - paidCount
+
+  return {
+    recipients: indexedResults
+      .sort((left, right) => left.index - right.index)
+      .map(({ index: _index, ...recipient }) => recipient),
+    totalRequestedAmount: formatUnits(requestedMicros, 6),
+    totalSentAmount: formatUnits(sentMicros, 6),
+    paidCount,
+    failedCount,
+    availableBalance,
   }
 }

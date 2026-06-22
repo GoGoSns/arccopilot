@@ -148,6 +148,25 @@ type BlockscoutFetchResult<T> = {
   data: null
 }
 
+export type GatewayBatchTipRecipientAction = {
+  handle: string
+  address: string
+  amount: string
+  txHash?: string
+  explorerUrl?: string
+  error?: string
+}
+
+export type GatewayBatchTipActionParams = {
+  recipients: GatewayBatchTipRecipientAction[]
+  totalRequestedAmount?: string
+  totalSentAmount?: string
+  paidCount?: number
+  failedCount?: number
+  availableBalance?: string
+  prepared?: boolean
+}
+
 type PromptContext = {
   wallet: {
     address: string
@@ -176,6 +195,7 @@ export type GogoAction =
   | { type: 'send'; params: { recipient?: string; amount?: string }; completed?: boolean }
   | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean }; completed?: boolean }
   | { type: 'gateway_tip'; params: { handle: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean }; completed?: boolean }
+  | { type: 'gateway_batch_tip'; params: GatewayBatchTipActionParams; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
   | { type: 'analyze_address'; params: { address: string }; completed?: boolean; analysis?: AddressAnalysis }
@@ -430,14 +450,26 @@ function buildBatchTipReply(options: {
   dailyLimit: number
   availableBudget: number
   totalAmount: number
+  mode?: 'default' | 'gateway'
 }): string {
   const amountValue = Number(options.amount)
   if (!Number.isFinite(amountValue) || amountValue <= 0) {
     return t('gogo.tipBudgetNeedAmount')
   }
 
+  const mode = options.mode ?? 'default'
+  const preparedKey = mode === 'gateway'
+    ? 'gogo.gatewayBatchTipPrepared'
+    : 'gogo.tipBudgetBatchPrepared'
+  const partialKey = mode === 'gateway'
+    ? 'gogo.gatewayBatchTipPartial'
+    : 'gogo.tipBudgetBatchPartial'
+  const overKey = mode === 'gateway'
+    ? 'gogo.gatewayBatchTipOver'
+    : 'gogo.tipBudgetBatchOver'
+
   if (options.coveredCreators <= 0) {
-    return formatText('gogo.tipBudgetBatchOver', {
+    return formatText(overKey, {
       amount: formatBudgetNumber(amountValue),
       remaining: formatBudgetNumber(options.availableBudget),
       limit: formatBudgetNumber(options.dailyLimit),
@@ -445,8 +477,8 @@ function buildBatchTipReply(options: {
   }
 
   const baseKey = options.coveredCreators < (options.requestedCount ?? options.totalCreators)
-    ? 'gogo.tipBudgetBatchPartial'
-    : 'gogo.tipBudgetBatchPrepared'
+    ? partialKey
+    : preparedKey
 
   const summary = formatText(baseKey, {
     count: options.coveredCreators,
@@ -471,6 +503,21 @@ function buildBatchTipActions(creators: CreatorEntry[], batchRecipients: Array<{
     },
     completed: false,
   }))
+}
+
+function buildGatewayBatchTipAction(creators: CreatorEntry[], amount: string): GogoAction {
+  return {
+    type: 'gateway_batch_tip',
+    params: {
+      recipients: creators.map((creator) => ({
+        handle: creator.handle,
+        address: creator.address,
+        amount,
+      })),
+      prepared: false,
+    },
+    completed: false,
+  }
 }
 
 type TipRequestIntent =
@@ -545,6 +592,7 @@ function parseTipRequestIntent(message: string): TipRequestIntent | null {
 }
 
 type GatewayTipIntent = CreatorTipIntent
+type GatewayBatchTipIntent = BatchCreatorTipIntent
 
 const DEFAULT_GATEWAY_DOMAIN = 26
 
@@ -558,6 +606,16 @@ function parseGatewayTipIntent(message: string): GatewayTipIntent | null {
   if (!hasGatewayHint || !hasTipVerb) return null
 
   return parseCreatorTipIntent(text)
+}
+
+function parseGatewayBatchTipIntent(message: string): GatewayBatchTipIntent | null {
+  const text = message.trim()
+  if (!text) return null
+
+  const lowered = normalizeIntentText(text)
+  if (!/\bgateway\b/.test(lowered)) return null
+
+  return parseBatchCreatorTipIntent(text)
 }
 
 type GatewayDepositIntent = {
@@ -634,6 +692,7 @@ function isSupportedActionType(value: unknown): value is GogoAction['type'] {
   return value === 'send'
     || value === 'tip_creator'
     || value === 'gateway_tip'
+    || value === 'gateway_batch_tip'
     || value === 'view_address'
     || value === 'track_whale'
     || value === 'analyze_address'
@@ -713,6 +772,56 @@ function normalizeAction(raw: unknown): GogoAction | null {
           destinationDomain,
           txHash: txHash || undefined,
           explorerUrl: explorerUrl || undefined,
+          prepared,
+        },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'gateway_batch_tip': {
+      const recipients = Array.isArray(params.recipients)
+        ? params.recipients
+            .map((recipient): GatewayBatchTipRecipientAction | null => {
+              if (!isRecord(recipient)) return null
+
+              const handle = typeof recipient.handle === 'string' ? normalizeCreatorHandle(recipient.handle) : ''
+              const address = typeof recipient.address === 'string' ? recipient.address.trim().toLowerCase() : ''
+              const amount = normalizeUsdcAmountText(typeof recipient.amount === 'string' ? recipient.amount : '')
+              const txHash = typeof recipient.txHash === 'string' ? recipient.txHash.trim() : ''
+              const explorerUrl = typeof recipient.explorerUrl === 'string' ? recipient.explorerUrl.trim() : ''
+              const error = typeof recipient.error === 'string' ? recipient.error.trim() : ''
+
+              if (!handle || !address || !amount) return null
+
+              return {
+                handle,
+                address,
+                amount,
+                txHash: txHash || undefined,
+                explorerUrl: explorerUrl || undefined,
+                error: error || undefined,
+              }
+            })
+            .filter((recipient): recipient is GatewayBatchTipRecipientAction => recipient !== null)
+        : []
+
+      if (recipients.length === 0) return null
+
+      const totalRequestedAmount = normalizeUsdcAmountText(typeof params.totalRequestedAmount === 'string' ? params.totalRequestedAmount : '')
+      const totalSentAmount = normalizeUsdcAmountText(typeof params.totalSentAmount === 'string' ? params.totalSentAmount : '')
+      const paidCount = toFiniteNumber(params.paidCount)
+      const failedCount = toFiniteNumber(params.failedCount)
+      const availableBalance = normalizeUsdcAmountText(typeof params.availableBalance === 'string' ? params.availableBalance : '')
+      const prepared = typeof params.prepared === 'boolean' ? params.prepared : undefined
+
+      return {
+        type: 'gateway_batch_tip',
+        params: {
+          recipients,
+          totalRequestedAmount: totalRequestedAmount || undefined,
+          totalSentAmount: totalSentAmount || undefined,
+          paidCount: paidCount ?? undefined,
+          failedCount: failedCount ?? undefined,
+          availableBalance: availableBalance || undefined,
           prepared,
         },
         completed: Boolean(raw.completed),
@@ -1802,12 +1911,79 @@ export async function askGogo(
   if (!apiKey) throw new Error('NO_API_KEY')
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
-  const [creators, tipRequestIntent, gatewayTipIntent, budgetState] = await Promise.all([
+  const [creators, tipRequestIntent, gatewayTipIntent, gatewayBatchTipIntent, budgetState] = await Promise.all([
     listCreators(),
     Promise.resolve(parseTipRequestIntent(userMessage)),
     Promise.resolve(parseGatewayTipIntent(userMessage)),
+    Promise.resolve(parseGatewayBatchTipIntent(userMessage)),
     getBudgetState(),
   ])
+
+  if (gatewayBatchTipIntent) {
+    const amount = gatewayBatchTipIntent.amount
+    if (!amount) {
+      return {
+        reply: t('gogo.tipBudgetNeedAmount'),
+        actions: [],
+      }
+    }
+
+    const amountValue = Number(amount)
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      return {
+        reply: t('gogo.tipBudgetNeedAmount'),
+        actions: [],
+      }
+    }
+
+    const batchDecision = await canTip(amount)
+    const rankedCreators = rankCreatorsForBatch(creators, budgetState.log)
+    if (rankedCreators.length === 0) {
+      return {
+        reply: t('gogo.noCreatorsRegistered'),
+        actions: [],
+      }
+    }
+
+    const availableBudget = Math.max(0, batchDecision.remaining)
+    const requestedCount = gatewayBatchTipIntent.requestedCount ?? rankedCreators.length
+    const affordableCount = Number(
+      toUsdcMicros(availableBudget) / toUsdcMicros(amountValue),
+    )
+    const coveredCreators = rankedCreators.slice(0, Math.min(requestedCount, affordableCount))
+
+    if (coveredCreators.length === 0) {
+      return {
+        reply: buildBatchTipReply({
+          amount,
+          requestedCount,
+          totalCreators: rankedCreators.length,
+          coveredCreators: 0,
+          dailyLimit: budgetState.dailyLimitUsdc,
+          availableBudget,
+          totalAmount: 0,
+          mode: 'gateway',
+        }),
+        actions: [],
+      }
+    }
+
+    const gatewayAction = buildGatewayBatchTipAction(coveredCreators, amount)
+    return {
+      reply: buildBatchTipReply({
+        amount,
+        requestedCount,
+        totalCreators: rankedCreators.length,
+        coveredCreators: coveredCreators.length,
+        dailyLimit: budgetState.dailyLimitUsdc,
+        availableBudget,
+        totalAmount: coveredCreators.length * amountValue,
+        mode: 'gateway',
+      }),
+      actions: [gatewayAction],
+      action: gatewayAction,
+    }
+  }
 
   if (tipRequestIntent?.kind === 'batch') {
     const amount = tipRequestIntent.amount
@@ -1852,6 +2028,7 @@ export async function askGogo(
           dailyLimit: budgetState.dailyLimitUsdc,
           availableBudget,
           totalAmount: 0,
+          mode: 'default',
         }),
         actions: [],
       }
@@ -1883,6 +2060,7 @@ export async function askGogo(
           dailyLimit: budgetState.dailyLimitUsdc,
           availableBudget,
           totalAmount,
+          mode: 'default',
         }),
         actions,
         action: actions[0],
@@ -1964,7 +2142,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
@@ -1985,7 +2163,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
@@ -2008,7 +2186,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
@@ -2055,7 +2233,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
@@ -2076,7 +2254,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
@@ -2099,7 +2277,7 @@ export async function askGogo(
 
         const filteredActions = response.actions.filter((action, index) => {
           if (index !== 0) return true
-          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip'
+          return action.type !== 'send' && action.type !== 'tip_creator' && action.type !== 'gateway_tip' && action.type !== 'gateway_batch_tip'
         })
 
         return {
