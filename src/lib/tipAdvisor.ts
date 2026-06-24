@@ -1,7 +1,7 @@
 import { getTwitterApiKey, type TwitterTweet } from '@/lib/twitterApi'
 import { listCreators, normalizeCreatorHandle, type CreatorEntry } from '@/lib/creatorRegistry'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
-import { TWITTERAPI_BASE } from '@/lib/constants'
+import { TWITTERAPI_BASE, TWITTER_FEED_RETRY_BACKOFF_MS } from '@/lib/constants'
 import { fetchWithTimeout } from '@/lib/external'
 import { formatTipBudgetAmount, getBudgetState, type TipBudgetLogEntry } from '@/lib/tipBudget'
 
@@ -92,7 +92,8 @@ const MIN_SUGGESTION_AMOUNT_USDC = 0.01
 const MAX_SUGGESTIONS = 3
 const ACTIVITY_WINDOW_DAYS = 7
 const HISTORY_WINDOW_DAYS = 30
-const ACTIVITY_LOOKUP_LIMIT = 5
+const MAX_ACTIVITY_LOOKUP_CANDIDATES = 3
+const ACTIVITY_LOOKUP_SPACING_MS = 900
 const SUPPORT_COOLDOWN_DAYS = 14
 const DAY_MS = 86_400_000
 
@@ -108,11 +109,15 @@ function fromMicros(value: number): number {
   return roundUsdc(value / USDC_MICROS)
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
 function formatLocalizedCount(value: number): string {
   return new Intl.NumberFormat(getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US').format(value)
 }
 
-function uniqueSortedHandles(creators: CreatorEntry[]): string[] {
+function uniqueHandlesInOrder(creators: CreatorEntry[]): string[] {
   const seen = new Set<string>()
   const handles: string[] = []
 
@@ -125,7 +130,6 @@ function uniqueSortedHandles(creators: CreatorEntry[]): string[] {
   }
 
   return handles
-    .sort((left, right) => left.localeCompare(right))
 }
 
 function getDaySeed(value = Date.now()): string {
@@ -298,6 +302,53 @@ function buildActivityMap(creators: CreatorEntry[], tweets: TwitterTweet[]): Map
   return activity
 }
 
+function compareRankedCreators(left: RankedCreator, right: RankedCreator, dailySeed: string): number {
+  if (Math.abs(right.score - left.score) > 0.08) return right.score - left.score
+
+  const leftActivityAt = left.activity?.latestTweetAt ?? 0
+  const rightActivityAt = right.activity?.latestTweetAt ?? 0
+  if (rightActivityAt !== leftActivityAt) return rightActivityAt - leftActivityAt
+
+  const leftHistoryAt = left.history.lastTippedAt ?? 0
+  const rightHistoryAt = right.history.lastTippedAt ?? 0
+  if (rightHistoryAt !== leftHistoryAt) return rightHistoryAt - leftHistoryAt
+
+  const leftJitter = getDailyJitter(dailySeed, left.creator.handle)
+  const rightJitter = getDailyJitter(dailySeed, right.creator.handle)
+  if (rightJitter !== leftJitter) return rightJitter - leftJitter
+
+  return left.creator.handle.localeCompare(right.creator.handle)
+}
+
+function buildRankedCreators(
+  creators: CreatorEntry[],
+  historyMap: Map<string, CreatorHistory>,
+  activityMap: Map<string, CreatorActivity>,
+  now: number,
+  dailySeed: string,
+): RankedCreator[] {
+  return creators
+    .map((creator) => {
+      const history = historyMap.get(creator.handle) ?? {
+        handle: creator.handle,
+        address: creator.address,
+        tipCount: 0,
+        totalTippedUsdc: 0,
+        lastTippedAt: null,
+      }
+      const activity = activityMap.get(creator.handle)
+      const score = (getActivityScore(activity, now) * 1.35) + (getHistoryScore(history, now) * 0.9) + getDailyJitter(dailySeed, creator.handle) * 0.05
+
+      return {
+        creator,
+        history,
+        activity,
+        score,
+      }
+    })
+    .sort((left, right) => compareRankedCreators(left, right, dailySeed))
+}
+
 function buildSuggestionReason(
   entry: RankedCreator,
   historyRank: number | null,
@@ -305,23 +356,12 @@ function buildSuggestionReason(
   activityLookup: CreatorActivityLookup | undefined,
 ): string {
   const reasonParts: string[] = []
-  const handleLabel = `@${entry.creator.handle}`
   const tweetsReturned = activityLookup?.tweetsReturned ?? null
 
-  if (tweetsReturned != null) {
-    if (tweetsReturned > 0) {
-      reasonParts.push(formatText('gogo.tipAdvisorReasonActivityCount', {
-        count: formatLocalizedCount(tweetsReturned),
-      }))
-    } else if (activityLookup?.status === 200) {
-      reasonParts.push(formatText('gogo.tipAdvisorReasonNoRecentActivityForHandle', {
-        handle: handleLabel,
-      }))
-    } else {
-      reasonParts.push(formatText('gogo.tipAdvisorReasonActivityUnavailableForHandle', {
-        handle: handleLabel,
-      }))
-    }
+  if (tweetsReturned != null && tweetsReturned > 0) {
+    reasonParts.push(formatText('gogo.tipAdvisorReasonActivityCount', {
+      count: formatLocalizedCount(tweetsReturned),
+    }))
   }
 
   const supportAgeDays = getAgeDays(entry.history.lastTippedAt, now)
@@ -343,13 +383,134 @@ function buildSuggestionReason(
   return deduped.slice(0, 2).join(' | ')
 }
 
+async function lookupCreatorActivity(
+  creator: CreatorEntry,
+  apiKey: string,
+): Promise<{
+  activity?: CreatorActivity
+  lookup: CreatorActivityLookup
+  issue?: TipAdvisorActivityIssue
+}> {
+  const handle = normalizeCreatorHandle(creator.handle)
+  const query = getActivityQuery(handle)
+  const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
+  searchUrl.searchParams.set('query', query)
+  searchUrl.searchParams.set('queryType', 'Latest')
+
+  const executeFetch = async (): Promise<Response> => fetchWithTimeout(searchUrl.toString(), {
+    headers: {
+      'X-API-Key': apiKey,
+    },
+  })
+
+  let status: number | null = null
+  let tweetsReturned = 0
+
+  try {
+    let response = await executeFetch()
+    status = response.status
+
+    if (response.status === 429) {
+      console.warn('[TipAdvisor] X activity rate limited, retrying once', { handle, query })
+      await delay(TWITTER_FEED_RETRY_BACKOFF_MS)
+      response = await executeFetch()
+      status = response.status
+    }
+
+    if (response.status === 429) {
+      console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+      return {
+        lookup: {
+          status,
+          tweetsReturned,
+        },
+        issue: 'rate-limited',
+      }
+    }
+
+    if (!response.ok) {
+      const issue = classifyActivityLookupStatus(response.status) ?? 'unknown'
+      console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+      return {
+        lookup: {
+          status,
+          tweetsReturned,
+        },
+        issue,
+      }
+    }
+
+    const data = await response.json() as TwitterApiAdvancedSearchResponse
+    const rawTweets = Array.isArray(data.tweets) ? data.tweets : []
+    tweetsReturned = rawTweets.length
+
+    const mappedTweets = rawTweets
+      .map((tweet) => {
+        const authorHandle = normalizeCreatorHandle(tweet.author?.userName ?? '')
+        if (!authorHandle) return null
+
+        const id = typeof tweet.id === 'string' && tweet.id.trim()
+          ? tweet.id.trim()
+          : `${authorHandle}:${typeof tweet.createdAt === 'string' ? tweet.createdAt : ''}`
+        const authorName = typeof tweet.author?.name === 'string' && tweet.author.name.trim()
+          ? tweet.author.name.trim()
+          : authorHandle
+
+        return {
+          id,
+          text: typeof tweet.text === 'string' ? tweet.text : '',
+          authorName,
+          authorHandle,
+          authorAvatar: typeof tweet.author?.profilePicture === 'string' ? tweet.author.profilePicture : '',
+          createdAt: typeof tweet.createdAt === 'string' ? tweet.createdAt : '',
+          likes: typeof tweet.likeCount === 'number' ? tweet.likeCount : 0,
+          retweets: typeof tweet.retweetCount === 'number' ? tweet.retweetCount : 0,
+          verified: Boolean(tweet.author?.isBlueVerified),
+          tweetUrl: `https://twitter.com/${authorHandle}/status/${id}`,
+        } satisfies TwitterTweet
+      })
+      .filter((tweet): tweet is TwitterTweet => Boolean(tweet))
+
+    const activity = buildActivityMap([creator], mappedTweets).get(handle)
+    status = response.status
+    console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+    return {
+      activity,
+      lookup: {
+        status,
+        tweetsReturned,
+      },
+    }
+  } catch (error) {
+    const issue = status == null
+      ? 'network'
+      : status >= 200 && status < 300
+        ? 'query-failed'
+        : classifyActivityLookupStatus(status) ?? 'unknown'
+    console.info(`[ADVISOR-X] handle=${handle} status=${status ?? 0} tweetsReturned=${tweetsReturned}`)
+    console.warn('[TipAdvisor] X activity lookup failed', {
+      handle,
+      query,
+      issue,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return {
+      lookup: {
+        status,
+        tweetsReturned,
+      },
+      issue,
+    }
+  }
+}
+
 async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   activityMap: Map<string, CreatorActivity>
   activityLookupMap: Map<string, CreatorActivityLookup>
   activityState: TipAdvisorActivityState
   activityIssue?: TipAdvisorActivityIssue
 }> {
-  const handles = uniqueSortedHandles(creators)
+  const handles = uniqueHandlesInOrder(creators)
   if (handles.length === 0) {
     return {
       activityMap: new Map(),
@@ -372,100 +533,33 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   const activityLookupMap = new Map<string, CreatorActivityLookup>()
   let firstIssue: TipAdvisorActivityIssue | null = null
 
-  for (const handle of handles) {
-    const query = getActivityQuery(handle)
-    let status: number | null = null
-    let tweetsReturned = 0
+  for (let index = 0; index < handles.length; index += 1) {
+    const handle = handles[index]
+    const creator = creators.find((item) => normalizeCreatorHandle(item.handle) === handle)
+    if (!creator) continue
 
-    try {
-      const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
-      searchUrl.searchParams.set('query', query)
-      searchUrl.searchParams.set('queryType', 'Latest')
+    if (index > 0) {
+      await delay(ACTIVITY_LOOKUP_SPACING_MS)
+    }
 
-      const response = await fetchWithTimeout(searchUrl.toString(), {
-        headers: {
-          'X-API-Key': apiKey,
-        },
-      })
-
-      status = response.status
-
-      if (response.ok) {
-        const data = await response.json() as TwitterApiAdvancedSearchResponse
-        const rawTweets = Array.isArray(data.tweets) ? data.tweets : []
-        tweetsReturned = rawTweets.length
-
-        const mappedTweets = rawTweets
-          .map((tweet) => {
-            const authorHandle = normalizeCreatorHandle(tweet.author?.userName ?? '')
-            if (!authorHandle) return null
-
-            const id = typeof tweet.id === 'string' && tweet.id.trim()
-              ? tweet.id.trim()
-              : `${authorHandle}:${typeof tweet.createdAt === 'string' ? tweet.createdAt : ''}`
-            const authorName = typeof tweet.author?.name === 'string' && tweet.author.name.trim()
-              ? tweet.author.name.trim()
-              : authorHandle
-
-            return {
-              id,
-              text: typeof tweet.text === 'string' ? tweet.text : '',
-              authorName,
-              authorHandle,
-              authorAvatar: typeof tweet.author?.profilePicture === 'string' ? tweet.author.profilePicture : '',
-              createdAt: typeof tweet.createdAt === 'string' ? tweet.createdAt : '',
-              likes: typeof tweet.likeCount === 'number' ? tweet.likeCount : 0,
-              retweets: typeof tweet.retweetCount === 'number' ? tweet.retweetCount : 0,
-              verified: Boolean(tweet.author?.isBlueVerified),
-              tweetUrl: `https://twitter.com/${authorHandle}/status/${id}`,
-            } satisfies TwitterTweet
+    const { activity, lookup, issue } = await lookupCreatorActivity(creator, apiKey)
+    activityLookupMap.set(handle, lookup)
+    if (issue) firstIssue = firstIssue ?? issue
+    if (activity) {
+      const current = activityMap.get(handle)
+      activityMap.set(handle, current == null
+        ? activity
+        : {
+            ...current,
+            tweetCount: current.tweetCount + activity.tweetCount,
+            latestTweetAt: current.latestTweetAt == null
+              ? activity.latestTweetAt
+              : activity.latestTweetAt == null
+                ? current.latestTweetAt
+                : Math.max(current.latestTweetAt, activity.latestTweetAt),
+            totalLikes: current.totalLikes + activity.totalLikes,
+            totalRetweets: current.totalRetweets + activity.totalRetweets,
           })
-          .filter((tweet): tweet is TwitterTweet => Boolean(tweet))
-
-        const creator = creators.find((item) => normalizeCreatorHandle(item.handle) === handle)
-        if (creator && mappedTweets.length > 0) {
-          const creatorActivity = buildActivityMap([creator], mappedTweets).get(handle)
-          if (creatorActivity) {
-            const current = activityMap.get(handle)
-            activityMap.set(handle, current == null
-              ? creatorActivity
-              : {
-                  ...current,
-                  tweetCount: current.tweetCount + creatorActivity.tweetCount,
-                  latestTweetAt: current.latestTweetAt == null
-                    ? creatorActivity.latestTweetAt
-                    : creatorActivity.latestTweetAt == null
-                      ? current.latestTweetAt
-                      : Math.max(current.latestTweetAt, creatorActivity.latestTweetAt),
-                  totalLikes: current.totalLikes + creatorActivity.totalLikes,
-                  totalRetweets: current.totalRetweets + creatorActivity.totalRetweets,
-                })
-          }
-        }
-
-        console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
-      } else {
-        const issue = classifyActivityLookupStatus(status)
-        if (issue) firstIssue = firstIssue ?? issue
-        console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
-      }
-    } catch (error) {
-      const issue = status == null
-        ? 'network'
-        : classifyActivityLookupStatus(status) ?? 'unknown'
-      firstIssue = firstIssue ?? issue
-      console.info(`[ADVISOR-X] handle=${handle} status=${status ?? 0} tweetsReturned=${tweetsReturned}`)
-      console.warn('[TipAdvisor] X activity lookup failed', {
-        handle,
-        query,
-        issue,
-        message: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      activityLookupMap.set(handle, {
-        status,
-        tweetsReturned,
-      })
     }
   }
 
@@ -705,52 +799,15 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     }
   }
 
-  const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(creators)
   const historyMap = buildHistoryMap(creators, budgetState.log)
   const historyRankMap = buildHistoryRankMap(historyMap)
   const now = Date.now()
   const dailySeed = budgetState.lastResetDate || getDaySeed(now)
-
-  const rankedCreators: RankedCreator[] = creators
-    .map((creator) => {
-      const history = historyMap.get(creator.handle) ?? {
-        handle: creator.handle,
-        address: creator.address,
-        tipCount: 0,
-        totalTippedUsdc: 0,
-        lastTippedAt: null,
-      }
-      const activity = activityMap.get(creator.handle)
-      const score = (getActivityScore(activity, now) * 1.35) + (getHistoryScore(history, now) * 0.9) + getDailyJitter(dailySeed, creator.handle) * 0.05
-
-      return {
-        creator,
-        history,
-        activity,
-        score,
-      }
-    })
-    .sort((left, right) => {
-      if (Math.abs(right.score - left.score) > 0.08) return right.score - left.score
-
-      const leftActivityAt = left.activity?.latestTweetAt ?? 0
-      const rightActivityAt = right.activity?.latestTweetAt ?? 0
-      if (rightActivityAt !== leftActivityAt) return rightActivityAt - leftActivityAt
-
-      const leftHistoryAt = left.history.lastTippedAt ?? 0
-      const rightHistoryAt = right.history.lastTippedAt ?? 0
-      if (rightHistoryAt !== leftHistoryAt) return rightHistoryAt - leftHistoryAt
-
-      const leftJitter = getDailyJitter(dailySeed, left.creator.handle)
-      const rightJitter = getDailyJitter(dailySeed, right.creator.handle)
-      if (rightJitter !== leftJitter) return rightJitter - leftJitter
-
-      return left.creator.handle.localeCompare(right.creator.handle)
-    })
+  const previewRankedCreators = buildRankedCreators(creators, historyMap, new Map(), now, dailySeed)
 
   const selectedCount = Math.min(
     MAX_SUGGESTIONS,
-    rankedCreators.length,
+    previewRankedCreators.length,
     Math.floor(availableBudgetMicros / minMicros),
   )
 
@@ -769,9 +826,15 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
       summary,
       explanation: summary,
       canExecute: false,
-      activityState,
+      activityState: 'none',
     }
   }
+
+  const activityLookupCreators = previewRankedCreators
+    .slice(0, Math.min(MAX_ACTIVITY_LOOKUP_CANDIDATES, selectedCount))
+    .map((entry) => entry.creator)
+  const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(activityLookupCreators)
+  const rankedCreators = buildRankedCreators(creators, historyMap, activityMap, now, dailySeed)
 
   const selected = rankedCreators.slice(0, selectedCount)
   const allocations = allocateBalancedMicros(availableBudgetMicros, selected, now)
