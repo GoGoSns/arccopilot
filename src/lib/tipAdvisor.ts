@@ -1,8 +1,8 @@
 import { getTwitterApiKey, type TwitterTweet } from '@/lib/twitterApi'
 import { listCreators, normalizeCreatorHandle, type CreatorEntry } from '@/lib/creatorRegistry'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
-import { TWITTERAPI_BASE, TWITTER_FEED_RETRY_BACKOFF_MS } from '@/lib/constants'
-import { fetchWithTimeout } from '@/lib/external'
+import { TWITTERAPI_BASE } from '@/lib/constants'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { formatTipBudgetAmount, getBudgetState, type TipBudgetLogEntry } from '@/lib/tipBudget'
 
 export interface TipSuggestion {
@@ -55,6 +55,16 @@ type CreatorActivity = {
 type CreatorActivityLookup = {
   status: number | null
   tweetsReturned: number
+  cacheHit: boolean
+}
+
+type CreatorActivityCacheEntry = {
+  tweetsReturned: number
+  fetchedAt: number
+  status?: number
+  latestTweetAt?: number | null
+  totalLikes?: number
+  totalRetweets?: number
 }
 
 type TwitterApiAdvancedSearchAuthor = {
@@ -93,7 +103,10 @@ const MAX_SUGGESTIONS = 3
 const ACTIVITY_WINDOW_DAYS = 7
 const HISTORY_WINDOW_DAYS = 30
 const MAX_ACTIVITY_LOOKUP_CANDIDATES = 3
-const ACTIVITY_LOOKUP_SPACING_MS = 900
+const ACTIVITY_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const ACTIVITY_RATE_LIMIT_CACHE_TTL_MS = 15 * 60 * 1000
+const ACTIVITY_LOOKUP_SPACING_MS = 3_500
+const ACTIVITY_LOOKUP_RETRY_BACKOFF_MS = 5_000
 const SUPPORT_COOLDOWN_DAYS = 14
 const DAY_MS = 86_400_000
 
@@ -116,6 +129,99 @@ function delay(ms: number): Promise<void> {
 function formatLocalizedCount(value: number): string {
   return new Intl.NumberFormat(getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US').format(value)
 }
+
+function buildActivityCacheKey(handle: string): string {
+  return `x-activity:${normalizeCreatorHandle(handle)}`
+}
+
+function isCreatorActivityCacheEntry(value: unknown): value is CreatorActivityCacheEntry {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  const entry = value as {
+    tweetsReturned?: unknown
+    fetchedAt?: unknown
+    status?: unknown
+    latestTweetAt?: unknown
+    totalLikes?: unknown
+    totalRetweets?: unknown
+  }
+
+  return typeof entry.tweetsReturned === 'number'
+    && typeof entry.fetchedAt === 'number'
+    && (entry.status == null || typeof entry.status === 'number')
+    && (entry.latestTweetAt == null || typeof entry.latestTweetAt === 'number')
+    && (entry.totalLikes == null || typeof entry.totalLikes === 'number')
+    && (entry.totalRetweets == null || typeof entry.totalRetweets === 'number')
+}
+
+function getCreatorActivityCacheTtl(entry: CreatorActivityCacheEntry): number {
+  return entry.status === 429 ? ACTIVITY_RATE_LIMIT_CACHE_TTL_MS : ACTIVITY_CACHE_TTL_MS
+}
+
+function isFreshCreatorActivityCacheEntry(entry: CreatorActivityCacheEntry, now = Date.now()): boolean {
+  return (now - entry.fetchedAt) < getCreatorActivityCacheTtl(entry)
+}
+
+function materializeCreatorActivity(
+  creator: CreatorEntry,
+  entry: CreatorActivityCacheEntry,
+): CreatorActivity | undefined {
+  if (entry.status === 429 || entry.tweetsReturned <= 0) return undefined
+
+  return {
+    handle: normalizeCreatorHandle(creator.handle),
+    address: creator.address,
+    tweetCount: entry.tweetsReturned,
+    latestTweetAt: entry.latestTweetAt ?? entry.fetchedAt,
+    totalLikes: entry.totalLikes ?? 0,
+    totalRetweets: entry.totalRetweets ?? 0,
+  }
+}
+
+async function readCreatorActivityCacheEntries(handles: string[]): Promise<Map<string, CreatorActivityCacheEntry>> {
+  const cache = new Map<string, CreatorActivityCacheEntry>()
+  if (handles.length === 0) return cache
+
+  const keys = handles.map((handle) => buildActivityCacheKey(handle))
+  const result = await chromeStorageGet(keys)
+  const staleKeys: string[] = []
+  const now = Date.now()
+
+  for (const handle of handles) {
+    const key = buildActivityCacheKey(handle)
+    const cached = result[key]
+    const normalizedHandle = normalizeCreatorHandle(handle)
+    if (!isCreatorActivityCacheEntry(cached)) {
+      if (typeof cached !== 'undefined') staleKeys.push(key)
+      continue
+    }
+
+    if (!isFreshCreatorActivityCacheEntry(cached, now)) {
+      staleKeys.push(key)
+      continue
+    }
+
+    cache.set(normalizedHandle, cached)
+  }
+
+  if (staleKeys.length > 0) {
+    await chromeStorageRemove(staleKeys)
+  }
+
+  return cache
+}
+
+async function writeCreatorActivityCacheEntry(handle: string, entry: CreatorActivityCacheEntry): Promise<void> {
+  await chromeStorageSet({ [buildActivityCacheKey(handle)]: entry })
+}
+
+type CreatorActivityLookupResult = {
+  activity?: CreatorActivity
+  lookup: CreatorActivityLookup
+  issue?: TipAdvisorActivityIssue
+}
+
+const creatorActivityLookupInFlight = new Map<string, Promise<CreatorActivityLookupResult>>()
 
 function uniqueHandlesInOrder(creators: CreatorEntry[]): string[] {
   const seen = new Set<string>()
@@ -302,6 +408,23 @@ function buildActivityMap(creators: CreatorEntry[], tweets: TwitterTweet[]): Map
   return activity
 }
 
+function buildActivityMapFromCache(
+  creators: CreatorEntry[],
+  cachedActivityEntries: Map<string, CreatorActivityCacheEntry>,
+): Map<string, CreatorActivity> {
+  const activity = new Map<string, CreatorActivity>()
+
+  for (const creator of creators) {
+    const handle = normalizeCreatorHandle(creator.handle)
+    const cached = cachedActivityEntries.get(handle)
+    const materialized = cached ? materializeCreatorActivity(creator, cached) : undefined
+    if (!materialized) continue
+    activity.set(handle, materialized)
+  }
+
+  return activity
+}
+
 function compareRankedCreators(left: RankedCreator, right: RankedCreator, dailySeed: string): number {
   if (Math.abs(right.score - left.score) > 0.08) return right.score - left.score
 
@@ -358,9 +481,19 @@ function buildSuggestionReason(
   const reasonParts: string[] = []
   const tweetsReturned = activityLookup?.tweetsReturned ?? null
 
-  if (tweetsReturned != null && tweetsReturned > 0) {
+  if (activityLookup?.status === 429) {
+    reasonParts.push(t('gogo.tipAdvisorReasonRateLimited'))
+  } else if (tweetsReturned != null && tweetsReturned > 0) {
     reasonParts.push(formatText('gogo.tipAdvisorReasonActivityCount', {
       count: formatLocalizedCount(tweetsReturned),
+    }))
+  } else if (tweetsReturned != null && (activityLookup?.status === 200 || activityLookup?.status == null)) {
+    reasonParts.push(formatText('gogo.tipAdvisorReasonNoRecentActivityForHandle', {
+      handle: `@${entry.creator.handle}`,
+    }))
+  } else if (tweetsReturned != null) {
+    reasonParts.push(formatText('gogo.tipAdvisorReasonActivityUnavailableForHandle', {
+      handle: `@${entry.creator.handle}`,
     }))
   }
 
@@ -383,14 +516,35 @@ function buildSuggestionReason(
   return deduped.slice(0, 2).join(' | ')
 }
 
-async function lookupCreatorActivity(
+function logCreatorActivityLookup(handle: string, status: number | null, tweetsReturned: number, cacheHit: boolean): void {
+  console.info(`[ADVISOR-X] handle=${handle} status=${status ?? 0} tweetsReturned=${tweetsReturned} cacheHit=${cacheHit}`)
+}
+
+function buildCreatorActivityLookupResult(
+  creator: CreatorEntry,
+  cacheEntry: CreatorActivityCacheEntry,
+): CreatorActivityLookupResult {
+  const handle = normalizeCreatorHandle(creator.handle)
+  const status = cacheEntry.status ?? 200
+  const lookup: CreatorActivityLookup = {
+    status,
+    tweetsReturned: cacheEntry.tweetsReturned,
+    cacheHit: true,
+  }
+
+  logCreatorActivityLookup(handle, status, cacheEntry.tweetsReturned, true)
+
+  return {
+    activity: materializeCreatorActivity(creator, cacheEntry),
+    lookup,
+    issue: status === 429 ? 'rate-limited' : undefined,
+  }
+}
+
+async function lookupCreatorActivityFromApi(
   creator: CreatorEntry,
   apiKey: string,
-): Promise<{
-  activity?: CreatorActivity
-  lookup: CreatorActivityLookup
-  issue?: TipAdvisorActivityIssue
-}> {
+): Promise<CreatorActivityLookupResult> {
   const handle = normalizeCreatorHandle(creator.handle)
   const query = getActivityQuery(handle)
   const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
@@ -412,17 +566,24 @@ async function lookupCreatorActivity(
 
     if (response.status === 429) {
       console.warn('[TipAdvisor] X activity rate limited, retrying once', { handle, query })
-      await delay(TWITTER_FEED_RETRY_BACKOFF_MS)
+      await delay(ACTIVITY_LOOKUP_RETRY_BACKOFF_MS)
       response = await executeFetch()
       status = response.status
     }
 
     if (response.status === 429) {
-      console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+      const cacheEntry: CreatorActivityCacheEntry = {
+        tweetsReturned: 0,
+        fetchedAt: Date.now(),
+        status: 429,
+      }
+      await writeCreatorActivityCacheEntry(handle, cacheEntry)
+      logCreatorActivityLookup(handle, status, tweetsReturned, false)
       return {
         lookup: {
           status,
           tweetsReturned,
+          cacheHit: false,
         },
         issue: 'rate-limited',
       }
@@ -430,11 +591,12 @@ async function lookupCreatorActivity(
 
     if (!response.ok) {
       const issue = classifyActivityLookupStatus(response.status) ?? 'unknown'
-      console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+      logCreatorActivityLookup(handle, status, tweetsReturned, false)
       return {
         lookup: {
           status,
           tweetsReturned,
+          cacheHit: false,
         },
         issue,
       }
@@ -472,13 +634,22 @@ async function lookupCreatorActivity(
       .filter((tweet): tweet is TwitterTweet => Boolean(tweet))
 
     const activity = buildActivityMap([creator], mappedTweets).get(handle)
-    status = response.status
-    console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+    const cacheEntry: CreatorActivityCacheEntry = {
+      tweetsReturned,
+      fetchedAt: Date.now(),
+      status: response.status,
+      latestTweetAt: activity?.latestTweetAt ?? undefined,
+      totalLikes: activity?.totalLikes ?? 0,
+      totalRetweets: activity?.totalRetweets ?? 0,
+    }
+    await writeCreatorActivityCacheEntry(handle, cacheEntry)
+    logCreatorActivityLookup(handle, status, tweetsReturned, false)
     return {
       activity,
       lookup: {
         status,
         tweetsReturned,
+        cacheHit: false,
       },
     }
   } catch (error) {
@@ -487,7 +658,7 @@ async function lookupCreatorActivity(
       : status >= 200 && status < 300
         ? 'query-failed'
         : classifyActivityLookupStatus(status) ?? 'unknown'
-    console.info(`[ADVISOR-X] handle=${handle} status=${status ?? 0} tweetsReturned=${tweetsReturned}`)
+    logCreatorActivityLookup(handle, status, tweetsReturned, false)
     console.warn('[TipAdvisor] X activity lookup failed', {
       handle,
       query,
@@ -498,13 +669,48 @@ async function lookupCreatorActivity(
       lookup: {
         status,
         tweetsReturned,
+        cacheHit: false,
       },
       issue,
     }
   }
 }
 
-async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
+const fetchCreatorActivityInFlight = creatorActivityLookupInFlight
+
+async function lookupCreatorActivity(
+  creator: CreatorEntry,
+  apiKey: string,
+  cachedActivityEntries: Map<string, CreatorActivityCacheEntry> = new Map(),
+): Promise<CreatorActivityLookupResult> {
+  const handle = normalizeCreatorHandle(creator.handle)
+  let cachedEntry = cachedActivityEntries.get(handle)
+  if (!cachedEntry) {
+    const fetchedEntries = await readCreatorActivityCacheEntries([handle])
+    cachedEntry = fetchedEntries.get(handle)
+    if (cachedEntry) {
+      cachedActivityEntries.set(handle, cachedEntry)
+    }
+  }
+
+  if (cachedEntry && isFreshCreatorActivityCacheEntry(cachedEntry)) {
+    return buildCreatorActivityLookupResult(creator, cachedEntry)
+  }
+
+  const inFlight = fetchCreatorActivityInFlight.get(handle)
+  if (inFlight) return inFlight
+
+  const promise = lookupCreatorActivityFromApi(creator, apiKey)
+  fetchCreatorActivityInFlight.set(handle, promise)
+
+  try {
+    return await promise
+  } finally {
+    fetchCreatorActivityInFlight.delete(handle)
+  }
+}
+
+async function fetchCreatorActivity(creators: CreatorEntry[], cachedActivityEntries: Map<string, CreatorActivityCacheEntry> = new Map()): Promise<{
   activityMap: Map<string, CreatorActivity>
   activityLookupMap: Map<string, CreatorActivityLookup>
   activityState: TipAdvisorActivityState
@@ -532,17 +738,23 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   const activityMap = new Map<string, CreatorActivity>()
   const activityLookupMap = new Map<string, CreatorActivityLookup>()
   let firstIssue: TipAdvisorActivityIssue | null = null
+  let sawNetworkLookup = false
 
-  for (let index = 0; index < handles.length; index += 1) {
-    const handle = handles[index]
+  for (const handle of handles) {
     const creator = creators.find((item) => normalizeCreatorHandle(item.handle) === handle)
     if (!creator) continue
 
-    if (index > 0) {
+    const cachedEntry = cachedActivityEntries.get(handle)
+    const isFreshCachedEntry = cachedEntry != null && isFreshCreatorActivityCacheEntry(cachedEntry)
+
+    if (!isFreshCachedEntry && sawNetworkLookup) {
       await delay(ACTIVITY_LOOKUP_SPACING_MS)
     }
 
-    const { activity, lookup, issue } = await lookupCreatorActivity(creator, apiKey)
+    const { activity, lookup, issue } = await lookupCreatorActivity(creator, apiKey, cachedActivityEntries)
+    if (!lookup.cacheHit) {
+      sawNetworkLookup = true
+    }
     activityLookupMap.set(handle, lookup)
     if (issue) firstIssue = firstIssue ?? issue
     if (activity) {
@@ -803,7 +1015,9 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
   const historyRankMap = buildHistoryRankMap(historyMap)
   const now = Date.now()
   const dailySeed = budgetState.lastResetDate || getDaySeed(now)
-  const previewRankedCreators = buildRankedCreators(creators, historyMap, new Map(), now, dailySeed)
+  const cachedActivityEntries = await readCreatorActivityCacheEntries(uniqueHandlesInOrder(creators))
+  const previewActivityMap = buildActivityMapFromCache(creators, cachedActivityEntries)
+  const previewRankedCreators = buildRankedCreators(creators, historyMap, previewActivityMap, now, dailySeed)
 
   const selectedCount = Math.min(
     MAX_SUGGESTIONS,
@@ -833,7 +1047,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
   const activityLookupCreators = previewRankedCreators
     .slice(0, Math.min(MAX_ACTIVITY_LOOKUP_CANDIDATES, selectedCount))
     .map((entry) => entry.creator)
-  const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(activityLookupCreators)
+  const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(activityLookupCreators, cachedActivityEntries)
   const rankedCreators = buildRankedCreators(creators, historyMap, activityMap, now, dailySeed)
 
   const selected = rankedCreators.slice(0, selectedCount)
