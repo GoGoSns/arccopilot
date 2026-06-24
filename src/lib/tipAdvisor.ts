@@ -1,4 +1,4 @@
-import { fetchTweetsByQuery, type TwitterTweet } from '@/lib/twitterApi'
+import { fetchTweetsByQuery, getTwitterApiKey, type TwitterTweet } from '@/lib/twitterApi'
 import { listCreators, normalizeCreatorHandle, type CreatorEntry } from '@/lib/creatorRegistry'
 import { formatText, t } from '@/lib/i18n'
 import { formatTipBudgetAmount, getBudgetState, type TipBudgetLogEntry } from '@/lib/tipBudget'
@@ -17,6 +17,7 @@ export interface TipAdvisorSkippedCreator {
 }
 
 export type TipAdvisorActivityState = 'used' | 'none' | 'unavailable'
+export type TipAdvisorActivityIssue = 'missing-key' | 'rate-limited' | 'invalid-key' | 'query-failed' | 'network' | 'unknown'
 
 export interface TipAdvisorResult {
   suggestions: TipSuggestion[]
@@ -29,6 +30,7 @@ export interface TipAdvisorResult {
   explanation: string
   canExecute: boolean
   activityState: TipAdvisorActivityState
+  activityIssue?: TipAdvisorActivityIssue
 }
 
 type CreatorHistory = {
@@ -61,6 +63,9 @@ const MIN_SUGGESTION_AMOUNT_USDC = 0.01
 const MAX_SUGGESTIONS = 3
 const ACTIVITY_WINDOW_DAYS = 7
 const HISTORY_WINDOW_DAYS = 30
+const ACTIVITY_LOOKUP_LIMIT = 5
+const SUPPORT_COOLDOWN_DAYS = 14
+const DAY_MS = 86_400_000
 
 function roundUsdc(value: number): number {
   return Math.round(value * USDC_MICROS) / USDC_MICROS
@@ -74,9 +79,73 @@ function fromMicros(value: number): number {
   return roundUsdc(value / USDC_MICROS)
 }
 
+function devWarn(...args: unknown[]): void {
+  console.warn(...args)
+}
+
 function uniqueSortedHandles(creators: CreatorEntry[]): string[] {
   return [...new Set(creators.map((creator) => normalizeCreatorHandle(creator.handle)).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right))
+}
+
+function getDaySeed(value = Date.now()): string {
+  return new Date(value).toISOString().slice(0, 10)
+}
+
+function getStringHash(value: string): number {
+  let hash = 5381
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index)
+  }
+  return hash >>> 0
+}
+
+function getDailyJitter(seed: string, handle: string): number {
+  return (getStringHash(`${seed}:${handle}`) % 10_000) / 10_000
+}
+
+function getAgeDays(timestamp: number | null, now: number): number | null {
+  if (timestamp == null) return null
+  return Math.max(0, (now - timestamp) / DAY_MS)
+}
+
+function getActivityQuery(handle: string): string {
+  return `from:${normalizeCreatorHandle(handle)}`
+}
+
+function classifyActivityLookupError(error: unknown): TipAdvisorActivityIssue {
+  const message = error instanceof Error ? error.message : String(error)
+  const lowered = message.toLowerCase()
+
+  if (lowered.includes('twitterapi key not set')) return 'missing-key'
+  if (lowered.includes('invalid twitterapi key')) return 'invalid-key'
+  if (lowered.includes('rate limit') || lowered.includes('429')) return 'rate-limited'
+  if (lowered.includes('twitterapi error 401') || lowered.includes('twitterapi error 403')) return 'invalid-key'
+  if (lowered.includes('twitterapi error 429')) return 'rate-limited'
+  if (lowered.includes('twitterapi error 400') || lowered.includes('bad request') || lowered.includes('query')) return 'query-failed'
+  if (lowered.includes('aborterror') || lowered.includes('networkerror') || lowered.includes('failed to fetch') || lowered.includes('fetch failed')) return 'network'
+
+  return 'unknown'
+}
+
+function getActivityIssueNote(issue: TipAdvisorActivityIssue | undefined): string {
+  switch (issue) {
+    case 'missing-key':
+      return t('gogo.tipAdvisorNoActivityMissingKey')
+    case 'rate-limited':
+      return t('gogo.tipAdvisorNoActivityRateLimited')
+    case 'invalid-key':
+      return t('gogo.tipAdvisorNoActivityInvalidKey')
+    case 'query-failed':
+      return t('gogo.tipAdvisorNoActivityQueryFailed')
+    case 'network':
+      return t('gogo.tipAdvisorNoActivityUnavailable')
+    case 'unknown':
+      return t('gogo.tipAdvisorNoActivityUnavailable')
+    case undefined:
+    default:
+      return ''
+  }
 }
 
 function buildHistoryMap(creators: CreatorEntry[], log: TipBudgetLogEntry[]): Map<string, CreatorHistory> {
@@ -152,7 +221,7 @@ function getActivityScore(activity: CreatorActivity | undefined, now: number): n
   score += Math.log1p(activity.totalLikes + activity.totalRetweets) * 0.25
 
   if (activity.latestTweetAt != null) {
-    const ageDays = Math.max(0, (now - activity.latestTweetAt) / 86_400_000)
+    const ageDays = Math.max(0, (now - activity.latestTweetAt) / DAY_MS)
     score += Math.max(0, 1 - Math.min(ageDays, ACTIVITY_WINDOW_DAYS) / ACTIVITY_WINDOW_DAYS) * 2
   }
 
@@ -191,9 +260,56 @@ function buildActivityMap(creators: CreatorEntry[], tweets: TwitterTweet[]): Map
   return activity
 }
 
+function buildSuggestionReason(
+  entry: RankedCreator,
+  historyRank: number | null,
+  now: number,
+): string {
+  const reasonParts: string[] = []
+  const activityAgeDays = getAgeDays(entry.activity?.latestTweetAt ?? null, now)
+  const supportAgeDays = getAgeDays(entry.history.lastTippedAt, now)
+
+  if (entry.activity && entry.activity.tweetCount > 0) {
+    reasonParts.push(
+      activityAgeDays != null && activityAgeDays <= 1
+        ? t('gogo.tipAdvisorReasonActivityToday')
+        : t('gogo.tipAdvisorReasonActivityWeek'),
+    )
+  }
+
+  if (supportAgeDays == null) {
+    reasonParts.push(t('gogo.tipAdvisorReasonEven'))
+  } else if (supportAgeDays >= SUPPORT_COOLDOWN_DAYS) {
+    reasonParts.push(
+      historyRank === 1
+        ? t('gogo.tipAdvisorReasonTopHistory')
+        : t('gogo.tipAdvisorReasonCooldown'),
+    )
+  } else if (entry.history.tipCount === 0) {
+    reasonParts.push(t('gogo.tipAdvisorReasonEven'))
+  } else if (entry.activity && entry.activity.tweetCount > 0) {
+    reasonParts.push(t('gogo.tipAdvisorReasonCoolingOff'))
+  } else {
+    reasonParts.push(t('gogo.tipAdvisorReasonCoolingOff'))
+  }
+
+  if (reasonParts.length === 0) {
+    reasonParts.push(t('gogo.tipAdvisorReasonEven'))
+  }
+
+  const deduped = [...new Set(reasonParts)].filter(Boolean)
+  return deduped.slice(0, 2).join(' | ')
+}
+
+function buildActivityFetchFailureNote(issue: TipAdvisorActivityIssue | undefined): string {
+  if (!issue) return ''
+  return getActivityIssueNote(issue)
+}
+
 async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   activityMap: Map<string, CreatorActivity>
   activityState: TipAdvisorActivityState
+  activityIssue?: TipAdvisorActivityIssue
 }> {
   const handles = uniqueSortedHandles(creators)
   if (handles.length === 0) {
@@ -203,53 +319,100 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
     }
   }
 
-  const query = handles.map((handle) => `from:${handle}`).join(' OR ')
-  if (!query.trim()) {
-    return {
-      activityMap: new Map(),
-      activityState: 'none',
-    }
-  }
-
-  try {
-    const result = await fetchTweetsByQuery(query, Math.min(20, Math.max(5, handles.length * 2)))
-    const activityMap = buildActivityMap(creators, result.tweets)
-    return {
-      activityMap,
-      activityState: activityMap.size > 0 ? 'used' : 'none',
-    }
-  } catch {
+  const apiKey = await getTwitterApiKey()
+  if (!apiKey) {
     return {
       activityMap: new Map(),
       activityState: 'unavailable',
+      activityIssue: 'missing-key',
     }
   }
-}
 
-function buildSuggestionReason(
-  history: CreatorHistory,
-  activity: CreatorActivity | undefined,
-  historyRank: number | null,
-): string {
-  const reasonParts: string[] = []
+  const activityMap = new Map<string, CreatorActivity>()
+  let firstIssue: TipAdvisorActivityIssue | null = null
 
-  if (activity && activity.tweetCount > 0) {
-    reasonParts.push(t('gogo.tipAdvisorReasonActivity'))
+  try {
+    for (const handle of handles) {
+      const query = getActivityQuery(handle)
+
+      try {
+        const result = await fetchTweetsByQuery(query, ACTIVITY_LOOKUP_LIMIT)
+        const creator = creators.find((item) => normalizeCreatorHandle(item.handle) === handle)
+        if (!creator || result.tweets.length === 0) {
+          continue
+        }
+
+        const creatorActivity = buildActivityMap([creator], result.tweets).get(handle)
+        if (creatorActivity) {
+          const current = activityMap.get(handle)
+          activityMap.set(handle, current == null
+            ? creatorActivity
+            : {
+                ...current,
+                tweetCount: current.tweetCount + creatorActivity.tweetCount,
+                latestTweetAt: current.latestTweetAt == null
+                  ? creatorActivity.latestTweetAt
+                  : creatorActivity.latestTweetAt == null
+                    ? current.latestTweetAt
+                    : Math.max(current.latestTweetAt, creatorActivity.latestTweetAt),
+                totalLikes: current.totalLikes + creatorActivity.totalLikes,
+                totalRetweets: current.totalRetweets + creatorActivity.totalRetweets,
+              })
+        }
+
+        console.debug('[TipAdvisor] X activity lookup succeeded', {
+          handle,
+          query,
+          tweetCount: result.tweets.length,
+          cacheStatus: result.cacheStatus,
+        })
+      } catch (error) {
+        const issue = classifyActivityLookupError(error)
+        firstIssue = firstIssue ?? issue
+        devWarn('[TipAdvisor] X activity lookup failed', {
+          handle,
+          query,
+          issue,
+          message: error instanceof Error ? error.message : String(error),
+        })
+
+        if (issue === 'missing-key' || issue === 'invalid-key') {
+          return {
+            activityMap: new Map(),
+            activityState: 'unavailable',
+            activityIssue: issue,
+          }
+        }
+      }
+    }
+  } catch (error) {
+    const issue = classifyActivityLookupError(error)
+    return {
+      activityMap: new Map(),
+      activityState: 'unavailable',
+      activityIssue: issue,
+    }
   }
 
-  if (history.tipCount > 0) {
-    reasonParts.push(
-      historyRank === 1
-        ? t('gogo.tipAdvisorReasonTopHistory')
-        : t('gogo.tipAdvisorReasonHistory'),
-    )
+  if (activityMap.size > 0) {
+    return {
+      activityMap,
+      activityState: 'used',
+    }
   }
 
-  if (reasonParts.length === 0) {
-    reasonParts.push(t('gogo.tipAdvisorReasonEven'))
+  if (firstIssue) {
+    return {
+      activityMap: new Map(),
+      activityState: 'unavailable',
+      activityIssue: firstIssue,
+    }
   }
 
-  return reasonParts.join(' | ')
+  return {
+    activityMap: new Map(),
+    activityState: 'none',
+  }
 }
 
 function buildSkippedReason(selectedCount: number): string {
@@ -258,10 +421,13 @@ function buildSkippedReason(selectedCount: number): string {
   })
 }
 
-function getActivityStateNote(activityState: TipAdvisorActivityState): string {
+function getActivityStateNote(activityState: TipAdvisorActivityState, activityIssue?: TipAdvisorActivityIssue): string {
+  const issueNote = buildActivityFetchFailureNote(activityIssue)
+  if (issueNote) return issueNote
+
   switch (activityState) {
     case 'used':
-      return ''
+      return t('gogo.tipAdvisorActivityUsed')
     case 'unavailable':
       return t('gogo.tipAdvisorNoActivityUnavailable')
     case 'none':
@@ -270,8 +436,17 @@ function getActivityStateNote(activityState: TipAdvisorActivityState): string {
   }
 }
 
-function allocateMicros(totalBudgetMicros: number, weights: number[]): number[] {
-  const count = weights.length
+function getShareCap(entry: RankedCreator, index: number, count: number, now: number): number {
+  if (count <= 1) return 1
+
+  const baseCap = count === 2 ? 0.58 : 0.5
+  const rankPenalty = index * (count === 2 ? 0.12 : 0.08)
+  const activityBoost = entry.activity ? Math.min(0.12, getActivityScore(entry.activity, now) / 20) : 0
+  return Math.max(0.34, Math.min(0.7, baseCap - rankPenalty + activityBoost))
+}
+
+function allocateBalancedMicros(totalBudgetMicros: number, rankedCreators: RankedCreator[], now: number): number[] {
+  const count = rankedCreators.length
   if (count === 0) return []
 
   const baseMicros = toMicros(MIN_SUGGESTION_AMOUNT_USDC)
@@ -281,55 +456,98 @@ function allocateMicros(totalBudgetMicros: number, weights: number[]): number[] 
     return allocations
   }
 
-  const normalizedWeights = weights.map((weight) => Math.max(0, weight))
-  const totalWeight = normalizedWeights.reduce((sum, weight) => sum + weight, 0)
-
-  if (totalWeight <= 0) {
-    const perCreator = Math.floor(remainingMicros / count)
-    const remainder = remainingMicros % count
-    for (let index = 0; index < count; index += 1) {
-      allocations[index] += perCreator + (index < remainder ? 1 : 0)
-    }
-    return allocations
-  }
-
-  const remainders = normalizedWeights.map((weight, index) => {
-    const rawShare = (remainingMicros * weight) / totalWeight
-    const share = Math.floor(rawShare)
-    allocations[index] += share
-    return {
-      index,
-      remainder: rawShare - share,
-      weight,
-    }
+  const weights = rankedCreators.map((entry) => {
+    const rawScore = Math.max(0, entry.score)
+    const flattenedScore = Math.pow(rawScore + 1, 0.82)
+    return Math.max(0.25, flattenedScore)
   })
 
-  let distributed = allocations.reduce((sum, amount) => sum + amount, 0)
-  let leftover = totalBudgetMicros - distributed
+  const caps = rankedCreators.map((entry, index) => {
+    const capShare = getShareCap(entry, index, count, now)
+    return Math.max(baseMicros, Math.floor(totalBudgetMicros * capShare))
+  })
 
-  remainders
-    .sort((left, right) => {
-      if (right.remainder !== left.remainder) return right.remainder - left.remainder
-      if (right.weight !== left.weight) return right.weight - left.weight
-      return left.index - right.index
-    })
-    .forEach(({ index }) => {
-      if (leftover <= 0) return
-      allocations[index] += 1
-      leftover -= 1
-    })
+  const eligible = new Set<number>(rankedCreators.map((_, index) => index))
 
-  if (leftover > 0) {
-    for (let index = 0; index < count && leftover > 0; index += 1) {
-      allocations[index] += 1
-      leftover -= 1
+  while (remainingMicros > 0 && eligible.size > 0) {
+    const eligibleEntries = [...eligible]
+      .map((index) => ({
+        index,
+        remainingCapacity: caps[index] - allocations[index],
+        weight: weights[index],
+      }))
+      .filter((entry) => entry.remainingCapacity > 0)
+
+    if (eligibleEntries.length === 0) break
+
+    const totalWeight = eligibleEntries.reduce((sum, entry) => sum + entry.weight, 0)
+    let distributed = 0
+
+    for (const entry of eligibleEntries) {
+      if (remainingMicros <= 0) break
+
+      const maxShare = entry.remainingCapacity
+      const idealShare = totalWeight > 0
+        ? Math.floor((remainingMicros * entry.weight) / totalWeight)
+        : Math.floor(remainingMicros / eligibleEntries.length)
+      const share = Math.max(0, Math.min(maxShare, idealShare))
+
+      if (share > 0) {
+        allocations[entry.index] += share
+        remainingMicros -= share
+        distributed += share
+      }
+    }
+
+    if (distributed === 0) {
+      const nextIndex = eligibleEntries
+        .sort((left, right) => {
+          if (right.remainingCapacity !== left.remainingCapacity) return right.remainingCapacity - left.remainingCapacity
+          if (right.weight !== left.weight) return right.weight - left.weight
+          return left.index - right.index
+        })[0]?.index
+
+      if (nextIndex == null) break
+      allocations[nextIndex] += 1
+      remainingMicros -= 1
+    }
+
+    for (const entry of eligibleEntries) {
+      if (allocations[entry.index] >= caps[entry.index]) {
+        eligible.delete(entry.index)
+      }
     }
   }
 
-  distributed = allocations.reduce((sum, amount) => sum + amount, 0)
-  const correction = totalBudgetMicros - distributed
+  if (remainingMicros > 0) {
+    const fallbackOrder = rankedCreators
+      .map((entry, index) => ({
+        index,
+        remainingCapacity: caps[index] - allocations[index],
+        weight: weights[index],
+        jitter: getDailyJitter(getDaySeed(now), entry.creator.handle),
+      }))
+      .filter((entry) => entry.remainingCapacity > 0)
+      .sort((left, right) => {
+        if (right.remainingCapacity !== left.remainingCapacity) return right.remainingCapacity - left.remainingCapacity
+        if (right.weight !== left.weight) return right.weight - left.weight
+        if (right.jitter !== left.jitter) return right.jitter - left.jitter
+        return left.index - right.index
+      })
+
+    for (const entry of fallbackOrder) {
+      if (remainingMicros <= 0) break
+      const share = Math.min(remainingMicros, caps[entry.index] - allocations[entry.index])
+      if (share <= 0) continue
+      allocations[entry.index] += share
+      remainingMicros -= share
+    }
+  }
+
+  const totalAllocated = allocations.reduce((sum, amount) => sum + amount, 0)
+  const correction = totalBudgetMicros - totalAllocated
   if (correction !== 0 && allocations.length > 0) {
-    allocations[0] = Math.max(0, allocations[0] + correction)
+    allocations[0] = Math.max(baseMicros, allocations[0] + correction)
   }
 
   return allocations
@@ -341,7 +559,7 @@ function buildExplanation(result: TipAdvisorResult): string {
   }
 
   const explanationParts = [result.summary]
-  const activityNote = getActivityStateNote(result.activityState)
+  const activityNote = getActivityStateNote(result.activityState, result.activityIssue)
   if (activityNote) explanationParts.push(activityNote)
 
   const leadSuggestions = result.suggestions.slice(0, 3).map((suggestion) => `@${suggestion.handle} ${suggestion.amount} USDC: ${suggestion.reason}`)
@@ -407,10 +625,11 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     }
   }
 
-  const { activityMap, activityState } = await fetchCreatorActivity(creators)
+  const { activityMap, activityState, activityIssue } = await fetchCreatorActivity(creators)
   const historyMap = buildHistoryMap(creators, budgetState.log)
   const historyRankMap = buildHistoryRankMap(historyMap)
   const now = Date.now()
+  const dailySeed = budgetState.lastResetDate || getDaySeed(now)
 
   const rankedCreators: RankedCreator[] = creators
     .map((creator) => {
@@ -422,7 +641,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
         lastTippedAt: null,
       }
       const activity = activityMap.get(creator.handle)
-      const score = (getActivityScore(activity, now) * 1.25) + getHistoryScore(history, now)
+      const score = (getActivityScore(activity, now) * 1.35) + (getHistoryScore(history, now) * 0.9) + getDailyJitter(dailySeed, creator.handle) * 0.05
 
       return {
         creator,
@@ -432,7 +651,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
       }
     })
     .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score
+      if (Math.abs(right.score - left.score) > 0.08) return right.score - left.score
 
       const leftActivityAt = left.activity?.latestTweetAt ?? 0
       const rightActivityAt = right.activity?.latestTweetAt ?? 0
@@ -441,6 +660,10 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
       const leftHistoryAt = left.history.lastTippedAt ?? 0
       const rightHistoryAt = right.history.lastTippedAt ?? 0
       if (rightHistoryAt !== leftHistoryAt) return rightHistoryAt - leftHistoryAt
+
+      const leftJitter = getDailyJitter(dailySeed, left.creator.handle)
+      const rightJitter = getDailyJitter(dailySeed, right.creator.handle)
+      if (rightJitter !== leftJitter) return rightJitter - leftJitter
 
       return left.creator.handle.localeCompare(right.creator.handle)
     })
@@ -471,13 +694,13 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
   }
 
   const selected = rankedCreators.slice(0, selectedCount)
-  const allocations = allocateMicros(availableBudgetMicros, selected.map((entry) => Math.max(0, entry.score)))
+  const allocations = allocateBalancedMicros(availableBudgetMicros, selected, now)
 
   const suggestions: TipSuggestion[] = selected.map((entry, index) => ({
     handle: entry.creator.handle,
     address: entry.creator.address,
     amount: formatTipBudgetAmount(fromMicros(allocations[index] ?? minMicros)),
-    reason: buildSuggestionReason(entry.history, entry.activity, historyRankMap.get(entry.creator.handle) ?? null),
+    reason: buildSuggestionReason(entry, historyRankMap.get(entry.creator.handle) ?? null, now),
   }))
 
   const skipped = rankedCreators.slice(selectedCount).map((entry) => ({
@@ -506,6 +729,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     explanation: '',
     canExecute: suggestions.length > 0,
     activityState,
+    activityIssue,
   }
 
   result.explanation = buildExplanation(result)
