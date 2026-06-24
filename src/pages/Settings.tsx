@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
@@ -15,7 +16,8 @@ import {
   setTwitterApiKey,
   DEFAULT_TWITTER_OFFICIAL_ACCOUNTS,
 } from '@/lib/twitterApi'
-import { listCreators, registerCreator, removeCreator, type CreatorEntry } from '@/lib/creatorRegistry'
+import { listCreators, normalizeCreatorHandle, registerCreator, removeCreator, type CreatorEntry } from '@/lib/creatorRegistry'
+import { discoverCreators, getUserXHandle, setUserXHandle, type CreatorDiscoveryResult } from '@/lib/creatorDiscovery'
 import {
   DEFAULT_AUTO_TIP_RULE,
   calculateAutoTipPlan,
@@ -31,6 +33,7 @@ import {
   NOTIF_INCOMING_STORAGE_KEY,
   REMINDERS,
   TIP_BUDGET,
+  USER_X_HANDLE,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import {
@@ -72,6 +75,14 @@ function getSavedKeyLabel(key: string | null): string {
   return formatText('settings.savedMasked', { suffix: key.slice(-4) })
 }
 
+function formatDiscoveryCandidatesMessage(candidates: CreatorDiscoveryResult['candidates']): string {
+  if (candidates.length === 0) {
+    return t('gogo.creatorDiscoveryNoCandidates')
+  }
+
+  return `${formatText('gogo.creatorDiscoveryFoundCount', { count: candidates.length })} ${t('gogo.creatorDiscoveryNeedAddress')}`
+}
+
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
   const localePreference = getLocalePreference()
@@ -86,9 +97,15 @@ export function Settings({ onBack }: SettingsProps) {
   const [twitterTempKey, setTwitterTempKey] = useState('')
   const [twitterSearchQuery, setTwitterSearchQueryState] = useState(DEFAULT_TWITTER_SEARCH_QUERY)
   const [officialAccounts, setOfficialAccountsState] = useState(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
+  const [userXHandle, setUserXHandleState] = useState('')
+  const [isSavingUserXHandle, setIsSavingUserXHandle] = useState(false)
+  const [userXHandleError, setUserXHandleError] = useState('')
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
   const [creators, setCreators] = useState<CreatorEntry[]>([])
+  const [creatorDiscovery, setCreatorDiscovery] = useState<CreatorDiscoveryResult | null>(null)
+  const [isDiscoveringCreators, setIsDiscoveringCreators] = useState(false)
+  const [creatorPrompt, setCreatorPrompt] = useState('')
   const [tipBudget, setTipBudget] = useState<TipBudgetState | null>(null)
   const [tipBudgetLimitInput, setTipBudgetLimitInput] = useState('')
   const [tipBudgetError, setTipBudgetError] = useState('')
@@ -105,6 +122,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
   const [isSavingCreator, setIsSavingCreator] = useState(false)
+  const creatorAddressInputRef = useRef<HTMLInputElement>(null)
   const geminiKeyLabel = getSavedKeyLabel(geminiApiKey)
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
   const tipBudgetRemaining = tipBudget ? Math.max(0, tipBudget.dailyLimitUsdc - tipBudget.spentTodayUsdc) : 0
@@ -117,12 +135,13 @@ export function Settings({ onBack }: SettingsProps) {
   useEffect(() => {
     let active = true
 
-    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts()]).then(([geminiKey, twitterKey, searchQuery, officialList]) => {
+    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts(), getUserXHandle()]).then(([geminiKey, twitterKey, searchQuery, officialList, userHandle]) => {
       if (!active) return
       setGeminiApiKey(geminiKey)
       setTwitterApiKeyState(twitterKey)
       setTwitterSearchQueryState(searchQuery)
       setOfficialAccountsState(officialList)
+      setUserXHandleState(userHandle ?? '')
     })
 
     void chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY]).then((result) => {
@@ -200,6 +219,39 @@ export function Settings({ onBack }: SettingsProps) {
     }
 
     void loadCreators()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadUserXHandle = async () => {
+      try {
+        const value = await getUserXHandle()
+        if (active) {
+          setUserXHandleState(value ?? '')
+        }
+      } catch (error) {
+        debugWarn('[Settings] user X handle load failed:', error)
+        if (active) {
+          setUserXHandleState('')
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[USER_X_HANDLE]) {
+        void loadUserXHandle()
+      }
+    }
+
+    void loadUserXHandle()
     chrome.storage.onChanged.addListener(handleStorageChange)
 
     return () => {
@@ -435,6 +487,25 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }
 
+  const handleSaveUserXHandle = async () => {
+    const normalized = userXHandle.trim().replace(/^@+/, '').replace(/['’].*$/, '').replace(/[.,!?]+$/, '')
+
+    setIsSavingUserXHandle(true)
+    setUserXHandleError('')
+
+    try {
+      const saved = await setUserXHandle(normalized)
+      setUserXHandleState(saved ?? '')
+      setCreatorDiscovery(null)
+      setCreatorPrompt('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setUserXHandleError(message)
+    } finally {
+      setIsSavingUserXHandle(false)
+    }
+  }
+
   const handleSaveCreator = async () => {
     const handle = creatorHandle.trim()
     const address = creatorAddress.trim()
@@ -452,6 +523,20 @@ export function Settings({ onBack }: SettingsProps) {
       await refreshCreators()
       setCreatorHandle('')
       setCreatorAddress('')
+      setCreatorPrompt('')
+      setCreatorDiscovery((current) => {
+        if (!current) return current
+
+        const remaining = current.candidates.filter((candidate) => candidate.handle !== normalizeCreatorHandle(handle))
+        if (remaining.length === current.candidates.length) return current
+
+        return {
+          ...current,
+          candidates: remaining,
+          message: formatDiscoveryCandidatesMessage(remaining),
+          status: remaining.length > 0 ? 'success' : 'no-candidates',
+        }
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : t('state.error')
       setCreatorError(message)
@@ -469,9 +554,56 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       await removeCreator(handle)
       await refreshCreators()
+      setCreatorDiscovery((current) => {
+        if (!current) return current
+
+        const normalizedHandle = normalizeCreatorHandle(handle)
+        const remaining = current.candidates.filter((candidate) => candidate.handle !== normalizedHandle)
+        if (remaining.length === current.candidates.length) return current
+
+        return {
+          ...current,
+          candidates: remaining,
+          message: formatDiscoveryCandidatesMessage(remaining),
+          status: remaining.length > 0 ? 'success' : 'no-candidates',
+        }
+      })
     } catch (error) {
       debugWarn('[Settings] creator remove failed:', error)
     }
+  }
+
+  const handleDiscoverCreators = async () => {
+    setIsDiscoveringCreators(true)
+    setCreatorPrompt('')
+
+    try {
+      const result = await discoverCreators()
+      setCreatorDiscovery(result)
+    } catch (error) {
+      debugWarn('[Settings] discover creators failed:', error)
+      setCreatorDiscovery({
+        candidates: [],
+        message: error instanceof Error ? error.message : t('gogo.creatorDiscoveryUnavailable'),
+        status: 'unavailable',
+        cacheHit: false,
+        tweetsReturned: 0,
+        userHandle: userXHandle.trim() || null,
+      })
+    } finally {
+      setIsDiscoveringCreators(false)
+    }
+  }
+
+  const handleSelectDiscoveryCandidate = (handle: string) => {
+    const normalizedHandle = normalizeCreatorHandle(handle)
+    setCreatorHandle(normalizedHandle)
+    setCreatorAddress('')
+    setCreatorError('')
+    setCreatorPrompt(formatText('settings.discoveryNeedsAddress', { handle: `@${normalizedHandle}` }))
+    setTimeout(() => {
+      creatorAddressInputRef.current?.focus()
+    }, 0)
   }
 
   const handleRemoveReminder = async (id: string) => {
@@ -728,14 +860,69 @@ export function Settings({ onBack }: SettingsProps) {
           </div>
         </div>
 
+        <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
+              <AtSign size={20} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-arc-text">{t('settings.yourXHandle')}</p>
+                  <p className="text-[10px] text-arc-text-dim">{t('settings.yourXHandleDescription')}</p>
+                </div>
+              </div>
+              <Input
+                value={userXHandle}
+                onChange={(e) => {
+                  setUserXHandleState(e.target.value)
+                  setUserXHandleError('')
+                }}
+                placeholder={t('settings.yourXHandlePlaceholder')}
+                aria-label={t('settings.yourXHandle')}
+                className="font-mono text-xs"
+              />
+              {userXHandleError && <p className="text-xs text-arc-danger">{userXHandleError}</p>}
+              <div className="flex items-center justify-end gap-2">
+                {userXHandle.trim() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setUserXHandleState('')
+                      setUserXHandleError('')
+                      setCreatorDiscovery(null)
+                      setCreatorPrompt('')
+                      void setUserXHandle('')
+                    }}
+                    className="min-w-24"
+                  >
+                    {t('settings.clearXHandle')}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void handleSaveUserXHandle()}
+                  disabled={isSavingUserXHandle}
+                  className="min-w-24"
+                >
+                  {isSavingUserXHandle ? t('common.loading') : t('settings.saveXHandle')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card border-y border-arc-border">
           {t('settings.creators')}
         </p>
-        <div className="border-b border-arc-border bg-arc-card px-4 py-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
-              <Coins size={20} />
-            </div>
+          <div className="border-b border-arc-border bg-arc-card px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
+                <Coins size={20} />
+              </div>
             <div className="min-w-0 flex-1 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -972,10 +1159,24 @@ export function Settings({ onBack }: SettingsProps) {
                     <p className="text-sm font-semibold text-white">{t('settings.creatorsTitle')}</p>
                     <p className="text-[10px] text-arc-text-dim">{t('settings.creatorsDescription')}</p>
                   </div>
-                  <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
-                    {creators.length}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleDiscoverCreators()}
+                      disabled={isDiscoveringCreators}
+                      className="h-8 px-3 text-[10px] font-semibold uppercase tracking-[0.18em]"
+                    >
+                      {isDiscoveringCreators ? t('settings.discoverCreatorsLoading') : t('settings.discoverCreators')}
+                    </Button>
+                    <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                      {creators.length}
+                    </span>
+                  </div>
                 </div>
+
+                <p className="text-[10px] text-arc-text-dim">{t('settings.discoverCreatorsDescription')}</p>
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <Input
@@ -990,6 +1191,7 @@ export function Settings({ onBack }: SettingsProps) {
                     className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
                   />
                   <Input
+                    ref={creatorAddressInputRef}
                     label={t('settings.creatorWalletAddress')}
                     value={creatorAddress}
                     onChange={(e) => {
@@ -1006,6 +1208,10 @@ export function Settings({ onBack }: SettingsProps) {
                   <p className="text-xs text-arc-danger">{creatorError}</p>
                 )}
 
+                {creatorPrompt && (
+                  <p className="text-xs text-arc-text-dim">{creatorPrompt}</p>
+                )}
+
                 <div className="flex items-center justify-end">
                   <Button
                     type="button"
@@ -1020,6 +1226,45 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
             </div>
           </div>
+
+          {creatorDiscovery && (
+            <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
+              <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-bg px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                      {t('settings.discoverCreators')}
+                    </p>
+                    <p className="mt-1 text-sm text-white">
+                      {creatorDiscovery.message}
+                    </p>
+                  </div>
+                </div>
+
+                {creatorDiscovery.candidates.length > 0 && (
+                  <div className="space-y-2">
+                    {creatorDiscovery.candidates.map((candidate) => (
+                      <div key={candidate.handle} className="flex items-start justify-between gap-3 rounded-xl border border-arc-border bg-arc-card px-3 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white">@{candidate.handle}</p>
+                          <p className="mt-1 text-[10px] text-arc-text-dim">{candidate.reason}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSelectDiscoveryCandidate(candidate.handle)}
+                          className="shrink-0 h-8 px-3 text-[10px]"
+                        >
+                          {t('common.add')}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2 px-4 py-4">
             {creators.length === 0 ? (

@@ -29,6 +29,7 @@ import {
   type AutoTipWeighting,
 } from '@/lib/autoTip'
 import { generateTipSuggestions } from '@/lib/tipAdvisor'
+import { discoverCreators } from '@/lib/creatorDiscovery'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { useStore } from '@/lib/store'
@@ -209,6 +210,7 @@ export type GogoAction =
   | { type: 'summarize_activity'; params: { period: '24h' | '7d' | '30d' }; completed?: boolean; analysis?: SpendingAnalysis }
   | { type: 'find_pattern'; params: Record<string, never>; completed?: boolean }
   | { type: 'open_brief'; params: Record<string, never>; completed?: boolean }
+  | { type: 'open_settings'; params: Record<string, never>; completed?: boolean }
   | { type: 'create_reminder'; params: { title: string; recipient?: string; amount?: string; frequency: 'daily' | 'weekly' | 'monthly'; dayOfWeek?: number; dayOfMonth?: number }; completed?: boolean }
   | { type: 'draft_tweet'; params: { text: string }; completed?: boolean }
   | { type: 'none'; params: Record<string, never>; completed?: boolean }
@@ -276,9 +278,10 @@ ACTION TYPES:
 - summarize_activity: { period: "24h" | "7d" | "30d" }
 - find_pattern: { }
 - open_brief: { }
+- open_settings: { }
 - create_reminder: { title: "...", recipient?: "...", amount?: "...", frequency: "daily" | "weekly" | "monthly", dayOfWeek?: 0-6, dayOfMonth?: 1-31 }
 - draft_tweet: { text: "..." }
-- none: { }`
+- none: { }` 
 
 function canUseChromeStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
@@ -742,6 +745,55 @@ function parseTipAdvisorIntent(message: string): boolean {
   return /\b(what tips do you suggest|suggest tips|suggest a tip|who should i tip|who should i support|what should i tip|kime tip atmami onerirsin|kime tip onerirsin|tip onerisi|tip tavsiyesi|tip suggestions?|tip suggestion)\b/.test(lowered)
 }
 
+function parseCreatorDiscoveryIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return /\b(discover creators?|creator discovery|find creators?|suggest creators?|creator suggestions?|bana yaratici oner|yaratici oner|yaratici kesfet|yaratici oneri|yaratici oneriler|creator discovery)\b/.test(lowered)
+}
+
+function buildOpenSettingsAction(): GogoAction {
+  return {
+    type: 'open_settings',
+    params: {},
+    completed: false,
+  }
+}
+
+function formatDiscoveryCandidateLine(handle: string, reason: string): string {
+  return `• @${handle} (${reason})`
+}
+
+function buildCreatorDiscoveryReply(result: Awaited<ReturnType<typeof discoverCreators>>): GogoResponse {
+  const openSettingsAction = buildOpenSettingsAction()
+
+  if (result.status === 'missing-handle' || result.status === 'missing-key' || result.status === 'invalid-key') {
+    return {
+      reply: result.message,
+      actions: [openSettingsAction],
+      action: openSettingsAction,
+    }
+  }
+
+  if (result.candidates.length === 0) {
+    return {
+      reply: result.message,
+      actions: [],
+    }
+  }
+
+  const topCandidates = result.candidates.slice(0, 3)
+  const lines = topCandidates.map((candidate) => formatDiscoveryCandidateLine(candidate.handle, candidate.reason))
+  const reply = `${result.message}\n${lines.join('\n')}`
+
+  return {
+    reply,
+    actions: [openSettingsAction],
+    action: openSettingsAction,
+  }
+}
+
 function buildGatewayTipAction(options: {
   handle: string
   amount?: string
@@ -807,6 +859,7 @@ function isSupportedActionType(value: unknown): value is GogoAction['type'] {
     || value === 'summarize_activity'
     || value === 'find_pattern'
     || value === 'open_brief'
+    || value === 'open_settings'
     || value === 'create_reminder'
     || value === 'draft_tweet'
     || value === 'none'
@@ -986,6 +1039,12 @@ function normalizeAction(raw: unknown): GogoAction | null {
     case 'open_brief':
       return {
         type: 'open_brief',
+        params: {},
+        completed: Boolean(raw.completed),
+      }
+    case 'open_settings':
+      return {
+        type: 'open_settings',
         params: {},
         completed: Boolean(raw.completed),
       }
@@ -2105,6 +2164,18 @@ export async function askGogo(
     } catch (error) {
       return {
         reply: error instanceof Error ? error.message : t('state.error'),
+        actions: [],
+      }
+    }
+  }
+
+  if (parseCreatorDiscoveryIntent(userMessage)) {
+    try {
+      const discovery = await discoverCreators()
+      return buildCreatorDiscoveryReply(discovery)
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('gogo.creatorDiscoveryUnavailable'),
         actions: [],
       }
     }

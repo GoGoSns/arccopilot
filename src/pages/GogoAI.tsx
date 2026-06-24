@@ -220,6 +220,8 @@ function getActionLabel(action?: GogoAction | null): string {
       return t('gogo.findPatterns')
     case 'open_brief':
       return t('gogo.openBrief')
+    case 'open_settings':
+      return t('gogo.openSettings')
     case 'create_reminder':
       return t('gogo.setReminder')
     case 'draft_tweet':
@@ -265,6 +267,10 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
   if (action?.type === 'gateway_batch_tip') {
     const { paidCount } = getGatewayBatchTipStats(action)
     return formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })
+  }
+
+  if (action?.type === 'open_settings') {
+    return t('gogo.settingsOpened')
   }
 
   return t('gogo.done')
@@ -497,6 +503,8 @@ function getMultiStepActionTitle(
       return t('gogo.findPatterns')
     case 'open_brief':
       return t('gogo.openBrief')
+    case 'open_settings':
+      return t('gogo.openSettings')
     case 'create_reminder': {
       const title = typeof params.title === 'string' && params.title.trim()
         ? params.title.trim()
@@ -1755,6 +1763,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
         await persistPendingSend(recipientToPersist, amountToPersist)
         setCurrentView('send')
+        break
+      }
+      case 'open_settings': {
+        updateMessageAction(
+          messageIndex,
+          actionIndex,
+          (currentAction) => ({
+            ...currentAction,
+            completed: true,
+          }),
+        )
+        setCurrentView('settings')
         break
       }
       case 'tip_creator': {
