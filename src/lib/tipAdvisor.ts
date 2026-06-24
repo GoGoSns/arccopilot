@@ -1,6 +1,8 @@
-import { fetchTweetsByQuery, getTwitterApiKey, type TwitterTweet } from '@/lib/twitterApi'
+import { getTwitterApiKey, type TwitterTweet } from '@/lib/twitterApi'
 import { listCreators, normalizeCreatorHandle, type CreatorEntry } from '@/lib/creatorRegistry'
-import { formatText, t } from '@/lib/i18n'
+import { formatText, getLocaleSync, t } from '@/lib/i18n'
+import { TWITTERAPI_BASE } from '@/lib/constants'
+import { fetchWithTimeout } from '@/lib/external'
 import { formatTipBudgetAmount, getBudgetState, type TipBudgetLogEntry } from '@/lib/tipBudget'
 
 export interface TipSuggestion {
@@ -50,6 +52,33 @@ type CreatorActivity = {
   totalRetweets: number
 }
 
+type CreatorActivityLookup = {
+  status: number | null
+  tweetsReturned: number
+}
+
+type TwitterApiAdvancedSearchAuthor = {
+  userName?: string
+  name?: string
+  profilePicture?: string
+  isBlueVerified?: boolean
+}
+
+type TwitterApiAdvancedSearchTweet = {
+  id?: string
+  text?: string
+  createdAt?: string
+  likeCount?: number
+  retweetCount?: number
+  author?: TwitterApiAdvancedSearchAuthor
+}
+
+type TwitterApiAdvancedSearchResponse = {
+  tweets?: TwitterApiAdvancedSearchTweet[]
+  has_next_page?: boolean
+  next_cursor?: string
+}
+
 type RankedCreator = {
   creator: CreatorEntry
   history: CreatorHistory
@@ -79,12 +108,23 @@ function fromMicros(value: number): number {
   return roundUsdc(value / USDC_MICROS)
 }
 
-function devWarn(...args: unknown[]): void {
-  console.warn(...args)
+function formatLocalizedCount(value: number): string {
+  return new Intl.NumberFormat(getLocaleSync() === 'tr' ? 'tr-TR' : 'en-US').format(value)
 }
 
 function uniqueSortedHandles(creators: CreatorEntry[]): string[] {
-  return [...new Set(creators.map((creator) => normalizeCreatorHandle(creator.handle)).filter(Boolean))]
+  const seen = new Set<string>()
+  const handles: string[] = []
+
+  for (const creator of creators) {
+    const rawHandle = normalizeActivityQueryHandle(creator.handle)
+    const dedupeKey = normalizeCreatorHandle(rawHandle)
+    if (!rawHandle || seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    handles.push(rawHandle)
+  }
+
+  return handles
     .sort((left, right) => left.localeCompare(right))
 }
 
@@ -109,23 +149,22 @@ function getAgeDays(timestamp: number | null, now: number): number | null {
   return Math.max(0, (now - timestamp) / DAY_MS)
 }
 
-function getActivityQuery(handle: string): string {
-  return `from:${normalizeCreatorHandle(handle)}`
+function normalizeActivityQueryHandle(handle: string): string {
+  return handle.trim().replace(/^@+/, '')
 }
 
-function classifyActivityLookupError(error: unknown): TipAdvisorActivityIssue {
-  const message = error instanceof Error ? error.message : String(error)
-  const lowered = message.toLowerCase()
+function getActivityQuery(handle: string): string {
+  const normalizedHandle = normalizeActivityQueryHandle(handle)
+  return `from:${normalizedHandle}`
+}
 
-  if (lowered.includes('twitterapi key not set')) return 'missing-key'
-  if (lowered.includes('invalid twitterapi key')) return 'invalid-key'
-  if (lowered.includes('rate limit') || lowered.includes('429')) return 'rate-limited'
-  if (lowered.includes('twitterapi error 401') || lowered.includes('twitterapi error 403')) return 'invalid-key'
-  if (lowered.includes('twitterapi error 429')) return 'rate-limited'
-  if (lowered.includes('twitterapi error 400') || lowered.includes('bad request') || lowered.includes('query')) return 'query-failed'
-  if (lowered.includes('aborterror') || lowered.includes('networkerror') || lowered.includes('failed to fetch') || lowered.includes('fetch failed')) return 'network'
-
-  return 'unknown'
+function classifyActivityLookupStatus(status: number | null): TipAdvisorActivityIssue | null {
+  if (status == null) return 'network'
+  if (status === 401 || status === 403) return 'invalid-key'
+  if (status === 429) return 'rate-limited'
+  if (status >= 400 && status < 500) return 'query-failed'
+  if (status >= 500) return 'network'
+  return null
 }
 
 function getActivityIssueNote(issue: TipAdvisorActivityIssue | undefined): string {
@@ -139,7 +178,6 @@ function getActivityIssueNote(issue: TipAdvisorActivityIssue | undefined): strin
     case 'query-failed':
       return t('gogo.tipAdvisorNoActivityQueryFailed')
     case 'network':
-      return t('gogo.tipAdvisorNoActivityUnavailable')
     case 'unknown':
       return t('gogo.tipAdvisorNoActivityUnavailable')
     case undefined:
@@ -264,33 +302,37 @@ function buildSuggestionReason(
   entry: RankedCreator,
   historyRank: number | null,
   now: number,
+  activityLookup: CreatorActivityLookup | undefined,
 ): string {
   const reasonParts: string[] = []
-  const activityAgeDays = getAgeDays(entry.activity?.latestTweetAt ?? null, now)
-  const supportAgeDays = getAgeDays(entry.history.lastTippedAt, now)
+  const handleLabel = `@${entry.creator.handle}`
+  const tweetsReturned = activityLookup?.tweetsReturned ?? null
 
-  if (entry.activity && entry.activity.tweetCount > 0) {
-    reasonParts.push(
-      activityAgeDays != null && activityAgeDays <= 1
-        ? t('gogo.tipAdvisorReasonActivityToday')
-        : t('gogo.tipAdvisorReasonActivityWeek'),
-    )
+  if (tweetsReturned != null) {
+    if (tweetsReturned > 0) {
+      reasonParts.push(formatText('gogo.tipAdvisorReasonActivityCount', {
+        count: formatLocalizedCount(tweetsReturned),
+      }))
+    } else if (activityLookup?.status === 200) {
+      reasonParts.push(formatText('gogo.tipAdvisorReasonNoRecentActivityForHandle', {
+        handle: handleLabel,
+      }))
+    } else {
+      reasonParts.push(formatText('gogo.tipAdvisorReasonActivityUnavailableForHandle', {
+        handle: handleLabel,
+      }))
+    }
   }
 
-  if (supportAgeDays == null) {
+  const supportAgeDays = getAgeDays(entry.history.lastTippedAt, now)
+  if (entry.history.tipCount === 0 || supportAgeDays == null) {
     reasonParts.push(t('gogo.tipAdvisorReasonEven'))
-  } else if (supportAgeDays >= SUPPORT_COOLDOWN_DAYS) {
-    reasonParts.push(
-      historyRank === 1
-        ? t('gogo.tipAdvisorReasonTopHistory')
-        : t('gogo.tipAdvisorReasonCooldown'),
-    )
-  } else if (entry.history.tipCount === 0) {
-    reasonParts.push(t('gogo.tipAdvisorReasonEven'))
-  } else if (entry.activity && entry.activity.tweetCount > 0) {
+  } else if (supportAgeDays < SUPPORT_COOLDOWN_DAYS) {
     reasonParts.push(t('gogo.tipAdvisorReasonCoolingOff'))
+  } else if (historyRank === 1) {
+    reasonParts.push(t('gogo.tipAdvisorReasonTopHistory'))
   } else {
-    reasonParts.push(t('gogo.tipAdvisorReasonCoolingOff'))
+    reasonParts.push(t('gogo.tipAdvisorReasonCooldown'))
   }
 
   if (reasonParts.length === 0) {
@@ -301,13 +343,9 @@ function buildSuggestionReason(
   return deduped.slice(0, 2).join(' | ')
 }
 
-function buildActivityFetchFailureNote(issue: TipAdvisorActivityIssue | undefined): string {
-  if (!issue) return ''
-  return getActivityIssueNote(issue)
-}
-
 async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   activityMap: Map<string, CreatorActivity>
+  activityLookupMap: Map<string, CreatorActivityLookup>
   activityState: TipAdvisorActivityState
   activityIssue?: TipAdvisorActivityIssue
 }> {
@@ -315,6 +353,7 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   if (handles.length === 0) {
     return {
       activityMap: new Map(),
+      activityLookupMap: new Map(),
       activityState: 'none',
     }
   }
@@ -323,80 +362,117 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   if (!apiKey) {
     return {
       activityMap: new Map(),
+      activityLookupMap: new Map(),
       activityState: 'unavailable',
       activityIssue: 'missing-key',
     }
   }
 
   const activityMap = new Map<string, CreatorActivity>()
+  const activityLookupMap = new Map<string, CreatorActivityLookup>()
   let firstIssue: TipAdvisorActivityIssue | null = null
 
-  try {
-    for (const handle of handles) {
-      const query = getActivityQuery(handle)
+  for (const handle of handles) {
+    const query = getActivityQuery(handle)
+    let status: number | null = null
+    let tweetsReturned = 0
 
-      try {
-        const result = await fetchTweetsByQuery(query, ACTIVITY_LOOKUP_LIMIT)
+    try {
+      const searchUrl = new URL('/twitter/tweet/advanced_search', TWITTERAPI_BASE)
+      searchUrl.searchParams.set('query', query)
+      searchUrl.searchParams.set('queryType', 'Latest')
+
+      const response = await fetchWithTimeout(searchUrl.toString(), {
+        headers: {
+          'X-API-Key': apiKey,
+        },
+      })
+
+      status = response.status
+
+      if (response.ok) {
+        const data = await response.json() as TwitterApiAdvancedSearchResponse
+        const rawTweets = Array.isArray(data.tweets) ? data.tweets : []
+        tweetsReturned = rawTweets.length
+
+        const mappedTweets = rawTweets
+          .map((tweet) => {
+            const authorHandle = normalizeCreatorHandle(tweet.author?.userName ?? '')
+            if (!authorHandle) return null
+
+            const id = typeof tweet.id === 'string' && tweet.id.trim()
+              ? tweet.id.trim()
+              : `${authorHandle}:${typeof tweet.createdAt === 'string' ? tweet.createdAt : ''}`
+            const authorName = typeof tweet.author?.name === 'string' && tweet.author.name.trim()
+              ? tweet.author.name.trim()
+              : authorHandle
+
+            return {
+              id,
+              text: typeof tweet.text === 'string' ? tweet.text : '',
+              authorName,
+              authorHandle,
+              authorAvatar: typeof tweet.author?.profilePicture === 'string' ? tweet.author.profilePicture : '',
+              createdAt: typeof tweet.createdAt === 'string' ? tweet.createdAt : '',
+              likes: typeof tweet.likeCount === 'number' ? tweet.likeCount : 0,
+              retweets: typeof tweet.retweetCount === 'number' ? tweet.retweetCount : 0,
+              verified: Boolean(tweet.author?.isBlueVerified),
+              tweetUrl: `https://twitter.com/${authorHandle}/status/${id}`,
+            } satisfies TwitterTweet
+          })
+          .filter((tweet): tweet is TwitterTweet => Boolean(tweet))
+
         const creator = creators.find((item) => normalizeCreatorHandle(item.handle) === handle)
-        if (!creator || result.tweets.length === 0) {
-          continue
-        }
-
-        const creatorActivity = buildActivityMap([creator], result.tweets).get(handle)
-        if (creatorActivity) {
-          const current = activityMap.get(handle)
-          activityMap.set(handle, current == null
-            ? creatorActivity
-            : {
-                ...current,
-                tweetCount: current.tweetCount + creatorActivity.tweetCount,
-                latestTweetAt: current.latestTweetAt == null
-                  ? creatorActivity.latestTweetAt
-                  : creatorActivity.latestTweetAt == null
-                    ? current.latestTweetAt
-                    : Math.max(current.latestTweetAt, creatorActivity.latestTweetAt),
-                totalLikes: current.totalLikes + creatorActivity.totalLikes,
-                totalRetweets: current.totalRetweets + creatorActivity.totalRetweets,
-              })
-        }
-
-        console.debug('[TipAdvisor] X activity lookup succeeded', {
-          handle,
-          query,
-          tweetCount: result.tweets.length,
-          cacheStatus: result.cacheStatus,
-        })
-      } catch (error) {
-        const issue = classifyActivityLookupError(error)
-        firstIssue = firstIssue ?? issue
-        devWarn('[TipAdvisor] X activity lookup failed', {
-          handle,
-          query,
-          issue,
-          message: error instanceof Error ? error.message : String(error),
-        })
-
-        if (issue === 'missing-key' || issue === 'invalid-key') {
-          return {
-            activityMap: new Map(),
-            activityState: 'unavailable',
-            activityIssue: issue,
+        if (creator && mappedTweets.length > 0) {
+          const creatorActivity = buildActivityMap([creator], mappedTweets).get(handle)
+          if (creatorActivity) {
+            const current = activityMap.get(handle)
+            activityMap.set(handle, current == null
+              ? creatorActivity
+              : {
+                  ...current,
+                  tweetCount: current.tweetCount + creatorActivity.tweetCount,
+                  latestTweetAt: current.latestTweetAt == null
+                    ? creatorActivity.latestTweetAt
+                    : creatorActivity.latestTweetAt == null
+                      ? current.latestTweetAt
+                      : Math.max(current.latestTweetAt, creatorActivity.latestTweetAt),
+                  totalLikes: current.totalLikes + creatorActivity.totalLikes,
+                  totalRetweets: current.totalRetweets + creatorActivity.totalRetweets,
+                })
           }
         }
+
+        console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
+      } else {
+        const issue = classifyActivityLookupStatus(status)
+        if (issue) firstIssue = firstIssue ?? issue
+        console.info(`[ADVISOR-X] handle=${handle} status=${status} tweetsReturned=${tweetsReturned}`)
       }
-    }
-  } catch (error) {
-    const issue = classifyActivityLookupError(error)
-    return {
-      activityMap: new Map(),
-      activityState: 'unavailable',
-      activityIssue: issue,
+    } catch (error) {
+      const issue = status == null
+        ? 'network'
+        : classifyActivityLookupStatus(status) ?? 'unknown'
+      firstIssue = firstIssue ?? issue
+      console.info(`[ADVISOR-X] handle=${handle} status=${status ?? 0} tweetsReturned=${tweetsReturned}`)
+      console.warn('[TipAdvisor] X activity lookup failed', {
+        handle,
+        query,
+        issue,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      activityLookupMap.set(handle, {
+        status,
+        tweetsReturned,
+      })
     }
   }
 
   if (activityMap.size > 0) {
     return {
       activityMap,
+      activityLookupMap,
       activityState: 'used',
     }
   }
@@ -404,6 +480,7 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
   if (firstIssue) {
     return {
       activityMap: new Map(),
+      activityLookupMap,
       activityState: 'unavailable',
       activityIssue: firstIssue,
     }
@@ -411,6 +488,7 @@ async function fetchCreatorActivity(creators: CreatorEntry[]): Promise<{
 
   return {
     activityMap: new Map(),
+    activityLookupMap,
     activityState: 'none',
   }
 }
@@ -422,8 +500,10 @@ function buildSkippedReason(selectedCount: number): string {
 }
 
 function getActivityStateNote(activityState: TipAdvisorActivityState, activityIssue?: TipAdvisorActivityIssue): string {
-  const issueNote = buildActivityFetchFailureNote(activityIssue)
-  if (issueNote) return issueNote
+  if (activityIssue) {
+    const issueNote = getActivityIssueNote(activityIssue)
+    if (issueNote) return issueNote
+  }
 
   switch (activityState) {
     case 'used':
@@ -625,7 +705,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     }
   }
 
-  const { activityMap, activityState, activityIssue } = await fetchCreatorActivity(creators)
+  const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(creators)
   const historyMap = buildHistoryMap(creators, budgetState.log)
   const historyRankMap = buildHistoryRankMap(historyMap)
   const now = Date.now()
@@ -700,7 +780,7 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     handle: entry.creator.handle,
     address: entry.creator.address,
     amount: formatTipBudgetAmount(fromMicros(allocations[index] ?? minMicros)),
-    reason: buildSuggestionReason(entry, historyRankMap.get(entry.creator.handle) ?? null, now),
+    reason: buildSuggestionReason(entry, historyRankMap.get(entry.creator.handle) ?? null, now, activityLookupMap.get(entry.creator.handle)),
   }))
 
   const skipped = rankedCreators.slice(selectedCount).map((entry) => ({
