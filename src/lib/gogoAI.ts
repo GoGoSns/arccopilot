@@ -32,6 +32,7 @@ import { generateTipSuggestions } from '@/lib/tipAdvisor'
 import { discoverCreators } from '@/lib/creatorDiscovery'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
+import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
@@ -163,6 +164,7 @@ export type GatewayBatchTipRecipientAction = {
   txHash?: string
   explorerUrl?: string
   error?: string
+  autonomous?: boolean
 }
 
 export type GatewayBatchTipActionParams = {
@@ -173,6 +175,7 @@ export type GatewayBatchTipActionParams = {
   failedCount?: number
   availableBalance?: string
   prepared?: boolean
+  autonomous?: boolean
 }
 
 type PromptContext = {
@@ -202,7 +205,7 @@ export interface GogoContext {
 export type GogoAction =
   | { type: 'send'; params: { recipient?: string; amount?: string }; completed?: boolean }
   | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean }; completed?: boolean }
-  | { type: 'gateway_tip'; params: { handle: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean }; completed?: boolean }
+  | { type: 'gateway_tip'; params: { handle: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean }; completed?: boolean }
   | { type: 'gateway_batch_tip'; params: GatewayBatchTipActionParams; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }

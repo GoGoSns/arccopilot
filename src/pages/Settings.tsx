@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
@@ -28,6 +28,9 @@ import {
 } from '@/lib/autoTip'
 import {
   CREATORS,
+  AGENT_BACKEND_URL,
+  AGENT_TOKEN,
+  AUTONOMOUS_MODE_ENABLED,
   AUTO_TIP_RULE,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
@@ -36,6 +39,15 @@ import {
   USER_X_HANDLE,
   VOICE_RESPONSES_STORAGE_KEY,
 } from '@/lib/storageKeys'
+import {
+  DEFAULT_AGENT_BACKEND_URL,
+  agentHealth,
+  clearAgentToken,
+  getAgentBackendConfig,
+  setAgentBackendUrl,
+  setAgentToken,
+  setAutonomousEnabled,
+} from '@/lib/agentBackend'
 import {
   getReminders,
   getReminderDetails,
@@ -57,6 +69,10 @@ interface SettingsProps {
 function readStoredBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') return value
   return fallback
+}
+
+function readStoredString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }
 
 function parseAutoTipAmount(value: string): number | null {
@@ -118,6 +134,15 @@ export function Settings({ onBack }: SettingsProps) {
   const [autoTipPerCreatorMaxInput, setAutoTipPerCreatorMaxInput] = useState('')
   const [autoTipError, setAutoTipError] = useState('')
   const [isSavingAutoTip, setIsSavingAutoTip] = useState(false)
+  const [autonomousModeEnabled, setAutonomousModeEnabledState] = useState(false)
+  const [agentBackendUrlInput, setAgentBackendUrlInput] = useState(DEFAULT_AGENT_BACKEND_URL)
+  const [agentTokenInput, setAgentTokenInputState] = useState('')
+  const [agentBackendUrlError, setAgentBackendUrlError] = useState('')
+  const [agentConnectionMessage, setAgentConnectionMessage] = useState<string | null>(null)
+  const [agentConnectionTone, setAgentConnectionTone] = useState<'success' | 'error' | null>(null)
+  const [isSavingAgentBackendUrl, setIsSavingAgentBackendUrl] = useState(false)
+  const [isSavingAgentToken, setIsSavingAgentToken] = useState(false)
+  const [isTestingAgentConnection, setIsTestingAgentConnection] = useState(false)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -338,6 +363,43 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+
+    const loadAgentBackendConfig = async () => {
+      try {
+        const config = await getAgentBackendConfig()
+        if (!active) return
+
+        setAutonomousModeEnabledState(config.enabled)
+        setAgentBackendUrlInput(config.backendUrl ?? DEFAULT_AGENT_BACKEND_URL)
+        setAgentTokenInputState(config.token ?? '')
+      } catch (error) {
+        debugWarn('[Settings] agent backend config load failed:', error)
+        if (!active) return
+
+        setAutonomousModeEnabledState(false)
+        setAgentBackendUrlInput(DEFAULT_AGENT_BACKEND_URL)
+        setAgentTokenInputState('')
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[AUTONOMOUS_MODE_ENABLED] || changes[AGENT_BACKEND_URL] || changes[AGENT_TOKEN]) {
+        void loadAgentBackendConfig()
+      }
+    }
+
+    void loadAgentBackendConfig()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
   const handleToggleIncomingAlerts = async () => {
     const nextValue = !incomingAlerts
     setIncomingAlerts(nextValue)
@@ -354,6 +416,87 @@ export function Settings({ onBack }: SettingsProps) {
     const nextValue = !voiceResponsesEnabled
     setVoiceResponsesEnabled(nextValue)
     await chromeStorageSet({ [VOICE_RESPONSES_STORAGE_KEY]: nextValue })
+  }
+
+  const handleToggleAutonomousMode = async () => {
+    const nextValue = !autonomousModeEnabled
+    setAutonomousModeEnabledState(nextValue)
+    await setAutonomousEnabled(nextValue)
+  }
+
+  const handleSaveAgentBackendUrl = async () => {
+    const nextUrl = agentBackendUrlInput.trim()
+    setAgentBackendUrlError('')
+    setAgentConnectionMessage(null)
+    setAgentConnectionTone(null)
+
+    if (!nextUrl) {
+      setAgentBackendUrlError(t('settings.agentBackendUrlInvalid'))
+      return
+    }
+
+    setIsSavingAgentBackendUrl(true)
+
+    try {
+      const saved = await setAgentBackendUrl(nextUrl)
+      setAgentBackendUrlInput(saved)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setAgentBackendUrlError(message)
+    } finally {
+      setIsSavingAgentBackendUrl(false)
+    }
+  }
+
+  const handleSaveAgentToken = async () => {
+    const nextToken = agentTokenInput.trim()
+    setAgentConnectionMessage(null)
+    setAgentConnectionTone(null)
+
+    if (!nextToken) {
+      setAgentTokenInputState('')
+      await clearAgentToken()
+      return
+    }
+
+    setIsSavingAgentToken(true)
+
+    try {
+      const saved = await setAgentToken(nextToken)
+      setAgentTokenInputState(saved)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setAgentConnectionMessage(message)
+      setAgentConnectionTone('error')
+    } finally {
+      setIsSavingAgentToken(false)
+    }
+  }
+
+  const handleClearAgentToken = async () => {
+    setAgentConnectionMessage(null)
+    setAgentConnectionTone(null)
+    setAgentTokenInputState('')
+    await clearAgentToken()
+  }
+
+  const handleTestAgentConnection = async () => {
+    const nextUrl = agentBackendUrlInput.trim()
+    setIsTestingAgentConnection(true)
+    setAgentConnectionMessage(null)
+    setAgentConnectionTone(null)
+
+    try {
+      await agentHealth(nextUrl)
+      setAgentConnectionMessage(t('common.ok'))
+      setAgentConnectionTone('success')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setAgentConnectionMessage(message)
+      setAgentConnectionTone('error')
+    } finally {
+      setIsTestingAgentConnection(false)
+    }
   }
 
   const handleClearGeminiKey = async () => {
@@ -855,6 +998,125 @@ export function Settings({ onBack }: SettingsProps) {
                     {t('settings.save')}
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+          {t('settings.autonomousModeTitle')}
+        </p>
+        <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-arc-accent/10 p-2 text-arc-accent">
+              <Bot size={20} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-arc-text">{t('settings.autonomousModeToggle')}</p>
+                  <p className="text-[10px] text-arc-text-dim">{t('settings.autonomousModeDescription')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleToggleAutonomousMode()}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-arc-border bg-arc-bg px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:border-white/30"
+                >
+                  <span className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full border transition-colors ${autonomousModeEnabled ? 'border-white/40 bg-white' : 'border-arc-border bg-arc-border/60'}`}>
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-arc-bg shadow transition-transform ${autonomousModeEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </span>
+                  <span>{autonomousModeEnabled ? t('settings.autoTipStateOn') : t('settings.autoTipStateOff')}</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <Input
+                  label={t('settings.agentBackendUrl')}
+                  value={agentBackendUrlInput}
+                  onChange={(e) => {
+                    setAgentBackendUrlInput(e.target.value)
+                    setAgentBackendUrlError('')
+                    setAgentConnectionMessage(null)
+                    setAgentConnectionTone(null)
+                  }}
+                  placeholder={t('settings.agentBackendUrlPlaceholder')}
+                  aria-label={t('settings.agentBackendUrl')}
+                  type="url"
+                  error={agentBackendUrlError}
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
+                />
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleTestAgentConnection()}
+                    disabled={isTestingAgentConnection}
+                    className="min-w-28"
+                  >
+                    {isTestingAgentConnection ? t('settings.testingConnection') : t('settings.testConnection')}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSaveAgentBackendUrl()}
+                    disabled={isSavingAgentBackendUrl}
+                    className="min-w-24"
+                  >
+                    {isSavingAgentBackendUrl ? t('common.loading') : t('settings.update')}
+                  </Button>
+                </div>
+
+                <Input
+                  label={t('settings.agentToken')}
+                  value={agentTokenInput}
+                  onChange={(e) => {
+                    setAgentTokenInputState(e.target.value)
+                    setAgentConnectionMessage(null)
+                    setAgentConnectionTone(null)
+                  }}
+                  placeholder={t('settings.agentTokenPlaceholder')}
+                  aria-label={t('settings.agentToken')}
+                  type="password"
+                  className="bg-arc-bg border-arc-border text-white placeholder:text-arc-hint focus:border-arc-accent font-mono text-xs"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] text-arc-text-dim">
+                    {agentTokenInput.trim() ? getSavedKeyLabel(agentTokenInput.trim()) : t('settings.notSet')}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {agentTokenInput.trim() && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleClearAgentToken()}
+                        className="min-w-20"
+                      >
+                        {t('common.clear')}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => void handleSaveAgentToken()}
+                      disabled={isSavingAgentToken}
+                      className="min-w-24"
+                    >
+                      {isSavingAgentToken ? t('common.loading') : t('settings.save')}
+                    </Button>
+                  </div>
+                </div>
+
+                <p className="text-[10px] leading-relaxed text-arc-text-dim">
+                  {t('settings.autonomousModeDescription')}
+                </p>
+
+                {agentConnectionMessage && (
+                  <p className={`text-xs ${agentConnectionTone === 'success' ? 'text-arc-success' : 'text-arc-danger'}`}>
+                    {agentConnectionMessage}
+                  </p>
+                )}
               </div>
             </div>
           </div>

@@ -30,8 +30,9 @@ import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeo
 import { ARC_DISCORD_INVITE_URL, fetchArcDiscord, type ArcDiscordResult } from '@/lib/arcDiscord'
 import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
+import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
-import { recordTip } from '@/lib/tipBudget'
+import { formatTipBudgetAmount, recordTip } from '@/lib/tipBudget'
 import {
   categorizeTweets,
   fetchArcTweetFeed,
@@ -101,6 +102,7 @@ type TipAdvisorExecutionState = {
   txHash?: string
   explorerUrl?: string
   error?: string
+  autonomous?: boolean
 }
 
 // --- localStorage cache -------------------------------------------------------
@@ -999,6 +1001,24 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }))
   }
 
+  const sendAdvisorTip = async (recipient: string, amount: string, autonomousMode: boolean): Promise<{ txHash: string; explorerUrl: string; autonomous: boolean }> => {
+    if (autonomousMode) {
+      const result = await agentTip(recipient, amount)
+      return {
+        txHash: result.txHash,
+        explorerUrl: result.arcscanUrl,
+        autonomous: true,
+      }
+    }
+
+    const gatewayResult = await gatewayWithdraw(recipient, amount, 26)
+    return {
+      txHash: gatewayResult.mintTxHash,
+      explorerUrl: gatewayResult.destinationExplorerUrl,
+      autonomous: false,
+    }
+  }
+
   const tipAdvisorAnySending = Object.values(tipAdvisorExecution).some((state) => state.status === 'sending')
   const pendingTipSuggestions = tipAdvisor?.suggestions.filter(
     (suggestion) => tipAdvisorExecution[suggestion.handle]?.status !== 'sent',
@@ -1013,19 +1033,26 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     setTipAdvisorBatchMessage(null)
     updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
 
+    const autonomousEnabled = await isAutonomousEnabled()
+
     try {
-      const gatewayResult = await gatewayWithdraw(normalizedAddress, suggestion.amount, 26)
+      const transportResult = await sendAdvisorTip(normalizedAddress, suggestion.amount, autonomousEnabled)
       await recordTip(suggestion.handle, suggestion.amount).catch((error) => {
         debugWarn('[DailyBrief] tip budget record failed:', error)
       })
 
       updateTipAdvisorExecution(suggestion.handle, {
         status: 'sent',
-        txHash: gatewayResult.mintTxHash,
-        explorerUrl: gatewayResult.destinationExplorerUrl,
+        txHash: transportResult.txHash,
+        explorerUrl: transportResult.explorerUrl,
+        autonomous: transportResult.autonomous,
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+      const message = error instanceof Error
+        ? error.message
+        : autonomousEnabled
+          ? t('settings.agentBackendUnreachable')
+          : t('gogo.couldNotSendViaGateway')
       updateTipAdvisorExecution(suggestion.handle, {
         status: 'failed',
         error: message,
@@ -1043,41 +1070,89 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
     }
 
+    const autonomousEnabled = await isAutonomousEnabled()
+
     try {
-      const gatewayResult = await gatewayBatchTip(
-        pendingTipSuggestions.map((suggestion) => ({
-          handle: suggestion.handle,
-          address: suggestion.address,
-          amount: suggestion.amount,
-        })),
-      )
+      if (autonomousEnabled) {
+        let paidCount = 0
+        let failedCount = 0
+        let totalSentAmount = 0
 
-      for (const recipient of gatewayResult.recipients) {
-        if (recipient.txHash) {
-          await recordTip(recipient.handle, recipient.amount).catch((error) => {
-            debugWarn('[DailyBrief] tip budget record failed:', error)
-          })
-          updateTipAdvisorExecution(recipient.handle, {
-            status: 'sent',
-            txHash: recipient.txHash,
-            explorerUrl: recipient.explorerUrl,
-          })
-        } else {
-          updateTipAdvisorExecution(recipient.handle, {
-            status: 'failed',
-            error: recipient.error ?? t('gogo.couldNotSendViaGateway'),
-          })
+        for (const suggestion of pendingTipSuggestions) {
+          try {
+            const transportResult = await sendAdvisorTip(suggestion.address, suggestion.amount, true)
+            paidCount += 1
+            totalSentAmount += Number(suggestion.amount)
+
+            await recordTip(suggestion.handle, suggestion.amount).catch((error) => {
+              debugWarn('[DailyBrief] tip budget record failed:', error)
+            })
+
+            updateTipAdvisorExecution(suggestion.handle, {
+              status: 'sent',
+              txHash: transportResult.txHash,
+              explorerUrl: transportResult.explorerUrl,
+              autonomous: true,
+            })
+          } catch (error) {
+            failedCount += 1
+            const message = error instanceof Error
+              ? error.message
+              : t('settings.agentBackendUnreachable')
+            updateTipAdvisorExecution(suggestion.handle, {
+              status: 'failed',
+              error: message,
+              autonomous: true,
+            })
+          }
         }
-      }
 
-      setTipAdvisorBatchMessage(
-        `${formatText('gogo.gatewayBatchTipSuccess', {
-          count: gatewayResult.paidCount,
-          total: gatewayResult.totalSentAmount,
-        })}${gatewayResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
-      )
+        setTipAdvisorBatchMessage(
+          `${formatText('gogo.autonomousBatchTipSuccess', {
+            count: paidCount,
+            total: formatTipBudgetAmount(totalSentAmount),
+          })}${failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+        )
+      } else {
+        const gatewayResult = await gatewayBatchTip(
+          pendingTipSuggestions.map((suggestion) => ({
+            handle: suggestion.handle,
+            address: suggestion.address,
+            amount: suggestion.amount,
+          })),
+        )
+
+        for (const recipient of gatewayResult.recipients) {
+          if (recipient.txHash) {
+            await recordTip(recipient.handle, recipient.amount).catch((error) => {
+              debugWarn('[DailyBrief] tip budget record failed:', error)
+            })
+            updateTipAdvisorExecution(recipient.handle, {
+              status: 'sent',
+              txHash: recipient.txHash,
+              explorerUrl: recipient.explorerUrl,
+            })
+          } else {
+            updateTipAdvisorExecution(recipient.handle, {
+              status: 'failed',
+              error: recipient.error ?? t('gogo.couldNotSendViaGateway'),
+            })
+          }
+        }
+
+        setTipAdvisorBatchMessage(
+          `${formatText('gogo.gatewayBatchTipSuccess', {
+            count: gatewayResult.paidCount,
+            total: gatewayResult.totalSentAmount,
+          })}${gatewayResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+        )
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+      const message = error instanceof Error
+        ? error.message
+        : autonomousEnabled
+          ? t('settings.agentBackendUnreachable')
+          : t('gogo.couldNotSendViaGateway')
       for (const suggestion of pendingTipSuggestions) {
         updateTipAdvisorExecution(suggestion.handle, {
           status: 'failed',
@@ -1330,6 +1405,22 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   const isSending = execution?.status === 'sending'
                   const isSent = execution?.status === 'sent'
                   const isFailed = execution?.status === 'failed'
+                  const executionLabel = isSent
+                    ? execution?.autonomous
+                      ? t('gogo.sentAutonomously')
+                      : t('common.done')
+                    : isFailed
+                      ? t('gogo.gatewayBatchFailed')
+                      : isSending
+                        ? t('gogo.working')
+                        : t('dailyBrief.tipAdvisorApprove')
+                  const executionTxHash = execution?.txHash ?? ''
+                  const executionIsAutonomous = execution?.autonomous === true
+                  const executionExplorerLink = isSent && executionTxHash
+                    ? executionIsAutonomous
+                      ? execution?.explorerUrl ?? `https://arcscan.io/tx/${executionTxHash}`
+                      : `${execution?.explorerUrl ?? 'https://arcscan.io'}/tx/${executionTxHash}`
+                    : ''
 
                   return (
                     <div key={suggestion.handle} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
@@ -1348,7 +1439,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                               </p>
                             </div>
                             <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isSent ? 'border-arc-success/20 bg-arc-success/10 text-arc-success' : isFailed ? 'border-arc-danger/20 bg-arc-danger/10 text-arc-danger' : 'border-arc-border bg-arc-elevated text-arc-text-dim'}`}>
-                              {isSent ? t('common.done') : isFailed ? t('gogo.gatewayBatchFailed') : isSending ? t('gogo.working') : t('dailyBrief.tipAdvisorApprove')}
+                              {executionLabel}
                             </span>
                           </div>
 
@@ -1356,17 +1447,17 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                             {suggestion.reason}
                           </p>
 
-                          {isSent && execution?.txHash && (
+                          {isSent && executionTxHash && (
                             <div className="rounded-lg border border-arc-success/20 bg-arc-success/10 px-2.5 py-2">
                               <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
                                 {t('gogo.txHash')}
                               </p>
                               <div className="mt-1 flex items-center justify-between gap-2">
                                 <p className="font-mono text-[11px] text-arc-text">
-                                  {shortenTxHash(execution.txHash)}
+                                  {shortenTxHash(executionTxHash)}
                                 </p>
                                 <a
-                                  href={`${execution.explorerUrl ?? 'https://arcscan.io'}/tx/${execution.txHash}`}
+                                  href={executionExplorerLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-[11px] font-medium text-arc-accent hover:underline"
@@ -1374,6 +1465,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                                   {t('gogo.viewOnArcScan')}
                                 </a>
                               </div>
+                              {executionIsAutonomous && (
+                                <p className="mt-2 text-[10px] text-arc-text-dim">
+                                  {t('gogo.sentAutonomously')}
+                                </p>
+                              )}
                             </div>
                           )}
 

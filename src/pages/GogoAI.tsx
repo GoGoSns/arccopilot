@@ -34,6 +34,7 @@ import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
+import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { canTip, formatTipBudgetAmount, getBudgetState, recordTip } from '@/lib/tipBudget'
 import {
   addReminder,
@@ -261,10 +262,12 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
   }
 
   if (action?.type === 'gateway_tip') {
+    if (action.params?.autonomous) return t('gogo.sentAutonomously')
     return action.params?.txHash ? t('gogo.gatewayTipSent') : t('gogo.done')
   }
 
   if (action?.type === 'gateway_batch_tip') {
+    if (action.params?.autonomous) return t('gogo.sentAutonomously')
     const { paidCount } = getGatewayBatchTipStats(action)
     return formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })
   }
@@ -1451,6 +1454,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     const { recipients, paidCount, failedCount, totalSentAmount } = getGatewayBatchTipStats(action)
     const hasPartialFailure = failedCount > 0
+    const isAutonomousBatch = recipients.some((recipient) => recipient.autonomous)
     const batchAmount = typeof recipients[0]?.amount === 'string' ? recipients[0].amount : ''
 
     return (
@@ -1480,8 +1484,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     {formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })}
                   </h4>
                 </div>
-                <span className="rounded-full border border-arc-border bg-arc-elevated px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
-                  ArcScan
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isAutonomousBatch ? 'border-arc-success/20 bg-arc-success/10 text-arc-success' : 'border-arc-border bg-arc-elevated text-arc-text-dim'}`}>
+                  {isAutonomousBatch ? t('gogo.sentAutonomously') : 'ArcScan'}
                 </span>
               </div>
 
@@ -1516,11 +1520,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     const explorerUrl = recipient.explorerUrl?.trim() || EXPLORER_URL
                     const handleLabel = recipient.handle ? `@${recipient.handle}` : formatAddress(recipient.address, 4)
                     const statusLabel = txHash
-                      ? t('gogo.gatewayBatchPaid')
+                      ? (recipient.autonomous ? t('gogo.sentAutonomously') : t('gogo.gatewayBatchPaid'))
                       : t('gogo.gatewayBatchFailed')
                     const statusClassName = txHash
                       ? 'border-arc-success/20 bg-arc-success/10 text-arc-success'
                       : 'border-arc-danger/20 bg-arc-danger/10 text-arc-danger'
+                    const explorerHref = txHash
+                      ? recipient.autonomous
+                        ? explorerUrl
+                        : `${explorerUrl}/tx/${txHash}`
+                      : ''
 
                     return (
                       <div key={`${recipient.handle}-${recipient.address}-${recipientIndex}`} className="rounded-xl border border-arc-border bg-arc-card px-3 py-2">
@@ -1544,7 +1553,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             </span>
                             {txHash ? (
                               <a
-                                href={`${explorerUrl}/tx/${txHash}`}
+                                href={explorerHref}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
@@ -1898,6 +1907,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       }
       case 'gateway_tip': {
         setAnalysisLoadingKey(messageKey)
+        let autonomousEnabled = false
 
         try {
           const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
@@ -1910,6 +1920,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const creatorWallet = handle ? await getCreatorWallet(handle) : null
           const recipientInvalid = !creatorWallet || !isValidAddress(creatorWallet)
           const creatorHandleLabel = handle ? `@${handle}` : t('gogo.gatewayTip')
+          autonomousEnabled = await isAutonomousEnabled()
 
           if (recipientInvalid) {
             updateMessageAction(
@@ -1952,7 +1963,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
             amountOverBalance,
           })
 
-          if (amountInvalid || amountOverBalance) {
+          if (amountInvalid || (!autonomousEnabled && amountOverBalance)) {
             updateMessageAction(
               messageIndex,
               actionIndex,
@@ -1968,69 +1979,109 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-          const budgetState = await getBudgetState()
-          const budgetDecision = await canTip(amountInput)
-          if (!budgetDecision.allowed) {
+          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
+          const amountToPersist = amountInput || undefined
+          if (autonomousEnabled) {
+            const autonomousResult = await agentTip(
+              recipientToPersist ?? creatorWallet ?? '',
+              amountToPersist ?? amountInput,
+            )
+
             updateMessageAction(
               messageIndex,
               actionIndex,
-              (currentAction) => ({
-                ...currentAction,
-                completed: true,
-              }),
+              (currentAction) =>
+                currentAction.type === 'gateway_tip'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        handle,
+                        amount: amountToPersist || currentAction.params.amount,
+                        recipient: recipientToPersist || currentAction.params.recipient,
+                        destinationDomain,
+                        autonomous: true,
+                        txHash: autonomousResult.txHash,
+                        explorerUrl: autonomousResult.arcscanUrl,
+                      },
+                    }
+                  : currentAction,
               (message) => ({
                 ...message,
-                content: formatText('gogo.tipBudgetOver', {
-                  limit: formatTipBudgetAmount(budgetState.dailyLimitUsdc),
-                  remaining: formatTipBudgetAmount(budgetDecision.remaining),
+                content: formatText('gogo.autonomousGatewayTipSuccess', {
+                  handle: creatorHandleLabel,
+                  amount: amountInput,
                 }),
               }),
             )
-            break
-          }
+          } else {
+            const budgetState = await getBudgetState()
+            const budgetDecision = await canTip(amountInput)
+            if (!budgetDecision.allowed) {
+              updateMessageAction(
+                messageIndex,
+                actionIndex,
+                (currentAction) => ({
+                  ...currentAction,
+                  completed: true,
+                }),
+                (message) => ({
+                  ...message,
+                  content: formatText('gogo.tipBudgetOver', {
+                    limit: formatTipBudgetAmount(budgetState.dailyLimitUsdc),
+                    remaining: formatTipBudgetAmount(budgetDecision.remaining),
+                  }),
+                }),
+              )
+              break
+            }
 
-          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
-          const amountToPersist = amountInput || undefined
-          const gatewayResult = await gatewayWithdraw(
-            recipientToPersist ?? creatorWallet ?? '',
-            amountToPersist ?? amountInput,
-            destinationDomain,
-          )
+            const gatewayResult = await gatewayWithdraw(
+              recipientToPersist ?? creatorWallet ?? '',
+              amountToPersist ?? amountInput,
+              destinationDomain,
+            )
 
-          updateMessageAction(
-            messageIndex,
-            actionIndex,
-            (currentAction) =>
-              currentAction.type === 'gateway_tip'
-                ? {
-                    ...currentAction,
-                    completed: true,
-                    params: {
-                      ...currentAction.params,
-                      handle,
-                      amount: amountToPersist || currentAction.params.amount,
-                      recipient: recipientToPersist || currentAction.params.recipient,
-                      destinationDomain,
-                      txHash: gatewayResult.mintTxHash,
-                      explorerUrl: gatewayResult.destinationExplorerUrl,
-                    },
-                  }
-                : currentAction,
-            (message) => ({
-              ...message,
-              content: formatText('gogo.gatewayTipSuccess', {
-                handle: creatorHandleLabel,
-                amount: amountInput,
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'gateway_tip'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        handle,
+                        amount: amountToPersist || currentAction.params.amount,
+                        recipient: recipientToPersist || currentAction.params.recipient,
+                        destinationDomain,
+                        txHash: gatewayResult.mintTxHash,
+                        explorerUrl: gatewayResult.destinationExplorerUrl,
+                      },
+                    }
+                  : currentAction,
+              (message) => ({
+                ...message,
+                content: formatText('gogo.gatewayTipSuccess', {
+                  handle: creatorHandleLabel,
+                  amount: amountInput,
+                }),
               }),
-            }),
-          )
+            )
 
-          await recordTip(handle, amountInput).catch((recordError) => {
-            console.error('[GogoAI] gateway tip budget record failed:', recordError)
-          })
+            await recordTip(handle, amountInput).catch((recordError) => {
+              console.error('[GogoAI] gateway tip budget record failed:', recordError)
+            })
+          }
         } catch (error) {
           console.error('[GogoAI] gateway tip failed:', error)
-          const rawError = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+          const rawError = error instanceof Error
+            ? error.message
+            : autonomousEnabled
+              ? t('settings.agentBackendUnreachable')
+              : t('gogo.couldNotSendViaGateway')
           const insufficientMatch = rawError.match(/Insufficient available balance\. Have: ([\d.]+), Need: ([\d.]+)/)
           const errorMessage = insufficientMatch
             ? formatText('gogo.gatewayInsufficientBalance', {
@@ -2056,6 +2107,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       }
       case 'gateway_batch_tip': {
         setAnalysisLoadingKey(messageKey)
+        let autonomousEnabled = false
 
         try {
           const recipients = Array.isArray(action.params?.recipients)
@@ -2092,46 +2144,116 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-          const gatewayBatchResult = await gatewayBatchTip(recipients)
+          autonomousEnabled = await isAutonomousEnabled()
 
-          updateMessageAction(
-            messageIndex,
-            actionIndex,
-            (currentAction) =>
-              currentAction.type === 'gateway_batch_tip'
-                ? {
-                    ...currentAction,
-                    completed: true,
-                    params: {
+          if (autonomousEnabled) {
+            const nextRecipients: GatewayBatchTipRecipientAction[] = []
+            let paidCount = 0
+            let failedCount = 0
+            let totalSentAmount = 0
+            const totalRequestedAmount = recipients.reduce((sum, recipient) => sum + Number(recipient.amount || 0), 0)
+
+            for (const recipient of recipients) {
+              try {
+                const result = await agentTip(recipient.address, recipient.amount)
+                paidCount += 1
+                totalSentAmount += Number(recipient.amount)
+                nextRecipients.push({
+                  ...recipient,
+                  txHash: result.txHash,
+                  explorerUrl: result.arcscanUrl,
+                  autonomous: true,
+                })
+                await recordTip(recipient.handle, recipient.amount).catch((recordError) => {
+                  console.error('[GogoAI] gateway batch tip budget record failed:', recordError)
+                })
+              } catch (error) {
+                failedCount += 1
+                nextRecipients.push({
+                  ...recipient,
+                  error: error instanceof Error
+                    ? error.message
+                    : t('settings.agentBackendUnreachable'),
+                  autonomous: true,
+                })
+              }
+            }
+
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'gateway_batch_tip'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
                       ...currentAction.params,
-                      recipients: gatewayBatchResult.recipients,
-                      totalRequestedAmount: gatewayBatchResult.totalRequestedAmount,
-                      totalSentAmount: gatewayBatchResult.totalSentAmount,
-                      paidCount: gatewayBatchResult.paidCount,
-                      failedCount: gatewayBatchResult.failedCount,
-                      availableBalance: gatewayBatchResult.availableBalance,
-                      prepared: true,
-                    },
-                  }
-                : currentAction,
-            (message) => ({
-              ...message,
-              content: `${formatText('gogo.gatewayBatchTipSuccess', {
-                count: gatewayBatchResult.paidCount,
-                total: gatewayBatchResult.totalSentAmount,
-              })}${gatewayBatchResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
-            }),
-          )
+                      recipients: nextRecipients,
+                        totalRequestedAmount: formatTipBudgetAmount(totalRequestedAmount),
+                        totalSentAmount: formatTipBudgetAmount(totalSentAmount),
+                        paidCount,
+                        failedCount,
+                        availableBalance: currentAction.params.availableBalance,
+                        prepared: true,
+                        autonomous: true,
+                      },
+                    }
+                  : currentAction,
+              (message) => ({
+                ...message,
+                content: `${formatText('gogo.autonomousBatchTipSuccess', {
+                  count: paidCount,
+                  total: formatTipBudgetAmount(totalSentAmount),
+                })}${failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+              }),
+            )
+          } else {
+            const gatewayBatchResult = await gatewayBatchTip(recipients)
 
-          for (const recipient of gatewayBatchResult.recipients) {
-            if (!recipient.txHash) continue
-            await recordTip(recipient.handle, recipient.amount).catch((recordError) => {
-              console.error('[GogoAI] gateway batch tip budget record failed:', recordError)
-            })
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'gateway_batch_tip'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        recipients: gatewayBatchResult.recipients,
+                        totalRequestedAmount: gatewayBatchResult.totalRequestedAmount,
+                        totalSentAmount: gatewayBatchResult.totalSentAmount,
+                        paidCount: gatewayBatchResult.paidCount,
+                        failedCount: gatewayBatchResult.failedCount,
+                        availableBalance: gatewayBatchResult.availableBalance,
+                        prepared: true,
+                      },
+                    }
+                  : currentAction,
+              (message) => ({
+                ...message,
+                content: `${formatText('gogo.gatewayBatchTipSuccess', {
+                  count: gatewayBatchResult.paidCount,
+                  total: gatewayBatchResult.totalSentAmount,
+                })}${gatewayBatchResult.failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
+              }),
+            )
+
+            for (const recipient of gatewayBatchResult.recipients) {
+              if (!recipient.txHash) continue
+              await recordTip(recipient.handle, recipient.amount).catch((recordError) => {
+                console.error('[GogoAI] gateway batch tip budget record failed:', recordError)
+              })
+            }
           }
         } catch (error) {
           console.error('[GogoAI] gateway batch tip failed:', error)
-          const rawError = error instanceof Error ? error.message : t('gogo.couldNotSendViaGateway')
+          const rawError = error instanceof Error
+            ? error.message
+            : autonomousEnabled
+              ? t('settings.agentBackendUnreachable')
+              : t('gogo.couldNotSendViaGateway')
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {
@@ -2378,6 +2500,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const actionLoadingLabel = getActionLoadingLabel(action)
     const gatewayTipTxHash = gatewayTipAction?.params?.txHash ?? ''
     const gatewayTipExplorerUrl = gatewayTipAction?.params?.explorerUrl || EXPLORER_URL
+    const gatewayTipIsAutonomous = Boolean(gatewayTipAction?.params?.autonomous)
+    const gatewayTipExplorerLink = gatewayTipTxHash
+      ? gatewayTipIsAutonomous
+        ? gatewayTipExplorerUrl
+        : `${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`
+      : ''
 
     return (
       <div
@@ -2418,12 +2546,17 @@ export function GogoAI({ onBack }: GogoAIProps) {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
                       {t('gogo.txHash')}
                     </p>
+                    {gatewayTipIsAutonomous && (
+                      <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-success">
+                        {t('gogo.sentAutonomously')}
+                      </p>
+                    )}
                     <p className="mt-1 break-all font-mono text-xs text-arc-text">
                       {gatewayTipTxHash}
                     </p>
                   </div>
                   <a
-                    href={`${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`}
+                    href={gatewayTipExplorerLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
@@ -2802,6 +2935,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const gatewayTipAction = action?.type === 'gateway_tip' ? action : null
               const gatewayTipTxHash = gatewayTipAction?.params?.txHash ?? ''
               const gatewayTipExplorerUrl = gatewayTipAction?.params?.explorerUrl || EXPLORER_URL
+              const gatewayTipIsAutonomous = Boolean(gatewayTipAction?.params?.autonomous)
+              const gatewayTipExplorerLink = gatewayTipTxHash
+                ? gatewayTipIsAutonomous
+                  ? gatewayTipExplorerUrl
+                  : `${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`
+                : ''
               const draftKey = `${message.timestamp}-${index}`
               const actionKey = `${draftKey}-0`
               const analyzeAction = action && action.type === 'analyze_address' ? action : null
@@ -2954,12 +3093,17 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
                               {t('gogo.txHash')}
                             </p>
+                            {gatewayTipIsAutonomous && (
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-success">
+                                {t('gogo.sentAutonomously')}
+                              </p>
+                            )}
                             <p className="mt-1 break-all font-mono text-xs text-arc-text">
                               {gatewayTipTxHash}
                             </p>
                           </div>
                           <a
-                            href={`${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`}
+                            href={gatewayTipExplorerLink}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"

@@ -3,8 +3,9 @@ import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Loader2, Share2, User, Use
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
+import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
-import { PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import { AUTONOMOUS_MODE_ENABLED, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { formatText, t } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove, fetchWithTimeout } from '@/lib/external'
 import {
@@ -76,12 +77,13 @@ export function Send({ onBack }: SendProps) {
   const [error, setError] = useState('')
   const [txHash, setTxHash] = useState('')
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
-  const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string } | null>(null)
+  const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string; explorerUrl?: string; autonomous?: boolean } | null>(null)
   const [fromUniversalTip, setFromUniversalTip] = useState(false)
   const [recipientContractStatus, setRecipientContractStatus] = useState<'idle' | 'checking' | 'contract' | 'unknown'>('idle')
   const [metaMaskAccessState, setMetaMaskAccessState] = useState<MetaMaskAccessState>('checking')
   const [metaMaskConnecting, setMetaMaskConnecting] = useState(false)
   const [metaMaskAccount, setMetaMaskAccount] = useState<string | null>(walletAddress)
+  const [autonomousModeEnabled, setAutonomousModeEnabled] = useState(false)
 
   const amountRef = useRef<HTMLInputElement>(null)
   const successTimerRef = useRef<number | null>(null)
@@ -95,7 +97,8 @@ export function Send({ onBack }: SendProps) {
   const recipientValidationError = trimmedRecipient && !isExactRecipient ? t('send.invalidRecipientAddress') : ''
   const recipientMemory = isExactRecipient ? addressMemories[trimmedRecipient.toLowerCase()] ?? null : null
   const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
-  const amountValidation = isValidAmount(amount, balance)
+  const canUseAutonomousTip = fromUniversalTip && autonomousModeEnabled
+  const amountValidation = isValidAmount(amount, canUseAutonomousTip ? undefined : balance)
   const amountValidationError = amount.trim()
     ? !amountValidation.valid
       ? t('send.invalidAmount')
@@ -106,7 +109,7 @@ export function Send({ onBack }: SendProps) {
   const isAmountValid = amountValidation.valid && !amountValidation.overBalance
   const showRecipientSafetyWarning = fromUniversalTip && isExactRecipient
   const senderAddress = metaMaskAccount ?? walletAddress
-  const isSendDisabled = isLoading || !senderAddress || !isExactRecipient || !isAmountValid || !!txHash
+  const isSendDisabled = isLoading || (!senderAddress && !canUseAutonomousTip) || !isExactRecipient || !isAmountValid || !!txHash
 
   const suggestions = useMemo(() => {
     const q = recipient.toLowerCase()
@@ -221,6 +224,43 @@ export function Send({ onBack }: SendProps) {
   useEffect(() => {
     void refreshMetaMaskAccess()
   }, [walletAddress])
+
+  useEffect(() => {
+    let active = true
+
+    const syncAutonomousMode = async () => {
+      try {
+        const enabled = await isAutonomousEnabled()
+        if (active) {
+          setAutonomousModeEnabled(enabled)
+        }
+      } catch {
+        if (active) {
+          setAutonomousModeEnabled(false)
+        }
+      }
+    }
+
+    void syncAutonomousMode()
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (Object.prototype.hasOwnProperty.call(changes, AUTONOMOUS_MODE_ENABLED)) {
+        void syncAutonomousMode()
+      }
+    }
+
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(handleStorageChange)
+    }
+
+    return () => {
+      active = false
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(handleStorageChange)
+      }
+    }
+  }, [])
 
   const handleConnectMetaMask = async () => {
     setMetaMaskConnecting(true)
@@ -468,8 +508,9 @@ export function Send({ onBack }: SendProps) {
     setLastTransfer(null)
     clearScheduledRefresh()
     receiptPollTokenRef.current += 1
+    const autonomousSend = fromUniversalTip && autonomousModeEnabled
 
-    if (!senderAddress) {
+    if (!senderAddress && !autonomousSend) {
       setError(t('send.connectWalletFirst'))
       return
     }
@@ -492,6 +533,21 @@ export function Send({ onBack }: SendProps) {
     setIsLoading(true)
 
     try {
+      if (autonomousSend) {
+        const amountToSend = amount.trim()
+        const agentResult = await agentTip(trimmedRecipient, amountToSend)
+
+        setTxHash(agentResult.txHash)
+        setTxStatus('confirmed')
+        setLastTransfer({
+          recipient: trimmedRecipient,
+          amount: amountToSend,
+          explorerUrl: agentResult.arcscanUrl,
+          autonomous: true,
+        })
+        return
+      }
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
         throw new Error(t('send.enterWebPageFirst'))
@@ -592,8 +648,10 @@ export function Send({ onBack }: SendProps) {
       const pollToken = receiptPollTokenRef.current
       void pollTransactionReceipt(tab.id, result.hash, pollToken)
     } catch (err: any) {
-      const message = getMetaMaskFriendlyError(err)
-      if (/MetaMask permission needed/i.test(message)) {
+      const message = autonomousSend
+        ? (err instanceof Error && err.message.trim() ? err.message : t('settings.agentBackendUnreachable'))
+        : getMetaMaskFriendlyError(err)
+      if (!autonomousSend && /MetaMask permission needed/i.test(message)) {
         setMetaMaskAccessState('unauthorized')
       }
       setError(message || (err?.message ?? t('send.failedToSend')))
@@ -606,10 +664,11 @@ export function Send({ onBack }: SendProps) {
   if (txHash && lastTransfer) {
     const displayRecipient = recipientMemory?.label ?? formatAddress(lastTransfer.recipient, 4)
     const isInBook = Boolean(recipientMemory)
+    const explorerLink = lastTransfer.explorerUrl ?? `${EXPLORER_URL}/tx/${txHash}`
     const shareText =
       formatText('send.shareText', {
         amount: lastTransfer.amount,
-        url: `${EXPLORER_URL}/tx/${txHash}`,
+        url: explorerLink,
       })
 
     return (
@@ -630,7 +689,7 @@ export function Send({ onBack }: SendProps) {
             <p className="text-sm text-arc-text-dim">{formatText('send.successTo', { recipient: displayRecipient })}</p>
             {txStatus === 'confirmed' && (
               <span className="inline-block mt-1 rounded-full bg-arc-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-arc-success">
-                {t('send.confirmed')}
+                {lastTransfer.autonomous ? t('gogo.sentAutonomously') : t('send.confirmed')}
               </span>
             )}
           </div>
@@ -645,7 +704,7 @@ export function Send({ onBack }: SendProps) {
 
           <div className="flex flex-col gap-2 w-full">
             <Button variant="outline" fullWidth
-              onClick={() => openSafeUrl(`${EXPLORER_URL}/tx/${txHash}`)}
+              onClick={() => openSafeUrl(explorerLink)}
             >
               <ExternalLink size={14} />
               {t('send.viewOnExplorer')}
@@ -758,7 +817,7 @@ export function Send({ onBack }: SendProps) {
           )}
         </div>
 
-        {metaMaskAccessState === 'unauthorized' && (
+        {metaMaskAccessState === 'unauthorized' && !canUseAutonomousTip && (
           <Card className="space-y-3 border-arc-borderEmphasis bg-arc-card p-3">
             <div className="space-y-1">
               <p className="text-sm font-semibold text-white">{t('send.metaMaskPermissionNeeded')}</p>
