@@ -28,13 +28,20 @@ import {
   type Message,
   type SpendingAnalysis,
 } from '@/lib/gogoAI'
-import { getCreatorWallet, normalizeCreatorHandle } from '@/lib/creatorRegistry'
+import { findCreatorHandleByAddress, getCreatorWallet, normalizeCreatorHandle } from '@/lib/creatorRegistry'
 import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
-import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
+import {
+  agentTip,
+  isAutonomousEnabled,
+  logAutoTipError,
+  logAutoTipFallback,
+  logAutoTipResult,
+  logAutoTipStart,
+} from '@/lib/agentBackend'
 import { canTip, formatTipBudgetAmount, getBudgetState, recordTip } from '@/lib/tipBudget'
 import {
   addReminder,
@@ -241,6 +248,8 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
       return t('gogo.working')
     case 'create_reminder':
       return t('gogo.working')
+    case 'send':
+      return t('gogo.working')
     case 'tip_creator':
       return t('gogo.preparingTip')
     case 'gateway_tip':
@@ -257,7 +266,14 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
     return t('gogo.reminderSet')
   }
 
+  if (action?.type === 'send') {
+    if (action.params?.autonomous) return t('gogo.sentAutonomously')
+    return action.params?.txHash ? t('send.confirmed') : t('gogo.done')
+  }
+
   if (action?.type === 'tip_creator') {
+    if (action.params?.autonomous) return t('gogo.sentAutonomously')
+    if (action.params?.txHash) return t('gogo.done')
     return action.params?.prepared ? t('gogo.tipPrepared') : t('gogo.done')
   }
 
@@ -277,6 +293,21 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
   }
 
   return t('gogo.done')
+}
+
+function getActionTransferResult(action?: GogoAction | null): { txHash: string; explorerUrl: string; autonomous: boolean } {
+  const params = (action?.params ?? {}) as Record<string, unknown>
+  const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
+  const explorerUrl = typeof params.explorerUrl === 'string' && params.explorerUrl.trim()
+    ? params.explorerUrl.trim()
+    : EXPLORER_URL
+  const autonomous = params.autonomous === true
+
+  return {
+    txHash,
+    explorerUrl,
+    autonomous,
+  }
 }
 
 function getRiskTone(analysis: AddressAnalysis): 'contract' | 'unknown' | 'empty' | 'normal' {
@@ -464,11 +495,16 @@ function getMultiStepActionTitle(
     }
     case 'gateway_tip': {
       const handle = typeof params.handle === 'string' ? params.handle.trim() : ''
+      const recipientValue = typeof params.recipient === 'string' ? params.recipient : undefined
       const amount = typeof params.amount === 'string' ? params.amount.trim() : ''
       const amountLabel = amount ? formatUsdcAmount(amount) : t('common.usdc')
       const normalizedHandle = normalizeCreatorHandle(handle)
       return formatText('gogo.gatewayTipTitle', {
-        handle: normalizedHandle ? `@${normalizedHandle}` : t('gogo.gatewayTip'),
+        handle: normalizedHandle
+          ? `@${normalizedHandle}`
+          : recipientValue
+            ? getRecipientDisplayName(recipientValue, resolveAddress, addressMemories)
+            : t('gogo.gatewayTip'),
         amount: amountLabel,
       })
     }
@@ -1658,6 +1694,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
       messagesRef.current = finalMessages
       setMessages(finalMessages)
       void saveGogoHistory(finalMessages)
+
+      const autonomousEnabled = await isAutonomousEnabled()
+      const primaryAction = assistantMessage.action
+      if (
+        autonomousEnabled &&
+        primaryAction &&
+        (primaryAction.type === 'send' || primaryAction.type === 'tip_creator' || primaryAction.type === 'gateway_tip' || primaryAction.type === 'gateway_batch_tip')
+      ) {
+        const messageIndex = finalMessages.length - 1
+        const actionKey = `${assistantMessage.timestamp}-${messageIndex}`
+        void handleAction(messageIndex, 0, primaryAction, actionKey)
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('gogo.couldNotReach')
       const errorBubble: Message = {
@@ -1709,7 +1757,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
     if (!action || action.type === 'none' || action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
@@ -1731,22 +1779,109 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     switch (action.type) {
       case 'send': {
-        const recipientInput = typeof action.params?.recipient === 'string' ? action.params.recipient.trim() : ''
-        const resolvedRecipient = recipientInput ? resolveAddress(recipientInput) : null
-        const recipientInvalid = Boolean(recipientInput) && (!resolvedRecipient || !isValidAddress(resolvedRecipient))
-        const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
-        const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
-        const amountInvalid = Boolean(amountInput) && !amountValidation.valid
-        const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
-        const warning = buildSendValidationWarning({
-          recipientInvalid,
-          amountInvalid,
-          amountOverBalance,
-        })
+        let autonomousEnabled = false
 
-        const recipientToPersist = resolvedRecipient && isValidAddress(resolvedRecipient) ? resolvedRecipient : undefined
-        const amountToPersist = amountValidation.valid && !amountValidation.overBalance ? (amountInput || undefined) : undefined
-        if (recipientInvalid || warning) {
+        try {
+          const recipientInput = typeof action.params?.recipient === 'string' ? action.params.recipient.trim() : ''
+          const resolvedRecipient = recipientInput ? resolveAddress(recipientInput) : null
+          const recipientInvalid = Boolean(recipientInput) && (!resolvedRecipient || !isValidAddress(resolvedRecipient))
+          const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
+          const amountValidation = amountInput ? isValidAmount(amountInput, balance) : { valid: true, overBalance: false, amountMicros: null }
+          const amountInvalid = Boolean(amountInput) && !amountValidation.valid
+          const amountOverBalance = Boolean(amountInput) && amountValidation.valid && amountValidation.overBalance
+          const warning = buildSendValidationWarning({
+            recipientInvalid,
+            amountInvalid,
+            amountOverBalance,
+          })
+
+          const recipientToPersist = resolvedRecipient && isValidAddress(resolvedRecipient) ? resolvedRecipient : undefined
+          const amountToPersist = amountInput || undefined
+          const tipHandle = recipientToPersist ? await findCreatorHandleByAddress(recipientToPersist) : null
+          autonomousEnabled = await isAutonomousEnabled()
+          logAutoTipStart('GogoAI.handleAction.send', autonomousEnabled, recipientToPersist ?? '', amountToPersist ?? '')
+
+          if (recipientInvalid || amountInvalid || (!autonomousEnabled && amountOverBalance)) {
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) => ({
+                ...currentAction,
+                completed: true,
+              }),
+              (message) => ({
+                ...message,
+                content: warning || buildAddressValidationWarning(),
+              }),
+            )
+            break
+          }
+
+          if (autonomousEnabled && recipientToPersist && amountToPersist) {
+            setAnalysisLoadingKey(messageKey)
+
+            const autonomousResult = await agentTip(recipientToPersist ?? '', amountToPersist ?? '')
+            logAutoTipResult(autonomousResult.state)
+
+            const recipientLabel = tipHandle
+              ? `@${tipHandle}`
+              : getRecipientDisplayName(recipientToPersist, resolveAddress, addressMemories)
+
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'send'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        recipient: recipientToPersist || currentAction.params.recipient,
+                        amount: amountToPersist || currentAction.params.amount,
+                        txHash: autonomousResult.txHash,
+                        explorerUrl: autonomousResult.arcscanUrl,
+                        autonomous: true,
+                      },
+                    }
+                  : currentAction,
+              (message) => ({
+                ...message,
+                content: `${formatText('gogo.autonomousGatewayTipSuccess', {
+                  handle: recipientLabel,
+                  amount: amountToPersist,
+                })}\n${autonomousResult.txHash}\n${autonomousResult.arcscanUrl}`,
+              }),
+            )
+
+            if (tipHandle) {
+              await recordTip(tipHandle, amountToPersist ?? amountInput).catch((recordError) => {
+                debugWarn('[GogoAI] send tip budget record failed:', recordError)
+              })
+            }
+          } else {
+            if (autonomousEnabled) {
+              logAutoTipFallback('GogoAI.handleAction.send.openSend')
+            }
+
+            updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
+              ...currentAction,
+              completed: true,
+            }))
+
+            if (!recipientToPersist && !amountToPersist) {
+              break
+            }
+
+            await persistPendingSend(recipientToPersist, amountToPersist, tipHandle ?? undefined)
+            setCurrentView('send')
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : t('settings.agentBackendUnreachable')
+          if (autonomousEnabled) {
+            logAutoTipError(message)
+          }
+
           updateMessageAction(
             messageIndex,
             actionIndex,
@@ -1754,24 +1889,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
               ...currentAction,
               completed: true,
             }),
-            (message) => ({
-              ...message,
-              content: warning || buildAddressValidationWarning(),
+            (messageNode) => ({
+              ...messageNode,
+              content: message || t('send.failedToSend'),
             }),
           )
-        } else {
-          updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
-            ...currentAction,
-            completed: true,
-          }))
+        } finally {
+          if (autonomousEnabled) {
+            setAnalysisLoadingKey(null)
+          }
         }
-
-        if (!recipientToPersist && !amountToPersist) {
-          break
-        }
-
-        await persistPendingSend(recipientToPersist, amountToPersist)
-        setCurrentView('send')
         break
       }
       case 'open_settings': {
@@ -1787,7 +1914,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
         break
       }
       case 'tip_creator': {
-        setAnalysisLoadingKey(messageKey)
+        let autonomousEnabled = false
 
         try {
           const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
@@ -1838,8 +1965,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
             amountInvalid,
             amountOverBalance,
           })
+          autonomousEnabled = await isAutonomousEnabled()
 
-          if (amountInvalid || amountOverBalance) {
+          if (amountInvalid || (!autonomousEnabled && amountOverBalance)) {
             updateMessageAction(
               messageIndex,
               actionIndex,
@@ -1879,50 +2007,120 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
           const amountToPersist = amountInput || undefined
 
+          autonomousEnabled = await isAutonomousEnabled()
+          logAutoTipStart('GogoAI.handleAction.tip_creator', autonomousEnabled, recipientToPersist ?? '', amountToPersist ?? '')
+          if (autonomousEnabled && recipientToPersist && amountToPersist) {
+            setAnalysisLoadingKey(messageKey)
+
+            const autonomousResult = await agentTip(recipientToPersist ?? '', amountToPersist ?? '')
+            logAutoTipResult(autonomousResult.state)
+
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'tip_creator'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        handle,
+                        amount: amountToPersist || currentAction.params.amount,
+                        recipient: recipientToPersist || currentAction.params.recipient,
+                        prepared: true,
+                        autonomous: true,
+                        txHash: autonomousResult.txHash,
+                        explorerUrl: autonomousResult.arcscanUrl,
+                      },
+                    }
+                  : currentAction,
+              (message) => ({
+                ...message,
+                content: `${formatText('gogo.autonomousGatewayTipSuccess', {
+                  handle: creatorHandleLabel,
+                  amount: amountToPersist,
+                })}\n${autonomousResult.txHash}\n${autonomousResult.arcscanUrl}`,
+              }),
+            )
+
+            await recordTip(handle, amountToPersist ?? amountInput).catch((recordError) => {
+              debugWarn('[GogoAI] tip_creator autonomous budget record failed:', recordError)
+            })
+          } else {
+            if (autonomousEnabled) {
+              logAutoTipFallback('GogoAI.handleAction.tip_creator.openSend')
+            }
+
+            updateMessageAction(
+              messageIndex,
+              actionIndex,
+              (currentAction) =>
+                currentAction.type === 'tip_creator'
+                  ? {
+                      ...currentAction,
+                      completed: true,
+                      params: {
+                        ...currentAction.params,
+                        handle,
+                        amount: amountToPersist || currentAction.params.amount,
+                        recipient: recipientToPersist || currentAction.params.recipient,
+                        prepared: true,
+                      },
+                    }
+                  : currentAction,
+            )
+
+            await persistPendingSend(recipientToPersist, amountToPersist, handle)
+            setCurrentView('send')
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : t('settings.agentBackendUnreachable')
+          if (autonomousEnabled) {
+            logAutoTipError(message)
+          }
+
           updateMessageAction(
             messageIndex,
             actionIndex,
-            (currentAction) =>
-              currentAction.type === 'tip_creator'
-                ? {
-                    ...currentAction,
-                    completed: true,
-                    params: {
-                      ...currentAction.params,
-                      handle,
-                      amount: amountToPersist || currentAction.params.amount,
-                      recipient: recipientToPersist || currentAction.params.recipient,
-                      prepared: true,
-                    },
-                  }
-                : currentAction,
+            (currentAction) => ({
+              ...currentAction,
+              completed: true,
+            }),
+            (messageNode) => ({
+              ...messageNode,
+              content: message || t('send.failedToSend'),
+            }),
           )
-
-          await persistPendingSend(recipientToPersist, amountToPersist, handle)
-          setCurrentView('send')
-          break
         } finally {
-          setAnalysisLoadingKey(null)
+          if (autonomousEnabled) {
+            setAnalysisLoadingKey(null)
+          }
         }
+        break
       }
       case 'gateway_tip': {
-        setAnalysisLoadingKey(messageKey)
         let autonomousEnabled = false
 
         try {
           const handleInput = typeof action.params?.handle === 'string' ? action.params.handle.trim() : ''
           const handle = normalizeCreatorHandle(handleInput)
+          const recipientInput = typeof action.params?.recipient === 'string' ? action.params.recipient.trim().toLowerCase() : ''
           const amountInput = normalizeUsdcAmountText(typeof action.params?.amount === 'string' ? action.params.amount : '')
           const destinationDomain = typeof action.params?.destinationDomain === 'number'
             ? action.params.destinationDomain
             : 26
 
           const creatorWallet = handle ? await getCreatorWallet(handle) : null
-          const recipientInvalid = !creatorWallet || !isValidAddress(creatorWallet)
-          const creatorHandleLabel = handle ? `@${handle}` : t('gogo.gatewayTip')
-          autonomousEnabled = await isAutonomousEnabled()
+          const recipientToPersist = recipientInput || creatorWallet || undefined
+          const resolvedHandle = handle || (recipientToPersist ? await findCreatorHandleByAddress(recipientToPersist) : '')
+          const creatorHandleLabel = resolvedHandle
+            ? `@${resolvedHandle}`
+            : recipientToPersist
+              ? getRecipientDisplayName(recipientToPersist, resolveAddress, addressMemories)
+              : t('gogo.gatewayTip')
 
-          if (recipientInvalid) {
+          if (!recipientToPersist || !isValidAddress(recipientToPersist)) {
             updateMessageAction(
               messageIndex,
               actionIndex,
@@ -1932,7 +2130,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
               }),
               (message) => ({
                 ...message,
-                content: formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel }),
+                content: resolvedHandle
+                  ? formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel })
+                  : t('gogo.invalidAddress'),
               }),
             )
             break
@@ -1958,10 +2158,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const amountInvalid = !amountValidation.valid
           const amountOverBalance = amountValidation.valid && amountValidation.overBalance
           const warning = buildSendValidationWarning({
-            recipientInvalid,
+            recipientInvalid: false,
             amountInvalid,
             amountOverBalance,
           })
+          autonomousEnabled = await isAutonomousEnabled()
 
           if (amountInvalid || (!autonomousEnabled && amountOverBalance)) {
             updateMessageAction(
@@ -1979,13 +2180,14 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-          const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
           const amountToPersist = amountInput || undefined
+          logAutoTipStart('GogoAI.handleAction.gateway_tip', autonomousEnabled, recipientToPersist ?? '', amountToPersist ?? '')
+
           if (autonomousEnabled) {
-            const autonomousResult = await agentTip(
-              recipientToPersist ?? creatorWallet ?? '',
-              amountToPersist ?? amountInput,
-            )
+            setAnalysisLoadingKey(messageKey)
+
+            const autonomousResult = await agentTip(recipientToPersist ?? '', amountToPersist ?? amountInput)
+            logAutoTipResult(autonomousResult.state)
 
             updateMessageAction(
               messageIndex,
@@ -1997,7 +2199,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       completed: true,
                       params: {
                         ...currentAction.params,
-                        handle,
+                        handle: resolvedHandle || undefined,
                         amount: amountToPersist || currentAction.params.amount,
                         recipient: recipientToPersist || currentAction.params.recipient,
                         destinationDomain,
@@ -2009,12 +2211,19 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   : currentAction,
               (message) => ({
                 ...message,
-                content: formatText('gogo.autonomousGatewayTipSuccess', {
+                content: `${formatText('gogo.autonomousGatewayTipSuccess', {
                   handle: creatorHandleLabel,
                   amount: amountInput,
-                }),
+                })}\n${autonomousResult.txHash}\n${autonomousResult.arcscanUrl}`,
               }),
             )
+
+            const recordHandle = resolvedHandle || handle
+            if (recordHandle) {
+              await recordTip(recordHandle, amountInput).catch((recordError) => {
+                console.error('[GogoAI] gateway tip autonomous budget record failed:', recordError)
+              })
+            }
           } else {
             const budgetState = await getBudgetState()
             const budgetDecision = await canTip(amountInput)
@@ -2038,7 +2247,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
             }
 
             const gatewayResult = await gatewayWithdraw(
-              recipientToPersist ?? creatorWallet ?? '',
+              recipientToPersist,
               amountToPersist ?? amountInput,
               destinationDomain,
             )
@@ -2053,7 +2262,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                       completed: true,
                       params: {
                         ...currentAction.params,
-                        handle,
+                        handle: resolvedHandle || undefined,
                         amount: amountToPersist || currentAction.params.amount,
                         recipient: recipientToPersist || currentAction.params.recipient,
                         destinationDomain,
@@ -2071,12 +2280,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
               }),
             )
 
-            await recordTip(handle, amountInput).catch((recordError) => {
-              console.error('[GogoAI] gateway tip budget record failed:', recordError)
-            })
+            if (resolvedHandle || handle) {
+              await recordTip(resolvedHandle || handle, amountInput).catch((recordError) => {
+                console.error('[GogoAI] gateway tip budget record failed:', recordError)
+              })
+            }
           }
         } catch (error) {
-          console.error('[GogoAI] gateway tip failed:', error)
           const rawError = error instanceof Error
             ? error.message
             : autonomousEnabled
@@ -2089,6 +2299,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 needed: insufficientMatch[2] ?? '?',
               })
             : rawError
+          if (autonomousEnabled) {
+            logAutoTipError(errorMessage)
+          }
           const nextMessages = messagesRef.current.map((message, index) => {
             if (index !== messageIndex) return message
             return {
@@ -2101,7 +2314,9 @@ export function GogoAI({ onBack }: GogoAIProps) {
           setMessages(nextMessages)
           void saveGogoHistory(nextMessages)
         } finally {
-          setAnalysisLoadingKey(null)
+          if (autonomousEnabled) {
+            setAnalysisLoadingKey(null)
+          }
         }
         break
       }
@@ -2145,6 +2360,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
           }
 
           autonomousEnabled = await isAutonomousEnabled()
+          logAutoTipStart('GogoAI.handleAction.gateway_batch_tip', autonomousEnabled, recipients[0]?.address ?? '', recipients[0]?.amount ?? '')
 
           if (autonomousEnabled) {
             const nextRecipients: GatewayBatchTipRecipientAction[] = []
@@ -2155,6 +2371,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
             for (const recipient of recipients) {
               try {
+                logAutoTipStart('GogoAI.handleAction.gateway_batch_tip', autonomousEnabled, recipient.address, recipient.amount)
                 const result = await agentTip(recipient.address, recipient.amount)
                 paidCount += 1
                 totalSentAmount += Number(recipient.amount)
@@ -2479,12 +2696,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const draftTweetAction = action.type === 'draft_tweet' ? action : null
     const isAnalyzeAction = Boolean(analyzeAction)
     const isSummaryAction = Boolean(summaryAction)
-    const gatewayTipAction = action?.type === 'gateway_tip' ? action : null
     const isActionLoading = Boolean(
       action &&
       analysisLoadingKey === actionKey &&
       !action.completed &&
-      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'),
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'),
     )
     const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
@@ -2498,13 +2714,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const spendingStyles = spendingTone ? getSpendingStyles(spendingTone) : null
     const spendingLabel = spendingTone ? getSpendingLabel(spendingTone) : ''
     const actionLoadingLabel = getActionLoadingLabel(action)
-    const gatewayTipTxHash = gatewayTipAction?.params?.txHash ?? ''
-    const gatewayTipExplorerUrl = gatewayTipAction?.params?.explorerUrl || EXPLORER_URL
-    const gatewayTipIsAutonomous = Boolean(gatewayTipAction?.params?.autonomous)
-    const gatewayTipExplorerLink = gatewayTipTxHash
-      ? gatewayTipIsAutonomous
-        ? gatewayTipExplorerUrl
-        : `${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`
+    const transferResult = getActionTransferResult(action)
+    const transferExplorerLink = transferResult.txHash
+      ? transferResult.autonomous
+        ? transferResult.explorerUrl
+        : `${transferResult.explorerUrl}/tx/${transferResult.txHash}`
       : ''
 
     return (
@@ -2539,24 +2753,24 @@ export function GogoAI({ onBack }: GogoAIProps) {
               </div>
             </div>
 
-            {gatewayTipTxHash && (
+            {transferResult.txHash && (
               <div className="rounded-xl border border-arc-success/20 bg-arc-success/10 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
                       {t('gogo.txHash')}
                     </p>
-                    {gatewayTipIsAutonomous && (
+                    {transferResult.autonomous && (
                       <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-success">
                         {t('gogo.sentAutonomously')}
                       </p>
                     )}
                     <p className="mt-1 break-all font-mono text-xs text-arc-text">
-                      {gatewayTipTxHash}
+                      {transferResult.txHash}
                     </p>
                   </div>
                   <a
-                    href={gatewayTipExplorerLink}
+                    href={transferExplorerLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
@@ -2566,7 +2780,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   </a>
                 </div>
                 <p className="mt-2 text-xs text-arc-text-dim">
-                  {shortenTxHash(gatewayTipTxHash)}
+                  {shortenTxHash(transferResult.txHash)}
                 </p>
               </div>
             )}
@@ -2932,14 +3146,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const action = primaryAction && primaryAction.type !== 'none' && primaryAction.type !== 'draft_tweet'
                 ? primaryAction
                 : null
-              const gatewayTipAction = action?.type === 'gateway_tip' ? action : null
-              const gatewayTipTxHash = gatewayTipAction?.params?.txHash ?? ''
-              const gatewayTipExplorerUrl = gatewayTipAction?.params?.explorerUrl || EXPLORER_URL
-              const gatewayTipIsAutonomous = Boolean(gatewayTipAction?.params?.autonomous)
-              const gatewayTipExplorerLink = gatewayTipTxHash
-                ? gatewayTipIsAutonomous
-                  ? gatewayTipExplorerUrl
-                  : `${gatewayTipExplorerUrl}/tx/${gatewayTipTxHash}`
+              const transferResult = getActionTransferResult(action)
+              const transferExplorerLink = transferResult.txHash
+                ? transferResult.autonomous
+                  ? transferResult.explorerUrl
+                  : `${transferResult.explorerUrl}/tx/${transferResult.txHash}`
                 : ''
               const draftKey = `${message.timestamp}-${index}`
               const actionKey = `${draftKey}-0`
@@ -2948,7 +3159,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null
@@ -3085,7 +3296,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
                   {renderGatewayBatchTipCard(action, isUser, isActionLoading)}
 
-                  {gatewayTipTxHash && (
+                  {transferResult.txHash && (
                     <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
                       <div className="rounded-xl border border-arc-success/20 bg-arc-success/10 p-3">
                         <div className="flex items-start justify-between gap-3">
@@ -3093,17 +3304,17 @@ export function GogoAI({ onBack }: GogoAIProps) {
                             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">
                               {t('gogo.txHash')}
                             </p>
-                            {gatewayTipIsAutonomous && (
+                            {transferResult.autonomous && (
                               <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-success">
                                 {t('gogo.sentAutonomously')}
                               </p>
                             )}
                             <p className="mt-1 break-all font-mono text-xs text-arc-text">
-                              {gatewayTipTxHash}
+                              {transferResult.txHash}
                             </p>
                           </div>
                           <a
-                            href={gatewayTipExplorerLink}
+                            href={transferExplorerLink}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-arc-accent hover:underline"
@@ -3113,7 +3324,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                           </a>
                         </div>
                         <p className="mt-2 text-xs text-arc-text-dim">
-                          {shortenTxHash(gatewayTipTxHash)}
+                          {shortenTxHash(transferResult.txHash)}
                         </p>
                       </div>
                     </div>

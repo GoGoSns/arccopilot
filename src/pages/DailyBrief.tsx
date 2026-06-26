@@ -30,7 +30,7 @@ import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeo
 import { ARC_DISCORD_INVITE_URL, fetchArcDiscord, type ArcDiscordResult } from '@/lib/arcDiscord'
 import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
-import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
+import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipStart } from '@/lib/agentBackend'
 import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
 import { formatTipBudgetAmount, recordTip } from '@/lib/tipBudget'
 import {
@@ -1002,6 +1002,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   }
 
   const sendAdvisorTip = async (recipient: string, amount: string, autonomousMode: boolean): Promise<{ txHash: string; explorerUrl: string; autonomous: boolean }> => {
+    logAutoTipStart('DailyBrief.sendAdvisorTip', autonomousMode, recipient, amount)
+
     if (autonomousMode) {
       const result = await agentTip(recipient, amount)
       return {
@@ -1034,6 +1036,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
 
     const autonomousEnabled = await isAutonomousEnabled()
+    logAutoTipStart('DailyBrief.handleTipSuggestionSend', autonomousEnabled, normalizedAddress, suggestion.amount)
 
     try {
       const transportResult = await sendAdvisorTip(normalizedAddress, suggestion.amount, autonomousEnabled)
@@ -1053,6 +1056,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         : autonomousEnabled
           ? t('settings.agentBackendUnreachable')
           : t('gogo.couldNotSendViaGateway')
+      if (autonomousEnabled) {
+        logAutoTipError(message)
+      }
       updateTipAdvisorExecution(suggestion.handle, {
         status: 'failed',
         error: message,
@@ -1071,6 +1077,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
 
     const autonomousEnabled = await isAutonomousEnabled()
+    logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, '', pendingTipSuggestions[0]?.amount ?? '')
 
     try {
       if (autonomousEnabled) {
@@ -1080,6 +1087,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         for (const suggestion of pendingTipSuggestions) {
           try {
+            logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, suggestion.address, suggestion.amount)
             const transportResult = await sendAdvisorTip(suggestion.address, suggestion.amount, true)
             paidCount += 1
             totalSentAmount += Number(suggestion.amount)
@@ -1099,6 +1107,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             const message = error instanceof Error
               ? error.message
               : t('settings.agentBackendUnreachable')
+            logAutoTipError(message)
             updateTipAdvisorExecution(suggestion.handle, {
               status: 'failed',
               error: message,
@@ -1153,6 +1162,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         : autonomousEnabled
           ? t('settings.agentBackendUnreachable')
           : t('gogo.couldNotSendViaGateway')
+      if (autonomousEnabled) {
+        logAutoTipError(message)
+      }
       for (const suggestion of pendingTipSuggestions) {
         updateTipAdvisorExecution(suggestion.handle, {
           status: 'failed',

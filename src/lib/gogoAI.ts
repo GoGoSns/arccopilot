@@ -11,6 +11,7 @@ import {
   TWITTER_TWEETS_CACHE_KEY,
 } from '@/lib/storageKeys'
 import {
+  findCreatorHandleByAddress,
   getCreatorWallet,
   listCreators,
   normalizeCreatorHandle,
@@ -34,6 +35,7 @@ import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
+import { isValidAddress } from '@/lib/validation'
 
 const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
@@ -203,9 +205,9 @@ export interface GogoContext {
 }
 
 export type GogoAction =
-  | { type: 'send'; params: { recipient?: string; amount?: string }; completed?: boolean }
-  | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean }; completed?: boolean }
-  | { type: 'gateway_tip'; params: { handle: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean }; completed?: boolean }
+  | { type: 'send'; params: { recipient?: string; amount?: string; txHash?: string; explorerUrl?: string; autonomous?: boolean }; completed?: boolean }
+  | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean; txHash?: string; explorerUrl?: string; autonomous?: boolean }; completed?: boolean }
+  | { type: 'gateway_tip'; params: { handle?: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean }; completed?: boolean }
   | { type: 'gateway_batch_tip'; params: GatewayBatchTipActionParams; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
@@ -606,7 +608,11 @@ function parseTipRequestIntent(message: string): TipRequestIntent | null {
   }
 }
 
-type GatewayTipIntent = CreatorTipIntent
+type GatewayTipIntent = {
+  handle?: string
+  recipient?: string
+  amount?: string
+}
 type GatewayBatchTipIntent = BatchCreatorTipIntent
 
 const DEFAULT_GATEWAY_DOMAIN = 26
@@ -620,7 +626,28 @@ function parseGatewayTipIntent(message: string): GatewayTipIntent | null {
   const hasTipVerb = /\btip\b|\bgonder\b|\bbahsis\b/.test(lowered)
   if (!hasGatewayHint || !hasTipVerb) return null
 
-  return parseCreatorTipIntent(text)
+  const handleIntent = parseCreatorTipIntent(text)
+  if (handleIntent) {
+    return {
+      handle: handleIntent.handle,
+      amount: handleIntent.amount,
+    }
+  }
+
+  const recipientMatch = text.match(/0x[a-fA-F0-9]{40}/)
+  if (!recipientMatch) return null
+
+  const recipient = recipientMatch[0].trim().toLowerCase()
+  const amountCandidates = text.replace(recipientMatch[0], ' ').match(/\d+(?:[.,]\d{1,6})?/g) ?? []
+  const amountToken =
+    [...amountCandidates].find((token) => token.includes('.') || token.includes(',') || /\busdc\b/i.test(lowered))
+    ?? amountCandidates[amountCandidates.length - 1]
+  const amount = amountToken ? normalizeUsdcAmountText(amountToken) : ''
+
+  return {
+    recipient,
+    amount: amount || undefined,
+  }
 }
 
 function parseGatewayBatchTipIntent(message: string): GatewayBatchTipIntent | null {
@@ -798,7 +825,7 @@ function buildCreatorDiscoveryReply(result: Awaited<ReturnType<typeof discoverCr
 }
 
 function buildGatewayTipAction(options: {
-  handle: string
+  handle?: string
   amount?: string
   recipient: string
   destinationDomain?: number
@@ -888,6 +915,9 @@ function normalizeAction(raw: unknown): GogoAction | null {
     case 'send': {
       const recipient = typeof params.recipient === 'string' ? params.recipient.trim() : ''
       const amount = normalizeUsdcAmountText(typeof params.amount === 'string' ? params.amount : '')
+      const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
+      const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
+      const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
       if (!recipient && !amount) return null
 
       return {
@@ -895,6 +925,9 @@ function normalizeAction(raw: unknown): GogoAction | null {
         params: {
           recipient: recipient || undefined,
           amount: amount || undefined,
+          txHash: txHash || undefined,
+          explorerUrl: explorerUrl || undefined,
+          autonomous,
         },
         completed: Boolean(raw.completed),
       }
@@ -904,6 +937,9 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const amount = normalizeUsdcAmountText(typeof params.amount === 'string' ? params.amount : '')
       const recipient = typeof params.recipient === 'string' ? params.recipient.trim().toLowerCase() : ''
       const prepared = typeof params.prepared === 'boolean' ? params.prepared : undefined
+      const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
+      const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
+      const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
       if (!handle) return null
 
       return {
@@ -913,6 +949,9 @@ function normalizeAction(raw: unknown): GogoAction | null {
           amount: amount || undefined,
           recipient: recipient || undefined,
           prepared,
+          txHash: txHash || undefined,
+          explorerUrl: explorerUrl || undefined,
+          autonomous,
         },
         completed: Boolean(raw.completed),
       }
@@ -925,18 +964,21 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const prepared = typeof params.prepared === 'boolean' ? params.prepared : undefined
       const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
       const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
-      if (!handle) return null
+      const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
+      if (!handle && !recipient) return null
+      if (recipient && !isValidAddress(recipient)) return null
 
       return {
         type: 'gateway_tip',
         params: {
-          handle,
+          handle: handle || undefined,
           amount: amount || undefined,
           recipient: recipient || undefined,
           destinationDomain,
           txHash: txHash || undefined,
           explorerUrl: explorerUrl || undefined,
           prepared,
+          autonomous,
         },
         completed: Boolean(raw.completed),
       }
@@ -2405,11 +2447,22 @@ export async function askGogo(
     if (!response) throw new Error(PARSE_ERROR_MESSAGE)
 
     if (gatewayTipIntent) {
-      const creatorWallet = await getCreatorWallet(gatewayTipIntent.handle)
-      const creatorHandleLabel = `@${gatewayTipIntent.handle}`
+      const gatewayRecipient = gatewayTipIntent.recipient?.trim().toLowerCase() ?? ''
+      const gatewayHandle = gatewayTipIntent.handle ? normalizeCreatorHandle(gatewayTipIntent.handle) : ''
+      const creatorWallet = gatewayHandle
+        ? await getCreatorWallet(gatewayHandle)
+        : gatewayRecipient || null
+      const resolvedHandle = gatewayHandle || (gatewayRecipient ? await findCreatorHandleByAddress(gatewayRecipient) : '')
+      const creatorHandleLabel = resolvedHandle
+        ? `@${resolvedHandle}`
+        : gatewayRecipient
+          ? formatAddress(gatewayRecipient, 4)
+          : t('gogo.gatewayTip')
 
       if (!creatorWallet) {
-        const preferredReply = formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel })
+        const preferredReply = gatewayHandle
+          ? formatText('gogo.creatorNotFoundReply', { handle: creatorHandleLabel })
+          : t('gogo.invalidAddress')
         if (response.actions.length <= 1) {
           return {
             reply: preferredReply,
@@ -2474,9 +2527,9 @@ export async function askGogo(
       }
 
       const gatewayAction = buildGatewayTipAction({
-        handle: gatewayTipIntent.handle,
+        handle: resolvedHandle || undefined,
         amount: gatewayTipIntent.amount,
-        recipient: creatorWallet,
+        recipient: creatorWallet ?? gatewayRecipient,
       })
 
       if (response.actions.length === 0) {

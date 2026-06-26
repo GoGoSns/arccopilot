@@ -21,6 +21,26 @@ export interface AgentTipResult {
   arcscanUrl: string
 }
 
+export function logAutoTipStart(path: string, enabled: boolean, recipient: string, amount: string): void {
+  console.log(`[AUTO] enabled=${enabled} path=${path} recipient=${recipient} amount=${amount}`)
+}
+
+export function logAutoTipFallback(path: string): void {
+  console.log(`[AUTO] autonomous ON but took non-autonomous path: ${path}`)
+}
+
+export function logAutoTipBackendCall(url: string): void {
+  console.log(`[AUTO] calling backend ${url}`)
+}
+
+export function logAutoTipResult(state: string): void {
+  console.log(`[AUTO] backend result ${state}`)
+}
+
+export function logAutoTipError(message: string): void {
+  console.log(`[AUTO] error ${message}`)
+}
+
 function normalizeBackendUrl(value: string): string | null {
   const trimmed = value.trim()
   if (!trimmed) return null
@@ -200,57 +220,70 @@ export async function agentTip(recipient: string, amount: string): Promise<Agent
 
   const url = joinBackendUrl(config.backendUrl, '/agent/tip')
 
-  let response: Response
   try {
-    response = await fetchWithTimeout(
-      url,
-      {
-        method: 'POST',
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${config.token}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipient: normalizedRecipient,
-          amount: normalizedAmount,
-        }),
-      },
-      AGENT_REQUEST_TIMEOUT_MS,
-    )
-  } catch {
-    throw new Error(t('settings.agentBackendUnreachable'))
-  }
+    logAutoTipBackendCall(url)
 
-  const payload = await readResponsePayload(response)
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error(t('settings.agentTokenRejected'))
+    let response: Response
+    try {
+      response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            authorization: `Bearer ${config.token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            recipient: normalizedRecipient,
+            amount: normalizedAmount,
+          }),
+        },
+        AGENT_REQUEST_TIMEOUT_MS,
+      )
+    } catch {
+      throw new Error(t('settings.agentBackendUnreachable'))
     }
 
-    const reason = extractResponseMessage(payload) ?? `HTTP ${response.status}`
-    throw new Error(formatText('settings.agentTipBlocked', { reason }))
-  }
+    const payload = await readResponsePayload(response)
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error(t('settings.agentTokenRejected'))
+      }
 
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new Error(t('settings.agentBackendUnexpected'))
-  }
+      const reason = extractResponseMessage(payload) ?? `HTTP ${response.status}`
+      throw new Error(formatText('settings.agentTipBlocked', { reason }))
+    }
 
-  const state = readString((payload as { state?: unknown }).state)
-  const txHash = readString((payload as { txHash?: unknown }).txHash)
-  const arcscanUrl = readString((payload as { arcscanUrl?: unknown }).arcscanUrl)
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(t('settings.agentBackendUnexpected'))
+    }
 
-  if (!state || !txHash || !arcscanUrl) {
-    throw new Error(t('settings.agentBackendMalformed'))
-  }
+    const state = readString((payload as { state?: unknown }).state)
+    const txHash = readString((payload as { txHash?: unknown }).txHash)
+    const arcscanUrl = readString((payload as { arcscanUrl?: unknown }).arcscanUrl)
 
-  if (state.toUpperCase() !== 'COMPLETE') {
-    throw new Error(formatText('settings.agentBackendIncomplete', { state }))
-  }
+    if (!state || !txHash || !arcscanUrl) {
+      throw new Error(t('settings.agentBackendMalformed'))
+    }
 
-  return {
-    state: 'COMPLETE',
-    txHash,
-    arcscanUrl,
+    if (state.toUpperCase() !== 'COMPLETE') {
+      throw new Error(formatText('settings.agentBackendIncomplete', { state }))
+    }
+
+    logAutoTipResult(state)
+    return {
+      state: 'COMPLETE',
+      txHash,
+      arcscanUrl,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : t('settings.agentBackendUnreachable')
+    logAutoTipError(message)
+    if (error instanceof Error) {
+      throw error
+    }
+
+    throw new Error(message)
   }
 }

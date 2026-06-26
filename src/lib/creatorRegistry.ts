@@ -118,6 +118,20 @@ export async function getCreatorWallet(handle: string): Promise<string | null> {
   return registry[normalizedHandle] ?? null
 }
 
+export async function findCreatorHandleByAddress(address: string): Promise<string | null> {
+  const normalizedAddress = address.trim().toLowerCase()
+  if (!isValidAddress(normalizedAddress)) return null
+
+  const registry = await readRegistry()
+  for (const [handle, walletAddress] of Object.entries(registry)) {
+    if (walletAddress === normalizedAddress) {
+      return handle
+    }
+  }
+
+  return null
+}
+
 export async function registerCreator(handle: string, address: string): Promise<void> {
   const normalizedHandle = normalizeCreatorHandle(handle)
   if (!normalizedHandle || !CREATOR_HANDLE_REGEX.test(normalizedHandle)) {

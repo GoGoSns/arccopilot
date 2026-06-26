@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Loader2, Share2, User, Use
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
-import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
+import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipFallback, logAutoTipStart } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
 import { AUTONOMOUS_MODE_ENABLED, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { formatText, t } from '@/lib/i18n'
@@ -509,6 +509,13 @@ export function Send({ onBack }: SendProps) {
     clearScheduledRefresh()
     receiptPollTokenRef.current += 1
     const autonomousSend = fromUniversalTip && autonomousModeEnabled
+    const amountToSend = amount.trim()
+
+    logAutoTipStart('Send.handleSend', autonomousModeEnabled, trimmedRecipient, amountToSend)
+
+    if (autonomousModeEnabled && !autonomousSend) {
+      logAutoTipFallback('Send.handleSend.metaMask')
+    }
 
     if (!senderAddress && !autonomousSend) {
       setError(t('send.connectWalletFirst'))
@@ -534,7 +541,7 @@ export function Send({ onBack }: SendProps) {
 
     try {
       if (autonomousSend) {
-        const amountToSend = amount.trim()
+        logAutoTipStart('Send.handleSend.autonomous', autonomousModeEnabled, trimmedRecipient, amountToSend)
         const agentResult = await agentTip(trimmedRecipient, amountToSend)
 
         setTxHash(agentResult.txHash)
@@ -648,6 +655,9 @@ export function Send({ onBack }: SendProps) {
       const pollToken = receiptPollTokenRef.current
       void pollTransactionReceipt(tab.id, result.hash, pollToken)
     } catch (err: any) {
+      if (autonomousSend) {
+        logAutoTipError(err instanceof Error && err.message.trim() ? err.message : t('settings.agentBackendUnreachable'))
+      }
       const message = autonomousSend
         ? (err instanceof Error && err.message.trim() ? err.message : t('settings.agentBackendUnreachable'))
         : getMetaMaskFriendlyError(err)
