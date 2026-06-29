@@ -38,6 +38,7 @@ import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
 import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
+import { buildDailyBriefing } from '@/lib/dailyBriefing'
 
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
@@ -782,6 +783,14 @@ function parseCreatorDiscoveryIntent(message: string): boolean {
 
   const lowered = normalizeIntentText(text)
   return /\b(discover creators?|creator discovery|find creators?|suggest creators?|creator suggestions?|bana yaratici oner|yaratici oner|yaratici kesfet|yaratici oneri|yaratici oneriler|creator discovery)\b/.test(lowered)
+}
+
+function parseBriefIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return /\b(brief|briefing|daily brief|smart briefing|morning brief|today brief|summarize my day|gunaydin|bugun ne var|bugun neler var|ozetle|ozet)\b/.test(lowered)
 }
 
 function parseNewsIntent(message: string): boolean {
@@ -2233,6 +2242,21 @@ export async function askGogo(
     } catch (error) {
       return {
         reply: error instanceof Error ? error.message : t('gogo.creatorDiscoveryUnavailable'),
+        actions: [],
+      }
+    }
+  }
+
+  if (parseBriefIntent(userMessage)) {
+    try {
+      const briefing = await buildDailyBriefing()
+      return {
+        reply: briefing.text,
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('gogo.couldNotReach'),
         actions: [],
       }
     }

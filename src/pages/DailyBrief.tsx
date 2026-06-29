@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -33,6 +33,7 @@ import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
 import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipStart } from '@/lib/agentBackend'
 import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
+import { buildDailyBriefing, type DailyBriefingResult } from '@/lib/dailyBriefing'
 import { formatTipBudgetAmount, recordTip } from '@/lib/tipBudget'
 import {
   categorizeTweets,
@@ -399,8 +400,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const getMemory       = useStore((s) => s.getAddressMemory)
   const setCurrentView  = useStore((s) => s.setCurrentView)
   const setSelectedAddress = useStore((s) => s.setSelectedAddress)
-  const { balance }     = useUSDCBalance()
+  const { balance, isLoading: balanceLoading } = useUSDCBalance()
   const recentActivityRef = useRef<HTMLDivElement | null>(null)
+  const briefingRefreshNonceRef = useRef(0)
 
   // Whale addresses (tag === 'whale')
   const trackedWhales = useMemo(
@@ -450,6 +452,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [arcDiscord, setArcDiscord] = useState<ArcDiscordResult | null>(null)
   const [arcDiscordLoading, setArcDiscordLoading] = useState(true)
   const [arcDiscordError, setArcDiscordError] = useState<string | null>(null)
+  const [smartBriefing, setSmartBriefing] = useState<DailyBriefingResult | null>(null)
+  const [smartBriefingLoading, setSmartBriefingLoading] = useState(true)
+  const [smartBriefingError, setSmartBriefingError] = useState<string | null>(null)
+  const [smartBriefingRefreshNonce, setSmartBriefingRefreshNonce] = useState(0)
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
   const [newsBrief, setNewsBrief] = useState('')
   const [newsLoading, setNewsLoading] = useState(true)
@@ -948,6 +954,75 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }
   }, [refreshNonce])
 
+  // -- effect: smart daily briefing -----------------------------------------
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSmartBriefing = async () => {
+      if (balanceLoading || changeLoading || activityLoading || patternLoading || tipAdvisorLoading || newsLoading || statsLoading) {
+        setSmartBriefingLoading(true)
+        return
+      }
+
+      const force = briefingRefreshNonceRef.current !== smartBriefingRefreshNonce
+
+      setSmartBriefingLoading(true)
+      setSmartBriefingError(null)
+
+      try {
+        const result = await buildDailyBriefing({
+          walletAddress: address,
+          displayName: profile.displayName?.trim() || null,
+          balance,
+          balanceChange,
+          recentActivityCount: activity?.length ?? 0,
+          tipAdvisor,
+          newsItems,
+          ecosystemStats: stats,
+          force,
+        })
+
+        if (cancelled) return
+
+        setSmartBriefing(result)
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] smart briefing load failed:', error)
+        setSmartBriefing(null)
+        setSmartBriefingError(t('state.error'))
+      } finally {
+        if (!cancelled) {
+          setSmartBriefingLoading(false)
+          briefingRefreshNonceRef.current = smartBriefingRefreshNonce
+        }
+      }
+    }
+
+    void loadSmartBriefing()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    address,
+    activity,
+    balance,
+    balanceChange,
+    balanceLoading,
+    changeLoading,
+    activityLoading,
+    patternLoading,
+    newsItems,
+    newsLoading,
+    profile.displayName,
+    refreshNonce,
+    smartBriefingRefreshNonce,
+    stats,
+    statsLoading,
+    tipAdvisor,
+    tipAdvisorLoading,
+  ])
+
   useEffect(() => {
     let cancelled = false
 
@@ -1074,6 +1149,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
   const retryBrief = () => {
     setRefreshNonce((value) => value + 1)
+  }
+
+  const refreshSmartBriefing = () => {
+    setSmartBriefingRefreshNonce((value) => value + 1)
   }
 
   const updateTipAdvisorExecution = (handle: string, nextState: TipAdvisorExecutionState) => {
@@ -1378,6 +1457,82 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        <div className="overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-arc-accent/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-arc-accent" />
+                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">
+                  {t('dailyBrief.briefingTitle')}
+                </p>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                {t('dailyBrief.briefingSubtitle')}
+              </p>
+              {smartBriefing?.mode === 'fallback' && (
+                <p className="mt-2 text-[10px] uppercase tracking-widest text-arc-text-dim">
+                  {t('dailyBrief.briefingFallbackLabel')}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {smartBriefing?.fetchedAt ? (
+                <span className="text-[10px] text-arc-text-dim">
+                  {formatFeedRefreshLabel(smartBriefing.fetchedAt)}
+                </span>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[10px]"
+                onClick={refreshSmartBriefing}
+                disabled={smartBriefingLoading}
+              >
+                <RefreshCw size={12} className={smartBriefingLoading ? 'animate-spin' : ''} />
+                {t('common.refresh')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {smartBriefingLoading ? (
+              <div className="space-y-2 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
+                <div className="h-3 w-3/4 animate-pulse rounded bg-arc-border/70" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-arc-border/70" />
+              </div>
+            ) : smartBriefingError ? (
+              <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                <p className="text-sm font-medium text-arc-text">{t('state.error')}</p>
+                <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                  {smartBriefingError}
+                </p>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-[10px]"
+                    onClick={refreshSmartBriefing}
+                  >
+                    {t('common.refresh')}
+                  </Button>
+                </div>
+              </div>
+            ) : smartBriefing?.text ? (
+              <p className="whitespace-pre-line text-sm leading-relaxed text-arc-text">
+                {smartBriefing.text}
+              </p>
+            ) : (
+              <p className="text-sm leading-relaxed text-arc-text-dim">
+                {t('dailyBrief.briefingNoData')}
+              </p>
+            )}
+          </div>
+        </div>
+
         <div className="space-y-4 overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-arc-accent/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
           <div className="flex items-center gap-2">
             <Lightbulb size={14} className="text-arc-accent" />

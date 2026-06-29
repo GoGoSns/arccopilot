@@ -352,6 +352,15 @@ async function readCachedNews(): Promise<{ items: NewsItem[]; ts: number } | nul
   }
 }
 
+export async function getCachedNewsSnapshot(): Promise<{ items: NewsItem[]; fetchedAt: number } | null> {
+  const cached = await readCachedNews()
+  if (!cached) return null
+  return {
+    items: cached.items,
+    fetchedAt: cached.ts,
+  }
+}
+
 async function writeCachedNews(items: NewsItem[]): Promise<void> {
   const envelope: StoredNewsCache = {
     items,
