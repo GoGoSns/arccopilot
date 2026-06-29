@@ -105,6 +105,27 @@ function normalizeWhitespace(value: string): string {
     .trim()
 }
 
+function getBriefingAvailability(data: CollectedDailyBriefingData): DailyBriefingAvailability {
+  return {
+    balance: Boolean(data.balance),
+    balanceChange: Boolean(data.balanceChange),
+    recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
+    tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
+    news: data.newsItems.length > 0,
+    ecosystemStats: Boolean(data.ecosystemStats),
+    displayName: Boolean(data.displayName),
+    walletAddress: Boolean(data.walletAddress),
+  }
+}
+
+function getBriefingLogCounts(data: CollectedDailyBriefingData): { newsItems: number; recentActivityCount: number; suggestions: number } {
+  return {
+    newsItems: data.newsItems.length,
+    recentActivityCount: data.recentActivityCount ?? 0,
+    suggestions: data.tipAdvisor?.suggestions.length ?? 0,
+  }
+}
+
 function getGreeting(locale: Locale): string {
   const hour = new Date().getHours()
   if (locale === 'tr') {
@@ -250,6 +271,40 @@ function formatSuggestionsForPrompt(tipAdvisor: TipAdvisorResult | null): string
   return tipAdvisor.suggestions.slice(0, DAILY_BRIEFING_MAX_SUGGESTIONS).map((suggestion, index) => (
     `${index + 1}. @${suggestion.handle} - ${suggestion.amount} USDC - ${suggestion.reason}`
   )).join('\n')
+}
+
+type SentenceSegmenterConstructor = new (
+  locales?: string | string[],
+  options?: { granularity: 'sentence' },
+) => {
+  segment(value: string): Iterable<{ segment: string }>
+}
+
+function splitBriefingSentences(value: string): string[] {
+  const segmenter = (Intl as unknown as { Segmenter?: SentenceSegmenterConstructor }).Segmenter
+  if (typeof segmenter === 'function') {
+    const locale = getLocaleSync() === 'tr' ? 'tr' : 'en'
+    const instance = new segmenter(locale, { granularity: 'sentence' })
+    return Array.from(instance.segment(value), (segment) => segment.segment.trim()).filter(Boolean)
+  }
+
+  return value.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? []
+}
+
+function sanitizeBriefingText(value: string): string | null {
+  const cleaned = normalizeWhitespace(
+    value
+      .replace(/^[\s\-*•]+/gm, '')
+      .replace(/\n{2,}/g, '\n')
+      .replace(/\n/g, ' '),
+  )
+
+  if (!cleaned) return null
+
+  const sentences = splitBriefingSentences(cleaned)
+  if (sentences.length === 0) return null
+
+  return normalizeWhitespace(sentences.slice(0, 5).join(' '))
 }
 
 function buildPrompt(data: CollectedDailyBriefingData): string {
@@ -431,12 +486,13 @@ async function callGeminiBriefing(data: CollectedDailyBriefingData): Promise<str
       return null
     }
 
-    return normalizeWhitespace(
-      text
-        .replace(/^[\s\-*•]+/gm, '')
-        .replace(/\n{2,}/g, ' ')
-        .trim(),
-    )
+    const sanitized = sanitizeBriefingText(text)
+    if (!sanitized) {
+      console.log('[BRIEF]', { status: 'ai-empty' })
+      return null
+    }
+
+    return sanitized
   } catch (error) {
     console.log('[BRIEF]', {
       status: 'ai-failed',
@@ -492,28 +548,7 @@ async function collectBriefingData(input: DailyBriefingInputs): Promise<Collecte
     ? input.balanceChange
     : null
 
-  const available: DailyBriefingAvailability = {
-    balance: Boolean(balance),
-    balanceChange: Boolean(balanceChange),
-    recentActivity: typeof recentActivityCount === 'number' && recentActivityCount > 0,
-    tipAdvisor: Boolean(tipAdvisor?.summary || tipAdvisor?.explanation || (tipAdvisor?.suggestions?.length ?? 0) > 0),
-    news: newsItems.length > 0,
-    ecosystemStats: Boolean(ecosystemStats),
-    displayName: Boolean(displayName),
-    walletAddress: Boolean(walletAddress),
-  }
-
-  console.log('[BRIEF]', {
-    status: 'data',
-    available,
-    counts: {
-      newsItems: newsItems.length,
-      suggestions: tipAdvisor?.suggestions.length ?? 0,
-      recentActivityCount: recentActivityCount ?? 0,
-    },
-  })
-
-  return {
+  const data: CollectedDailyBriefingData = {
     walletAddress,
     displayName,
     balance,
@@ -524,18 +559,28 @@ async function collectBriefingData(input: DailyBriefingInputs): Promise<Collecte
     ecosystemStats,
     locale,
   }
+
+  const available = getBriefingAvailability(data)
+
+  console.log('[BRIEF]', {
+    status: 'data',
+    available,
+    counts: getBriefingLogCounts(data),
+  })
+
+  return data
 }
 
 function hasUsefulData(data: CollectedDailyBriefingData): boolean {
+  const available = getBriefingAvailability(data)
+
   return Boolean(
-    data.balance
-    || data.balanceChange
-    || (data.recentActivityCount ?? 0) > 0
-    || data.tipAdvisor?.summary
-    || data.tipAdvisor?.explanation
-    || (data.tipAdvisor?.suggestions?.length ?? 0) > 0
-    || data.newsItems.length > 0
-    || data.ecosystemStats
+    available.balance
+    || available.balanceChange
+    || available.recentActivity
+    || available.tipAdvisor
+    || available.news
+    || available.ecosystemStats
   )
 }
 
@@ -543,6 +588,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
   const force = input.force === true
   const data = await collectBriefingData(input)
   const digest = buildDigest(data)
+  const available = getBriefingAvailability(data)
 
   if (!force) {
     const cached = await getCachedBriefingDigest(digest)
@@ -552,16 +598,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
         console.log('[BRIEF]', {
           status: 'cache-hit',
           mode: cached.mode,
-          available: {
-            balance: Boolean(data.balance),
-            balanceChange: Boolean(data.balanceChange),
-            recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-            tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-            news: data.newsItems.length > 0,
-            ecosystemStats: Boolean(data.ecosystemStats),
-            displayName: Boolean(data.displayName),
-            walletAddress: Boolean(data.walletAddress),
-          },
+          available,
         })
 
         return {
@@ -569,16 +606,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
           mode: cached.mode,
           fetchedAt: cached.ts,
           source: 'cache',
-          available: {
-            balance: Boolean(data.balance),
-            balanceChange: Boolean(data.balanceChange),
-            recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-            tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-            news: data.newsItems.length > 0,
-            ecosystemStats: Boolean(data.ecosystemStats),
-            displayName: Boolean(data.displayName),
-            walletAddress: Boolean(data.walletAddress),
-          },
+          available,
         }
       }
     }
@@ -591,16 +619,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
     console.log('[BRIEF]', {
       status: 'unavailable',
       mode: 'unavailable',
-      available: {
-        balance: Boolean(data.balance),
-        balanceChange: Boolean(data.balanceChange),
-        recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-        tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-        news: data.newsItems.length > 0,
-        ecosystemStats: Boolean(data.ecosystemStats),
-        displayName: Boolean(data.displayName),
-        walletAddress: Boolean(data.walletAddress),
-      },
+      available,
     })
 
     return {
@@ -608,16 +627,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
       mode: 'unavailable',
       fetchedAt,
       source: 'generated',
-      available: {
-        balance: Boolean(data.balance),
-        balanceChange: Boolean(data.balanceChange),
-        recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-        tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-        news: data.newsItems.length > 0,
-        ecosystemStats: Boolean(data.ecosystemStats),
-        displayName: Boolean(data.displayName),
-        walletAddress: Boolean(data.walletAddress),
-      },
+      available,
     }
   }
 
@@ -629,16 +639,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
   console.log('[BRIEF]', {
     status: 'generated',
     mode,
-    available: {
-      balance: Boolean(data.balance),
-      balanceChange: Boolean(data.balanceChange),
-      recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-      tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-      news: data.newsItems.length > 0,
-      ecosystemStats: Boolean(data.ecosystemStats),
-      displayName: Boolean(data.displayName),
-      walletAddress: Boolean(data.walletAddress),
-    },
+    available,
   })
 
   return {
@@ -646,15 +647,6 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
     mode,
     fetchedAt,
     source: 'generated',
-    available: {
-      balance: Boolean(data.balance),
-      balanceChange: Boolean(data.balanceChange),
-      recentActivity: typeof data.recentActivityCount === 'number' && data.recentActivityCount > 0,
-      tipAdvisor: Boolean(data.tipAdvisor?.summary || data.tipAdvisor?.explanation || (data.tipAdvisor?.suggestions?.length ?? 0) > 0),
-      news: data.newsItems.length > 0,
-      ecosystemStats: Boolean(data.ecosystemStats),
-      displayName: Boolean(data.displayName),
-      walletAddress: Boolean(data.walletAddress),
-    },
+    available,
   }
 }
