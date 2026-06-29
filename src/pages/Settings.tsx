@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, Bot, ChevronRight, Coins, Key, LayoutDashboard, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, ChevronRight, Coins, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
@@ -34,6 +34,7 @@ import {
   AUTO_TIP_RULE,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
+  NEWS_FEEDS_STORAGE_KEY,
   REMINDERS,
   TIP_BUDGET,
   USER_X_HANDLE,
@@ -54,6 +55,7 @@ import {
   removeReminder,
   type Reminder,
 } from '@/lib/reminders'
+import { getDefaultNewsFeedText, getNewsFeedText, resetNewsFeeds, saveNewsFeeds } from '@/lib/newsPulse'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { formatRelativeTime, formatAddress } from '@/lib/utils'
 import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
@@ -113,6 +115,10 @@ export function Settings({ onBack }: SettingsProps) {
   const [twitterTempKey, setTwitterTempKey] = useState('')
   const [twitterSearchQuery, setTwitterSearchQueryState] = useState(DEFAULT_TWITTER_SEARCH_QUERY)
   const [officialAccounts, setOfficialAccountsState] = useState(DEFAULT_TWITTER_OFFICIAL_ACCOUNTS)
+  const [newsFeedsText, setNewsFeedsText] = useState(getDefaultNewsFeedText())
+  const [newsFeedsLoading, setNewsFeedsLoading] = useState(true)
+  const [newsFeedsError, setNewsFeedsError] = useState('')
+  const [isSavingNewsFeeds, setIsSavingNewsFeeds] = useState(false)
   const [userXHandle, setUserXHandleState] = useState('')
   const [isSavingUserXHandle, setIsSavingUserXHandle] = useState(false)
   const [userXHandleError, setUserXHandleError] = useState('')
@@ -277,6 +283,45 @@ export function Settings({ onBack }: SettingsProps) {
     }
 
     void loadUserXHandle()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadNewsFeeds = async () => {
+      setNewsFeedsLoading(true)
+      try {
+        const value = await getNewsFeedText()
+        if (active) {
+          setNewsFeedsText(value)
+          setNewsFeedsError('')
+        }
+      } catch (error) {
+        debugWarn('[Settings] news feeds load failed:', error)
+        if (active) {
+          setNewsFeedsText(getDefaultNewsFeedText())
+        }
+      } finally {
+        if (active) {
+          setNewsFeedsLoading(false)
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[NEWS_FEEDS_STORAGE_KEY]) {
+        void loadNewsFeeds()
+      }
+    }
+
+    void loadNewsFeeds()
     chrome.storage.onChanged.addListener(handleStorageChange)
 
     return () => {
@@ -544,6 +589,36 @@ export function Settings({ onBack }: SettingsProps) {
     const nextAccounts = officialAccounts.trim() || DEFAULT_TWITTER_OFFICIAL_ACCOUNTS
     const normalized = await setOfficialAccounts(nextAccounts)
     setOfficialAccountsState(normalized)
+  }
+
+  const handleSaveNewsFeeds = async () => {
+    setIsSavingNewsFeeds(true)
+    setNewsFeedsError('')
+
+    try {
+      const normalized = await saveNewsFeeds(newsFeedsText)
+      setNewsFeedsText(normalized)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setNewsFeedsError(message)
+    } finally {
+      setIsSavingNewsFeeds(false)
+    }
+  }
+
+  const handleResetNewsFeeds = async () => {
+    setIsSavingNewsFeeds(true)
+    setNewsFeedsError('')
+
+    try {
+      const normalized = await resetNewsFeeds()
+      setNewsFeedsText(normalized)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setNewsFeedsError(message)
+    } finally {
+      setIsSavingNewsFeeds(false)
+    }
   }
 
   const refreshCreators = async (): Promise<void> => {
@@ -996,6 +1071,54 @@ export function Settings({ onBack }: SettingsProps) {
                     className="min-w-24"
                   >
                     {t('settings.save')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-arc-border/50 bg-arc-card/20 px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-arc-accent/10 text-arc-accent">
+                <Rss size={20} />
+              </div>
+              <div className="min-w-0 flex-1 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-arc-text">{t('settings.newsFeedsTitle')}</p>
+                    <p className="text-[10px] text-arc-text-dim">{t('settings.newsFeedsDescription')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetNewsFeeds}
+                    className="shrink-0 text-[10px] font-semibold text-arc-accent underline-offset-2 hover:underline"
+                  >
+                    {t('settings.resetToDefault')}
+                  </button>
+                </div>
+                <textarea
+                  value={newsFeedsText}
+                  onChange={(e) => {
+                    setNewsFeedsText(e.target.value)
+                    setNewsFeedsError('')
+                  }}
+                  placeholder={getDefaultNewsFeedText()}
+                  aria-label={t('settings.newsFeedsTitle')}
+                  className="min-h-40 w-full resize-y rounded-xl border border-arc-border bg-arc-bg px-3 py-2.5 font-mono text-xs text-arc-text placeholder:text-arc-hint outline-none transition-colors focus:border-arc-accent"
+                />
+                <p className="text-[10px] text-arc-text-dim">
+                  {newsFeedsLoading ? t('state.loading') : t('settings.newsFeedsHelper')}
+                </p>
+                {newsFeedsError && <p className="text-xs text-arc-danger">{newsFeedsError}</p>}
+                <div className="flex items-center justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleSaveNewsFeeds()}
+                    disabled={isSavingNewsFeeds}
+                    className="min-w-24"
+                  >
+                    {isSavingNewsFeeds ? t('common.loading') : t('settings.save')}
                   </Button>
                 </div>
               </div>

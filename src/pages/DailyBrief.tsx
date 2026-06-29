@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -19,6 +19,7 @@ import {
   DISMISSED_PATTERNS_KEY,
   PENDING_SEND_STORAGE_KEY,
   REMINDERS,
+  NEWS_FEEDS_STORAGE_KEY,
   TWITTERAPI_KEY,
   TWITTER_OFFICIAL_ACCOUNTS,
   TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
@@ -39,6 +40,14 @@ import {
   fetchOfficialTweetFeed,
   type TwitterTweet,
 } from '@/lib/twitterApi'
+import {
+  fetchNews,
+  getNewsPulseState,
+  summarizeNews,
+  type NewsFetchStatus,
+  type NewsItem,
+  type NewsSummaryMode,
+} from '@/lib/newsPulse'
 import {
   getDueReminders,
   getReminderDetails,
@@ -441,6 +450,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [arcDiscord, setArcDiscord] = useState<ArcDiscordResult | null>(null)
   const [arcDiscordLoading, setArcDiscordLoading] = useState(true)
   const [arcDiscordError, setArcDiscordError] = useState<string | null>(null)
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([])
+  const [newsBrief, setNewsBrief] = useState('')
+  const [newsLoading, setNewsLoading] = useState(true)
+  const [newsError, setNewsError] = useState<string | null>(null)
+  const [newsFetchedAt, setNewsFetchedAt] = useState<number | null>(null)
+  const [newsFetchStatus, setNewsFetchStatus] = useState<NewsFetchStatus>('idle')
+  const [newsSummaryMode, setNewsSummaryMode] = useState<NewsSummaryMode>('idle')
 
   // -- Pattern State --
   const [rawTransfers,    setRawTransfers]    = useState<RawTransfer[]>([])
@@ -863,6 +879,72 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
     return () => {
       cancelled = true
+    }
+  }, [refreshNonce])
+
+  // -- effect: ecosystem news pulse ----------------------------------------
+  useEffect(() => {
+    let cancelled = false
+
+    const loadNewsPulse = async () => {
+      setNewsLoading(true)
+      setNewsError(null)
+      setNewsBrief('')
+      setNewsItems([])
+      setNewsFetchedAt(null)
+      setNewsFetchStatus('idle')
+      setNewsSummaryMode('idle')
+
+      try {
+        const items = await fetchNews()
+        if (cancelled) return
+
+        const fetchState = getNewsPulseState()
+        setNewsFetchStatus(fetchState.fetchStatus)
+        setNewsFetchedAt(fetchState.fetchedAt)
+
+        if (fetchState.fetchStatus === 'no-feeds' || fetchState.fetchStatus === 'error') {
+          setNewsError(fetchState.error ?? t('dailyBrief.newsCouldNotLoad'))
+          return
+        }
+
+        if (items.length === 0) {
+          setNewsError(fetchState.error ?? t('dailyBrief.newsCouldNotLoad'))
+          return
+        }
+
+        const brief = await summarizeNews(items)
+        if (cancelled) return
+
+        const summaryState = getNewsPulseState()
+        setNewsItems(items)
+        setNewsSummaryMode(summaryState.summaryMode)
+        setNewsBrief(summaryState.summaryMode === 'ai' ? brief : '')
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] news pulse load failed:', error)
+        setNewsFetchStatus('error')
+        setNewsError(t('dailyBrief.newsCouldNotLoad'))
+      } finally {
+        if (!cancelled) {
+          setNewsLoading(false)
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[NEWS_FEEDS_STORAGE_KEY]) {
+        void loadNewsPulse()
+      }
+    }
+
+    void loadNewsPulse()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      cancelled = true
+      chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [refreshNonce])
 
@@ -1678,6 +1760,111 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <p className="text-sm font-medium text-arc-text">{t('activity.noActivityYet')}</p>
               <p className="text-xs leading-relaxed text-arc-text-dim">{t('dailyBrief.noEcosystemStats')}</p>
             </div>
+          )}
+        </div>
+
+        <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Rss size={14} className="text-arc-accent" />
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                {t('dailyBrief.ecosystemPulse')}
+              </p>
+            </div>
+            {newsFetchedAt && (
+              <p className="text-[10px] text-arc-text-dim/80">
+                {formatFeedRefreshLabel(newsFetchedAt)}
+              </p>
+            )}
+          </div>
+
+          {newsLoading ? (
+            <div className="space-y-3">
+              <div className="h-16 animate-pulse rounded-xl bg-arc-border/70" />
+              <div className="space-y-2">
+                {[0, 1, 2].map((index) => (
+                  <div key={index} className="h-14 animate-pulse rounded-xl bg-arc-border/70" />
+                ))}
+              </div>
+            </div>
+          ) : newsFetchStatus === 'no-feeds' ? (
+            <div className="rounded-xl border border-arc-border bg-arc-bg/70 p-3">
+              <p className="text-sm font-medium text-arc-text">{t('settings.newsFeedsTitle')}</p>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                {newsError ?? t('dailyBrief.newsNoFeedsConfigured')}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 px-3 text-[10px]"
+                onClick={() => setCurrentView('settings')}
+              >
+                {t('nav.settings')}
+              </Button>
+            </div>
+          ) : newsFetchStatus === 'error' ? (
+            <ErrorState
+              title={t('dailyBrief.newsCouldNotLoad')}
+              description={newsError ?? t('dailyBrief.newsCouldNotLoadHint')}
+              actionLabel={t('state.retry')}
+              onAction={retryBrief}
+            />
+          ) : newsItems.length > 0 ? (
+            <div className="space-y-3">
+              {newsSummaryMode === 'ai' ? (
+                <div className="rounded-xl border border-arc-border bg-arc-bg/70 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                    {t('dailyBrief.newsSummaryLabel')}
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-arc-text">
+                    {newsBrief}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-arc-border bg-arc-bg/70 p-3">
+                  <p className="text-xs leading-relaxed text-arc-text-dim">
+                    {t('dailyBrief.newsFallbackLabel')}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                  {t('dailyBrief.newsTopHeadlines')}
+                </p>
+                <div className="space-y-2">
+                  {newsItems.slice(0, 3).map((item) => (
+                    <a
+                      key={item.link}
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex gap-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 transition-colors hover:border-arc-borderEmphasis hover:bg-arc-elevated"
+                    >
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-arc-accent transition-colors group-hover:text-white">
+                        <ArrowUpRight size={14} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <span className="rounded-sm border border-arc-border bg-arc-card px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">
+                            {item.source}
+                          </span>
+                          <span className="text-[10px] text-arc-text-dim">{formatRelativeTime(item.publishedAt)}</span>
+                        </div>
+                        <p className="line-clamp-2 text-xs leading-snug text-arc-text transition-colors group-hover:text-white">
+                          {item.title}
+                        </p>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="py-2 text-center text-xs text-arc-text-dim">
+              {newsError ?? t('dailyBrief.newsCouldNotLoad')}
+            </p>
           )}
         </div>
 

@@ -41,6 +41,11 @@ export default defineManifest({
   permissions: ['storage', 'activeTab', 'scripting', 'tabs', 'notifications', 'alarms'],
   host_permissions: [
     'https://generativelanguage.googleapis.com/*',
+    'https://www.coindesk.com/*',
+    'https://www.theblock.co/*',
+    'https://blog.ethereum.org/*',
+    'https://www.circle.com/*',
+    'https://circle.com/*',
     'https://community.arc.network/*',
     'https://discord.com/*',
     `${ARC_RPC_URL}/*`,

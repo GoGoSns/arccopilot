@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from 'react'
 import { ArrowLeft, Check, ExternalLink, Image as ImageIcon, Loader2, Mic, Send, Sparkles, Trash2, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -665,6 +665,49 @@ function buildImageReadMessage(result: ReadAddressFromImageResult): string {
   }
 
   return t('gogo.imageNotFound')
+}
+
+function sanitizeSpeechText(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function renderMessageContent(content: string): ReactNode {
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null = null
+
+  while ((match = linkPattern.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index))
+    }
+
+    const label = match[1] ?? match[0]
+    const href = match[2] ?? ''
+
+    parts.push(
+      <a
+        key={`${match.index}-${href}`}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-arc-accent underline decoration-arc-accent/30 underline-offset-2 hover:decoration-arc-accent"
+      >
+        {label}
+      </a>,
+    )
+
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex))
+  }
+
+  return parts.length > 0 ? <>{parts}</> : content
 }
 
 export function GogoAI({ onBack }: GogoAIProps) {
@@ -1637,7 +1680,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     window.speechSynthesis.cancel()
 
-    const utterance = new SpeechSynthesisUtterance(text)
+    const utterance = new SpeechSynthesisUtterance(sanitizeSpeechText(text))
     utterance.lang = getPreferredSpeechLanguage()
     utterance.rate = 1
     utterance.pitch = 1
@@ -3186,7 +3229,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
                           : 'border border-arc-border bg-arc-card text-arc-text'
                     }`}
                   >
-                    {message.content}
+                    {renderMessageContent(message.content)}
                   </div>
 
                   <div className={`mt-1 text-[11px] text-arc-text-dim ${isUser ? 'pr-1 text-right' : 'pl-1'}`}>

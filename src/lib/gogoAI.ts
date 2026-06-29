@@ -6,6 +6,7 @@ import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeo
 import { PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import {
+  GEMINI_API_KEY_STORAGE_KEY,
   GOGO_HISTORY,
   TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
   TWITTER_TWEETS_CACHE_KEY,
@@ -36,8 +37,8 @@ import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
+import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
 
-const GEMINI_API_KEY_STORAGE_KEY = 'arccopilot:gemini-api-key'
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const MAX_HISTORY_MESSAGES = 50
@@ -781,6 +782,17 @@ function parseCreatorDiscoveryIntent(message: string): boolean {
 
   const lowered = normalizeIntentText(text)
   return /\b(discover creators?|creator discovery|find creators?|suggest creators?|creator suggestions?|bana yaratici oner|yaratici oner|yaratici kesfet|yaratici oneri|yaratici oneriler|creator discovery)\b/.test(lowered)
+}
+
+function parseNewsIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return [
+    /\b(haberler?|haber|guncel ne var|guncel|son haberler?|son durum|yeni ne var|arc haberleri|circle haberleri|ekosistem nabzi|ekosistem pulse)\b/,
+    /\b(what'?s new|what is new|latest news|latest updates?|news pulse|ecosystem pulse|news)\b/,
+  ].some((pattern) => pattern.test(lowered))
 }
 
 function buildOpenSettingsAction(): GogoAction {
@@ -2221,6 +2233,48 @@ export async function askGogo(
     } catch (error) {
       return {
         reply: error instanceof Error ? error.message : t('gogo.creatorDiscoveryUnavailable'),
+        actions: [],
+      }
+    }
+  }
+
+  if (parseNewsIntent(userMessage)) {
+    try {
+      const items = await fetchNews()
+      const fetchState = getNewsPulseState()
+
+      if (fetchState.fetchStatus === 'no-feeds') {
+        return {
+          reply: fetchState.error ?? t('gogo.newsNoFeedsConfigured'),
+          actions: [],
+        }
+      }
+
+      if (items.length === 0) {
+        return {
+          reply: fetchState.error ?? t('gogo.newsCouldNotFetch'),
+          actions: [],
+        }
+      }
+
+      const brief = await summarizeNews(items)
+      const summaryState = getNewsPulseState()
+      const headlines = formatNewsHeadlineLinks(items)
+
+      if (summaryState.summaryMode !== 'ai') {
+        return {
+          reply: `${t('gogo.newsHeadlinesOnlyIntro')}\n${headlines}`.trim(),
+          actions: [],
+        }
+      }
+
+      return {
+        reply: `${t('gogo.newsIntro')}\n${brief}${headlines ? `\n\n${t('gogo.newsTopHeadlines')}\n${headlines}` : ''}`.trim(),
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('gogo.newsCouldNotFetch'),
         actions: [],
       }
     }
