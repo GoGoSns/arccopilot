@@ -34,6 +34,7 @@ import { generateTipSuggestions } from '@/lib/tipAdvisor'
 import { discoverCreators } from '@/lib/creatorDiscovery'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
+import { buildPortfolioIntel } from '@/lib/portfolioIntel'
 import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
@@ -253,6 +254,7 @@ Read the user's balance, activity, address book, creators, whales, patterns, and
 Recent official Arc/Circle updates are also included separately as officialTweets. Use them when the latest announcement matters.
 The balance is denominated in USDC on Arc Testnet.
 The wallet context may also include a portfolio list with token symbols, names, and balances. Use that list directly when the user asks which tokens they hold or asks about their portfolio.
+If the user asks about their portfolio, spendable position, wallet balance, or recent spending, rely only on the real data provided by the app and never invent balances or recipients.
 
 If the user asks you to write, draft, or compose a tweet or post about something (for example, "write a tweet about Arc", "tweet at Vitalik", or "Arc hakkında tweet yaz"), generate the tweet text and return it via the draft_tweet action. Keep tweets under 280 chars, engaging, natural, and in the user's language. Put the full tweet in params.text and a short confirmation in reply.
 
@@ -791,6 +793,14 @@ function parseBriefIntent(message: string): boolean {
 
   const lowered = normalizeIntentText(text)
   return /\b(brief|briefing|daily brief|smart briefing|morning brief|today brief|summarize my day|gunaydin|bugun ne var|bugun neler var|ozetle|ozet)\b/.test(lowered)
+}
+
+function parsePortfolioIntent(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+
+  const lowered = normalizeIntentText(text)
+  return /\b(?:portfolio\w*|portfoy\w*|cuzdan\w*|bakiy\w*|harcama\w*|my spending|my balance|wallet balance)\b/.test(lowered)
 }
 
 function parseNewsIntent(message: string): boolean {
@@ -2252,6 +2262,21 @@ export async function askGogo(
       const briefing = await buildDailyBriefing()
       return {
         reply: briefing.text,
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('gogo.couldNotReach'),
+        actions: [],
+      }
+    }
+  }
+
+  if (parsePortfolioIntent(userMessage)) {
+    try {
+      const portfolio = await buildPortfolioIntel()
+      return {
+        reply: portfolio.read,
         actions: [],
       }
     } catch (error) {

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -34,6 +34,7 @@ import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
 import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipStart } from '@/lib/agentBackend'
 import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
 import { buildDailyBriefing, type DailyBriefingResult } from '@/lib/dailyBriefing'
+import { buildPortfolioIntel, type PortfolioIntelResult, type PortfolioIntelRecipient } from '@/lib/portfolioIntel'
 import { formatTipBudgetAmount, recordTip } from '@/lib/tipBudget'
 import {
   categorizeTweets,
@@ -157,6 +158,27 @@ function formatCompact(n: number): string {
 
 function formatUsdcAmount(amount: string): string {
   return amount.replace(/\.?0+$/, '')
+}
+
+function formatPortfolioAmount(amount: string | null, locale: 'en' | 'tr'): string {
+  if (!amount) return '—'
+
+  const parsed = Number(amount)
+  if (!Number.isFinite(parsed)) return amount
+
+  try {
+    return new Intl.NumberFormat(locale === 'tr' ? 'tr-TR' : 'en-US', {
+      maximumFractionDigits: 6,
+    }).format(parsed)
+  } catch {
+    return amount
+  }
+}
+
+function formatPortfolioRecipient(recipient: PortfolioIntelRecipient): string {
+  if (recipient.handle) return `@${recipient.handle}`
+  if (recipient.address) return formatAddress(recipient.address, 4)
+  return t('common.unknown')
 }
 
 function getWeekdayName(timestamp: string): string {
@@ -456,6 +478,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [smartBriefingLoading, setSmartBriefingLoading] = useState(true)
   const [smartBriefingError, setSmartBriefingError] = useState<string | null>(null)
   const [smartBriefingRefreshNonce, setSmartBriefingRefreshNonce] = useState(0)
+  const [portfolioIntel, setPortfolioIntel] = useState<PortfolioIntelResult | null>(null)
+  const [portfolioIntelLoading, setPortfolioIntelLoading] = useState(true)
+  const [portfolioIntelError, setPortfolioIntelError] = useState<string | null>(null)
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
   const [newsBrief, setNewsBrief] = useState('')
   const [newsLoading, setNewsLoading] = useState(true)
@@ -1023,6 +1048,38 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     tipAdvisorLoading,
   ])
 
+  // -- effect: portfolio intelligence -------------------------------------
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPortfolioIntel = async () => {
+      setPortfolioIntelLoading(true)
+      setPortfolioIntelError(null)
+
+      try {
+        const result = await buildPortfolioIntel()
+        if (cancelled) return
+
+        setPortfolioIntel(result)
+      } catch (error) {
+        if (cancelled) return
+        debugWarn('[DailyBrief] portfolio intel load failed:', error)
+        setPortfolioIntel(null)
+        setPortfolioIntelError(getExternalErrorMessage(error, 'state.error'))
+      } finally {
+        if (!cancelled) {
+          setPortfolioIntelLoading(false)
+        }
+      }
+    }
+
+    void loadPortfolioIntel()
+
+    return () => {
+      cancelled = true
+    }
+  }, [address, refreshNonce])
+
   useEffect(() => {
     let cancelled = false
 
@@ -1110,6 +1167,8 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const safeTweets = Array.isArray(tweets) ? tweets : []
   const safeActivity = Array.isArray(activity) ? activity : []
   const hasOfficialTweets = safeOfficialTweets.length > 0
+  const portfolioTopRecipients = portfolioIntel?.topRecipients.slice(0, 3) ?? []
+  const portfolioLocale = locale === 'tr' ? 'tr' : 'en'
 
   const openSendWithPending = (pending: { recipient?: string; amount?: string }) => {
     void chromeStorageSet({
@@ -1528,6 +1587,200 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             ) : (
               <p className="text-sm leading-relaxed text-arc-text-dim">
                 {t('dailyBrief.briefingNoData')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-amber-500/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Wallet size={14} className="text-arc-accent" />
+                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">
+                  {t('portfolio.intelTitle')}
+                </p>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                {t('portfolio.intelSubtitle')}
+              </p>
+              {portfolioIntel?.mode === 'fallback' && (
+                <p className="mt-2 text-[10px] uppercase tracking-widest text-arc-text-dim">
+                  {t('portfolio.intelFallbackLabel')}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              {portfolioIntel?.fetchedAt ? (
+                <span className="text-[10px] text-arc-text-dim">
+                  {formatRelativeTime(new Date(portfolioIntel.fetchedAt).toISOString())}
+                </span>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[10px]"
+                onClick={retryBrief}
+                disabled={portfolioIntelLoading}
+              >
+                <RefreshCw size={12} className={portfolioIntelLoading ? 'animate-spin' : ''} />
+                {t('common.refresh')}
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            {portfolioIntelLoading ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  {[0, 1, 2, 3].map((index) => (
+                    <div key={index} className="space-y-1.5 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                      <div className="h-2.5 w-16 animate-pulse rounded bg-arc-border/70" />
+                      <div className="h-4 w-24 animate-pulse rounded bg-arc-border/70" />
+                      <div className="h-2.5 w-20 animate-pulse rounded bg-arc-border/70" />
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-arc-border/70" />
+                  <div className="h-3 w-4/5 animate-pulse rounded bg-arc-border/70" />
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-arc-border/70" />
+                </div>
+              </div>
+            ) : portfolioIntelError ? (
+              <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                <p className="text-sm font-medium text-arc-text">{t('state.error')}</p>
+                <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{portfolioIntelError}</p>
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-[10px]"
+                    onClick={retryBrief}
+                  >
+                    {t('common.refresh')}
+                  </Button>
+                </div>
+              </div>
+            ) : portfolioIntel ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">
+                      {t('portfolio.intelWalletLabel')}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatPortfolioAmount(portfolioIntel.walletUsdc, portfolioLocale)} USDC
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">
+                      {t('portfolio.intelGatewayLabel')}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatPortfolioAmount(portfolioIntel.gatewayAvailable, portfolioLocale)} USDC
+                    </p>
+                    <p className="mt-1 text-[10px] text-arc-text-dim">
+                      {portfolioIntel.gatewayTotal
+                        ? formatText('portfolio.intelGatewayTotal', {
+                            total: formatPortfolioAmount(portfolioIntel.gatewayTotal, portfolioLocale),
+                          })
+                        : t('portfolio.intelGatewayUnavailable')}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">
+                      {t('portfolio.intelSpendableLabel')}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatPortfolioAmount(portfolioIntel.spendableUsdc, portfolioLocale)} USDC
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                    <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">
+                      {t('portfolio.intelRecentTipsLabel')}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {formatPortfolioAmount(portfolioIntel.recentTipTotal, portfolioLocale)} USDC
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                    {t('portfolio.intelReadLabel')}
+                  </p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-arc-text">
+                    {portfolioIntel.read}
+                  </p>
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                      {t('portfolio.intelTopRecipientsLabel')}
+                    </p>
+                    <p className="text-[10px] text-arc-text-dim">
+                      {portfolioIntel.available.tipHistory
+                        ? portfolioIntel.recentTipTotal
+                          ? formatText('portfolio.intelRecentTipTotal', {
+                              total: formatPortfolioAmount(portfolioIntel.recentTipTotal, portfolioLocale),
+                            })
+                          : t('portfolio.intelNoTipHistory')
+                        : t('portfolio.intelTipHistoryUnavailable')}
+                    </p>
+                  </div>
+
+                  {portfolioTopRecipients.length > 0 ? (
+                    <div className="space-y-2">
+                      {portfolioTopRecipients.map((recipient) => (
+                        <div key={`${recipient.handle ?? recipient.address ?? 'unknown'}-${recipient.total ?? '0'}`} className="flex items-center justify-between gap-3 rounded-lg border border-arc-border bg-arc-card px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-arc-text">
+                              {formatPortfolioRecipient(recipient)}
+                            </p>
+                            <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                              {recipient.address ? formatAddress(recipient.address, 4) : t('common.unknown')}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold text-arc-accent">
+                            {formatPortfolioAmount(recipient.total, portfolioLocale)} USDC
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-relaxed text-arc-text-dim">
+                      {portfolioIntel.available.tipHistory
+                        ? t('portfolio.intelNoTopRecipients')
+                        : t('portfolio.intelTipHistoryUnavailable')}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 text-[10px] text-arc-text-dim">
+                  <span>
+                    {portfolioIntel.available.txHistory
+                      ? formatText('portfolio.intelTransfersLabel', {
+                          count: portfolioIntel.txCount ?? 0,
+                        })
+                      : t('portfolio.intelTransfersUnavailable')}
+                  </span>
+                  <span>
+                    {portfolioIntel.mode === 'fallback'
+                      ? t('portfolio.intelFallbackShortLabel')
+                      : portfolioIntel.mode === 'unavailable'
+                        ? t('portfolio.intelNoDataLabel')
+                        : ''}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-arc-text-dim">
+                {t('portfolio.intelNoData')}
               </p>
             )}
           </div>
