@@ -3,6 +3,7 @@ import {
   Activity as ActivityIcon,
   ArrowDownLeft,
   ArrowUpRight,
+  Bell,
   ChevronRight,
   Copy,
   Droplet,
@@ -20,12 +21,14 @@ import { t, formatText } from '@/lib/i18n'
 import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
+import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { copyToClipboard, formatAddress, formatUSD } from '@/lib/utils'
 import { ONBOARDING_SEEN, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { isValidAddress } from '@/lib/validation'
 import { readAddressFromImage } from '@/lib/imageReader'
 import { MONOCHROME_DARK } from '@/lib/designTokens'
+import { getPlannerStorageKey, getReminderDueLabel, listReminders, type PlannerReminder } from '@/lib/planner'
 
 function makeCardStyle(backgroundColor: string, borderColor: string, borderRadius: number, borderWidth = 1) {
   return {
@@ -269,6 +272,7 @@ export function Wallet({
   const [scanBusy, setScanBusy] = useState(false)
   const [scanError, setScanError] = useState('')
   const [actionError, setActionError] = useState('')
+  const [dueReminders, setDueReminders] = useState<PlannerReminder[]>([])
   const onboardingDismissedRef = useRef(false)
   const scanInputRef = useRef<HTMLInputElement>(null)
   const scanDropzoneRef = useRef<HTMLDivElement>(null)
@@ -303,6 +307,46 @@ export function Wallet({
       scanDropzoneRef.current?.focus()
     }
   }, [scanPanelOpen])
+
+  useEffect(() => {
+    let active = true
+
+    const loadDueReminders = async () => {
+      try {
+        const items = await listReminders()
+        if (!active) return
+
+        const now = Date.now()
+        const next = items.filter((reminder) => {
+          if (reminder.done || !reminder.dueAt) return false
+          const dueAt = new Date(reminder.dueAt).getTime()
+          return Number.isFinite(dueAt) && dueAt <= now
+        })
+
+        setDueReminders(next)
+      } catch (error) {
+        debugWarn('[Wallet] planner due reminders load failed:', error)
+        if (active) {
+          setDueReminders([])
+        }
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName !== 'local') return
+      if (changes[getPlannerStorageKey()]) {
+        void loadDueReminders()
+      }
+    }
+
+    void loadDueReminders()
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      active = false
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
 
   const level = Math.max(1, Math.floor(xp / 100))
   const displayBalance = balance ?? null
@@ -495,6 +539,36 @@ export function Wallet({
               style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.pill)}
             >
               {t('wallet.copied')}
+            </div>
+          ) : null}
+
+          {dueReminders.length > 0 ? (
+            <div
+              className="border px-4 py-3"
+              style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.card)}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center border text-white"
+                  style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
+                >
+                  <Bell size={16} strokeWidth={1.8} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-arc-hint">
+                    {t('planner.noticeTitle')}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-white">
+                    {formatText('planner.noticeBody', { count: dueReminders.length })}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                    {dueReminders[0]?.text ?? ''}
+                  </p>
+                  <p className="mt-1 text-[10px] uppercase tracking-widest text-arc-text-dim">
+                    {dueReminders[0] ? getReminderDueLabel(dueReminders[0]) : ''}
+                  </p>
+                </div>
+              </div>
             </div>
           ) : null}
 

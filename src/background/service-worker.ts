@@ -20,16 +20,10 @@ import {
 import { ARC_RPC_URL, BLOCKSCOUT_BASE, USDC_CONTRACT } from '@/lib/constants'
 import { debugLog, debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
-import {
-  getDueReminders,
-  getLocalDateKey,
-  getReminderNotificationMessage,
-} from '@/lib/reminders'
 
 const ARC_DISCORD_API_URL = 'https://discord.com/api/v10/invites/buildonarc?with_counts=true'
 const ARC_DISCORD_USER_AGENT = 'ArcCopilot/0.3'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
-const REMINDER_NOTIFIED_PREFIX = 'arccopilot:reminders:last-notified:'
 const USDC_DECIMALS = 6
 const LAST_KNOWN_BALANCE_WALLET_KEY = 'arccopilot:last-known-balance-wallet'
 const LAST_SEEN_INCOMING_WALLET_KEY = 'arccopilot:last-seen-incoming-wallet'
@@ -392,7 +386,6 @@ async function runRecurringChecks(): Promise<void> {
   await Promise.allSettled([
     checkWhales(),
     checkBalanceAndIncoming(),
-    checkReminders(),
   ])
 }
 
@@ -574,52 +567,6 @@ async function checkBalanceAndIncoming(): Promise<void> {
     }
   } catch (err) {
     console.error('[ArcCopilot SW] balance/incoming check failed:', err)
-  }
-}
-
-async function checkReminders(): Promise<void> {
-  debugLog('[ArcCopilot SW] checking reminders...')
-
-  try {
-    const dueReminders = await getDueReminders()
-    if (dueReminders.length === 0) {
-      return
-    }
-
-    const todayKey = getLocalDateKey()
-    const notifiedKeys = dueReminders.map((reminder) => `${REMINDER_NOTIFIED_PREFIX}${reminder.id}`)
-    const stored = await chromeStorageGet(notifiedKeys)
-    const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
-    const updates: Record<string, unknown> = {}
-    let notifiedCount = 0
-
-    for (const reminder of dueReminders) {
-      const storageKey = `${REMINDER_NOTIFIED_PREFIX}${reminder.id}`
-      if (stored[storageKey] === todayKey) {
-        continue
-      }
-
-      updates[storageKey] = todayKey
-      notifiedCount += 1
-
-      chrome.notifications.create(`reminder-${reminder.id}`, {
-        type: 'basic',
-        iconUrl,
-        title: `Reminder: ${reminder.title}`,
-        message: getReminderNotificationMessage(reminder),
-        priority: 2,
-      })
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await chromeStorageSet(updates)
-    }
-
-    if (notifiedCount > 0) {
-      debugLog('[ArcCopilot SW] reminder notification(s) created:', notifiedCount)
-    }
-  } catch (err) {
-    console.error('[ArcCopilot SW] reminder check failed:', err)
   }
 }
 

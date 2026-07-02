@@ -45,10 +45,13 @@ import {
 import { canTip, formatTipBudgetAmount, getBudgetState, recordTip } from '@/lib/tipBudget'
 import {
   addReminder,
-  buildReminderFromAction,
-  getReminderScheduleLabel,
-  type Reminder,
-} from '@/lib/reminders'
+  completeReminder,
+  findReminderMatches,
+  generateTaskSuggestions,
+  listReminders,
+  type PlannerReminder,
+  type TaskSuggestion,
+} from '@/lib/planner'
 import {
   PENDING_SEND_STORAGE_KEY,
   PENDING_VIEW_STORAGE_KEY,
@@ -374,6 +377,15 @@ function formatUsdcAmount(amount: string | number | undefined): string {
   return `${parsed.toLocaleString('en-US', { maximumFractionDigits: 6 })} USDC`
 }
 
+function normalizeIntentText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ı/g, 'i')
+}
+
 function normalizeUsdcAmountText(value: string | undefined): string {
   const trimmed = value?.trim() ?? ''
   if (!trimmed) return ''
@@ -384,6 +396,368 @@ function normalizeUsdcAmountText(value: string | undefined): string {
   }
 
   return withoutCurrency
+}
+
+type PlannerCommandLocale = 'en' | 'tr'
+
+type PlannerCommandIntent =
+  | { type: 'add'; text: string; dueAt?: string; locale: PlannerCommandLocale }
+  | { type: 'list'; locale: PlannerCommandLocale }
+  | { type: 'complete'; query: string; locale: PlannerCommandLocale }
+
+type PlannerTimeToken = {
+  hours: number
+  minutes: number
+}
+
+function detectPlannerCommandLocale(message: string): PlannerCommandLocale {
+  const normalized = normalizeIntentText(message)
+  if (/(hatirlat|gorev|gorevlerim|hatirlaticilarim|tamamla|yarin|bugun|planim)/.test(normalized)) {
+    return 'tr'
+  }
+  return 'en'
+}
+
+function stripPlannerCommandPrefix(message: string): string {
+  return message
+    .trim()
+    .replace(/^(?:hat[ıi]rla?t|remind me(?: to)?|remind)\b[\s:,-]*/i, '')
+    .trim()
+}
+
+function stripPlannerFollowUpPrefix(message: string): string {
+  return message
+    .trim()
+    .replace(/^(?:to|için|icin|bana|beni|about|for)\b[\s:,-]*/i, '')
+    .trim()
+}
+
+function parsePlannerTimeToken(message: string): { token: PlannerTimeToken | null; rest: string } {
+  const trimmed = message.trim()
+  const colonMatch = trimmed.match(/^(?:at|saat)?\s*(\d{1,2})(?:(:|\.)(\d{2}))?\s*(am|pm)?\b[\s,;:-]*/i)
+  if (colonMatch) {
+    const hourRaw = Number(colonMatch[1])
+    const minuteRaw = Number(colonMatch[3] ?? '0')
+    const meridiem = colonMatch[4]?.toLowerCase() ?? ''
+
+    if (Number.isFinite(hourRaw) && Number.isFinite(minuteRaw)) {
+      let hours = hourRaw
+      const minutes = Math.max(0, Math.min(59, minuteRaw))
+
+      if (meridiem === 'pm' && hours < 12) {
+        hours += 12
+      } else if (meridiem === 'am' && hours === 12) {
+        hours = 0
+      }
+
+      if ((meridiem && hours <= 12) || (!meridiem && hours <= 23)) {
+        return {
+          token: {
+            hours: Math.max(0, Math.min(23, hours)),
+            minutes,
+          },
+          rest: trimmed.slice(colonMatch[0].length).trim(),
+        }
+      }
+    }
+  }
+
+  const amPmMatch = trimmed.match(/^(?:at|saat)?\s*(\d{1,2})\s*(am|pm)\b[\s,;:-]*/i)
+  if (amPmMatch) {
+    const hourRaw = Number(amPmMatch[1])
+    const meridiem = amPmMatch[2]?.toLowerCase() ?? ''
+    if (Number.isFinite(hourRaw)) {
+      let hours = hourRaw
+      if (meridiem === 'pm' && hours < 12) {
+        hours += 12
+      } else if (meridiem === 'am' && hours === 12) {
+        hours = 0
+      }
+
+      return {
+        token: {
+          hours: Math.max(0, Math.min(23, hours)),
+          minutes: 0,
+        },
+        rest: trimmed.slice(amPmMatch[0].length).trim(),
+      }
+    }
+  }
+
+  return { token: null, rest: trimmed }
+}
+
+function buildPlannerDueAt(options: {
+  dayOffset?: number
+  explicitDay?: boolean
+  timeToken?: PlannerTimeToken | null
+}): string | undefined {
+  const hasDay = options.explicitDay === true || typeof options.dayOffset === 'number'
+  const hasTime = Boolean(options.timeToken)
+  if (!hasDay && !hasTime) return undefined
+
+  const dueDate = new Date()
+
+  if (typeof options.dayOffset === 'number') {
+    dueDate.setDate(dueDate.getDate() + options.dayOffset)
+  }
+
+  if (options.timeToken) {
+    dueDate.setHours(options.timeToken.hours, options.timeToken.minutes, 0, 0)
+  }
+
+  if (!options.timeToken && hasDay) {
+    dueDate.setSeconds(0, 0)
+  }
+
+  if (!hasDay && options.timeToken && dueDate.getTime() <= Date.now()) {
+    dueDate.setDate(dueDate.getDate() + 1)
+  }
+
+  return dueDate.toISOString()
+}
+
+function parsePlannerReminderIntent(message: string): PlannerCommandIntent | null {
+  const trimmed = message.trim()
+  if (!trimmed) return null
+
+  const locale = detectPlannerCommandLocale(trimmed)
+  const normalized = normalizeIntentText(trimmed)
+
+  if (/^(?:planim|gorevlerim|hatirlaticilarim|my plan|tasks)\b/.test(normalized)) {
+    return { type: 'list', locale }
+  }
+
+  if (/^(?:tamamla|complete|done)\b/.test(normalized)) {
+    const query = stripPlannerFollowUpPrefix(
+      trimmed.replace(/^(?:tamamla|complete|done)\b[\s:,-]*/i, ''),
+    )
+
+    return query
+      ? { type: 'complete', query, locale }
+      : { type: 'complete', query: '', locale }
+  }
+
+  if (/^(?:hat[ıi]rla?t|remind me(?: to)?|remind)\b/.test(normalized)) {
+    let body = stripPlannerCommandPrefix(trimmed)
+    body = stripPlannerFollowUpPrefix(body)
+
+    const dayMatch = body.match(/^(yar[ıi]n|tomorrow|bug[üu]n|today)\b[\s,;:-]*/i)
+    let explicitDay = false
+    let dayOffset: number | undefined
+    if (dayMatch) {
+      explicitDay = true
+      const dayToken = normalizeIntentText(dayMatch[1] ?? '')
+      dayOffset = dayToken.includes('yarin') || dayToken === 'tomorrow' ? 1 : 0
+      body = body.slice(dayMatch[0].length).trim()
+    }
+
+    const timeResult = parsePlannerTimeToken(body)
+    body = timeResult.rest
+
+    const dueAt = buildPlannerDueAt({
+      dayOffset,
+      explicitDay,
+      timeToken: timeResult.token,
+    })
+
+    const text = body.replace(/^(?:to|için|icin|bana|beni)\b[\s:,-]*/i, '').trim()
+
+    if (!text) {
+      return { type: 'add', text: '', locale }
+    }
+
+    return {
+      type: 'add',
+      text,
+      dueAt,
+      locale,
+    }
+  }
+
+  return null
+}
+
+function buildPlannerReminderText(params: { title?: string; recipient?: string; amount?: string }): string {
+  const bits = [params.title?.trim() ?? '']
+    .filter(Boolean)
+
+  if (params.recipient?.trim()) {
+    bits.push(params.recipient.trim())
+  }
+
+  const normalizedAmount = normalizeUsdcAmountText(params.amount)
+  if (normalizedAmount) {
+    bits.push(`${normalizedAmount} USDC`)
+  }
+
+  return bits.join(' - ').trim()
+}
+
+function parsePlannerActionDueAt(params: { frequency?: string; dayOfWeek?: number; dayOfMonth?: number }): string | undefined {
+  const now = new Date()
+  const schedule = params.frequency
+
+  if (schedule === 'weekly' && typeof params.dayOfWeek === 'number') {
+    const dueDate = new Date(now)
+    const targetDay = Math.max(0, Math.min(6, params.dayOfWeek))
+    const offset = (targetDay - dueDate.getDay() + 7) % 7 || 7
+    dueDate.setDate(dueDate.getDate() + offset)
+    dueDate.setSeconds(0, 0)
+    return dueDate.toISOString()
+  }
+
+  if (schedule === 'monthly' && typeof params.dayOfMonth === 'number') {
+    const dueDate = new Date(now)
+    const day = Math.max(1, Math.min(31, params.dayOfMonth))
+    dueDate.setDate(day)
+    dueDate.setSeconds(0, 0)
+    if (dueDate.getTime() <= now.getTime()) {
+      dueDate.setMonth(dueDate.getMonth() + 1)
+    }
+    return dueDate.toISOString()
+  }
+
+  if (schedule === 'daily') {
+    const dueDate = new Date(now)
+    dueDate.setDate(dueDate.getDate() + 1)
+    dueDate.setSeconds(0, 0)
+    return dueDate.toISOString()
+  }
+
+  return undefined
+}
+
+function getPlannerRelativeLabel(dueAt: string, locale: PlannerCommandLocale): string {
+  const language = locale === 'tr' ? 'tr' : 'en'
+  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
+  const diff = new Date(dueAt).getTime() - Date.now()
+  const abs = Math.abs(diff)
+
+  if (abs < 60_000) {
+    return rtf.format(Math.max(1, Math.round(diff / 1000)), 'second')
+  }
+  if (abs < 60 * 60_000) {
+    return rtf.format(Math.max(1, Math.round(diff / 60_000)), 'minute')
+  }
+  if (abs < 24 * 60 * 60_000) {
+    return rtf.format(Math.max(1, Math.round(diff / 3_600_000)), 'hour')
+  }
+
+  return rtf.format(Math.max(1, Math.round(diff / 86_400_000)), 'day')
+}
+
+function getPlannerReminderStatusText(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  if (reminder.done) {
+    return locale === 'tr' ? 'Tamamlandı' : 'Done'
+  }
+
+  if (!reminder.dueAt) {
+    return locale === 'tr' ? 'Tarihsiz' : 'No due date'
+  }
+
+  const dueAt = new Date(reminder.dueAt).getTime()
+  if (!Number.isFinite(dueAt)) {
+    return locale === 'tr' ? 'Tarihsiz' : 'No due date'
+  }
+
+  const now = Date.now()
+  if (dueAt <= now) {
+    return locale === 'tr' ? 'Gecikmiş' : 'Overdue'
+  }
+
+  return locale === 'tr' ? 'Yaklaşan' : 'Upcoming'
+}
+
+function getPlannerReminderDueText(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  if (reminder.done) {
+    return locale === 'tr' ? 'Tamamlandı' : 'Done'
+  }
+
+  if (!reminder.dueAt) {
+    return locale === 'tr' ? 'Tarihsiz' : 'No due date'
+  }
+
+  const dueAt = new Date(reminder.dueAt).getTime()
+  if (!Number.isFinite(dueAt)) {
+    return locale === 'tr' ? 'Tarihsiz' : 'No due date'
+  }
+
+  const now = Date.now()
+  if (dueAt <= now) {
+    return locale === 'tr' ? 'şimdi' : 'now'
+  }
+
+  return getPlannerRelativeLabel(reminder.dueAt, locale)
+}
+
+function buildPlannerReminderListLabel(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  return `${getPlannerReminderStatusText(reminder, locale)} - ${getPlannerReminderDueText(reminder, locale)}`
+}
+
+function formatPlannerReminderSummary(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  return `${reminder.text} — ${buildPlannerReminderListLabel(reminder, locale)}`
+}
+
+function buildPlannerPlanReply(reminders: PlannerReminder[], suggestions: TaskSuggestion[], locale: PlannerCommandLocale): string {
+  const dueReminders = reminders.filter((reminder) => !reminder.done && reminder.dueAt && new Date(reminder.dueAt).getTime() <= Date.now())
+  const upcomingReminders = reminders.filter((reminder) => {
+    if (reminder.done) return false
+    if (!reminder.dueAt) return true
+    return new Date(reminder.dueAt).getTime() > Date.now()
+  })
+
+  const lines: string[] = [locale === 'tr' ? 'Planın:' : 'Your plan:']
+
+  if (dueReminders.length === 0 && upcomingReminders.length === 0) {
+    lines.push(locale === 'tr' ? 'Henüz hatırlatıcı yok.' : 'No reminders yet.')
+  } else {
+    if (dueReminders.length > 0) {
+      lines.push(locale === 'tr' ? 'Bekleyen hatırlatıcılar:' : 'Due reminders:')
+      for (const reminder of dueReminders.slice(0, 5)) {
+        lines.push(`- ${formatPlannerReminderSummary(reminder, locale)}`)
+      }
+    }
+
+    if (upcomingReminders.length > 0) {
+      lines.push(locale === 'tr' ? 'Yaklaşan hatırlatıcılar:' : 'Upcoming reminders:')
+      for (const reminder of upcomingReminders.slice(0, 5)) {
+        lines.push(`- ${formatPlannerReminderSummary(reminder, locale)}`)
+      }
+    }
+  }
+
+  lines.push(locale === 'tr' ? 'Akıllı görevler:' : 'Smart tasks:')
+  if (suggestions.length === 0) {
+    lines.push(locale === 'tr' ? 'Şu anda görev önerisi yok.' : 'No task suggestions right now.')
+  } else {
+    for (const suggestion of suggestions.slice(0, 3)) {
+      lines.push(`- ${suggestion.title}`)
+      lines.push(`  ${locale === 'tr' ? 'Neden' : 'Reason'}: ${suggestion.reason}`)
+      lines.push(`  ${locale === 'tr' ? 'Sonraki adım' : 'Next step'}: ${suggestion.actionHint}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function buildPlannerReminderSavedReply(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  const dueText = reminder.dueAt ? getPlannerReminderDueText(reminder, locale) : ''
+  if (dueText) {
+    return locale === 'tr'
+      ? `Hatırlatıcı kaydedildi: ${reminder.text} (${dueText})`
+      : `Reminder saved: ${reminder.text} (${dueText})`
+  }
+
+  return locale === 'tr'
+    ? `Hatırlatıcı kaydedildi: ${reminder.text}`
+    : `Reminder saved: ${reminder.text}`
+}
+
+function buildPlannerReminderCompleteReply(reminder: PlannerReminder, locale: PlannerCommandLocale): string {
+  return locale === 'tr'
+    ? `Tamamlandı: ${reminder.text}`
+    : `Completed: ${reminder.text}`
 }
 
 function getSpendingTone(net: number): 'negative' | 'neutral' | 'positive' {
@@ -545,25 +919,15 @@ function getMultiStepActionTitle(
     case 'open_settings':
       return t('gogo.openSettings')
     case 'create_reminder': {
-      const title = typeof params.title === 'string' && params.title.trim()
-        ? params.title.trim()
-        : t('gogo.reminderSet')
-      const reminder: Reminder = {
-        id: 'preview',
-        title,
+      const reminderText = buildPlannerReminderText({
+        title: typeof params.title === 'string' ? params.title : '',
         recipient: typeof params.recipient === 'string' ? params.recipient : undefined,
         amount: typeof params.amount === 'string' ? params.amount : undefined,
-        frequency: params.frequency === 'weekly'
-          ? 'weekly'
-          : params.frequency === 'monthly'
-            ? 'monthly'
-            : 'daily',
-        dayOfWeek: typeof params.dayOfWeek === 'number' ? params.dayOfWeek : undefined,
-        dayOfMonth: typeof params.dayOfMonth === 'number' ? params.dayOfMonth : undefined,
-        createdAt: '',
-      }
+      })
 
-      return `${t('dailyBrief.reminderPrefix')}: ${title} (${getReminderScheduleLabel(reminder)})`
+      return reminderText
+        ? `${t('gogo.setReminder')}: ${reminderText}`
+        : t('gogo.setReminder')
     }
     case 'draft_tweet':
       return t('gogo.tweetDraft')
@@ -1724,6 +2088,83 @@ export function GogoAI({ onBack }: GogoAIProps) {
     void saveGogoHistory(optimisticMessages)
 
     try {
+      const plannerIntent = parsePlannerReminderIntent(trimmed)
+      if (plannerIntent) {
+        const appendAssistantReply = (content: string) => {
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content,
+            actions: [],
+            timestamp: Date.now(),
+          }
+
+          const finalMessages = [...optimisticMessages, assistantMessage]
+          messagesRef.current = finalMessages
+          setMessages(finalMessages)
+          void saveGogoHistory(finalMessages)
+        }
+
+        if (plannerIntent.type === 'add') {
+          if (!plannerIntent.text) {
+            appendAssistantReply(plannerIntent.locale === 'tr'
+              ? 'Ne hatırlatmamı istediğini söyle.'
+              : 'Tell me what to remind you about.')
+            return
+          }
+
+          const reminder = await addReminder(plannerIntent.text, plannerIntent.dueAt)
+          appendAssistantReply(buildPlannerReminderSavedReply(reminder, plannerIntent.locale))
+          return
+        }
+
+        if (plannerIntent.type === 'complete') {
+          const reminders = await listReminders()
+          if (!plannerIntent.query) {
+            appendAssistantReply(plannerIntent.locale === 'tr'
+              ? 'Tamamlamak için hatırlatıcı kimliğini ya da metnini söyle.'
+              : 'Tell me the reminder id or text to complete.')
+            return
+          }
+
+          const normalizedQuery = normalizeIntentText(plannerIntent.query)
+          const exactMatch = reminders.find((reminder) => (
+            reminder.id.trim().toLowerCase() === plannerIntent.query.trim().toLowerCase()
+            || normalizeIntentText(reminder.text) === normalizedQuery
+          ))
+          const matches = findReminderMatches(reminders, plannerIntent.query)
+          const targetReminder = exactMatch ?? (matches.length === 1 ? matches[0] : null)
+
+          if (!targetReminder) {
+            appendAssistantReply(matches.length > 1
+              ? (plannerIntent.locale === 'tr'
+                ? 'Birden fazla eşleşme buldum. Lütfen hatırlatıcı kimliğini kullan.'
+                : 'I found multiple matches. Use the reminder id.')
+              : (plannerIntent.locale === 'tr'
+                ? 'Bu hatırlatıcıyı bulamadım.'
+                : "I couldn't find that reminder."))
+            return
+          }
+
+          const completed = await completeReminder(targetReminder.id)
+          if (!completed && targetReminder.done) {
+            appendAssistantReply(plannerIntent.locale === 'tr'
+              ? `Zaten tamamlanmış: ${targetReminder.text}`
+              : `Already completed: ${targetReminder.text}`)
+            return
+          }
+
+          appendAssistantReply(buildPlannerReminderCompleteReply(targetReminder, plannerIntent.locale))
+          return
+        }
+
+        const [reminders, suggestions] = await Promise.all([
+          listReminders(),
+          generateTaskSuggestions(),
+        ])
+        appendAssistantReply(buildPlannerPlanReply(reminders, suggestions, plannerIntent.locale))
+        return
+      }
+
       const response = await askGogo(trimmed, gogoContext, history)
       const assistantMessage: Message = {
         role: 'assistant',
@@ -2534,26 +2975,31 @@ export function GogoAI({ onBack }: GogoAIProps) {
         setAnalysisLoadingKey(messageKey)
 
         try {
-          const reminderFrequency: 'daily' | 'weekly' | 'monthly' = action.params?.frequency === 'weekly'
-            ? 'weekly'
-            : action.params?.frequency === 'monthly'
-              ? 'monthly'
-              : 'daily'
-
-          const reminder = buildReminderFromAction({
+          const reminderText = buildPlannerReminderText({
             title: action.params?.title ?? '',
             recipient: action.params?.recipient,
             amount: action.params?.amount,
-            frequency: reminderFrequency,
-            dayOfWeek: action.params?.dayOfWeek,
-            dayOfMonth: action.params?.dayOfMonth,
           })
-
-          await addReminder(reminder)
-          updateMessageAction(messageIndex, actionIndex, (currentAction) => ({
-            ...currentAction,
-            completed: true,
-          }))
+          const reminder = await addReminder(
+            reminderText || action.params?.title?.trim() || t('gogo.reminderSet'),
+            parsePlannerActionDueAt({
+              frequency: action.params?.frequency,
+              dayOfWeek: action.params?.dayOfWeek,
+              dayOfMonth: action.params?.dayOfMonth,
+            }),
+          )
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) => ({
+              ...currentAction,
+              completed: true,
+            }),
+            (message) => ({
+              ...message,
+              content: buildPlannerReminderSavedReply(reminder, getLocaleSync() === 'tr' ? 'tr' : 'en'),
+            }),
+          )
         } catch (error) {
           console.error('[GogoAI] reminder save failed:', error)
           const errorMessage = error instanceof Error ? error.message : t('gogo.couldNotSaveReminder')

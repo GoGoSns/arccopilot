@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, Lightbulb, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -18,7 +18,6 @@ import { detectPatterns, getPatternKey, type Pattern, type DismissedPattern } fr
 import {
   DISMISSED_PATTERNS_KEY,
   PENDING_SEND_STORAGE_KEY,
-  REMINDERS,
   NEWS_FEEDS_STORAGE_KEY,
   TWITTERAPI_KEY,
   TWITTER_OFFICIAL_ACCOUNTS,
@@ -51,11 +50,16 @@ import {
   type NewsSummaryMode,
 } from '@/lib/newsPulse'
 import {
-  getDueReminders,
-  getReminderDetails,
-  markReminderTriggered,
-  type Reminder,
-} from '@/lib/reminders'
+  completeReminder,
+  deleteReminder,
+  generateTaskSuggestions,
+  getReminderDueLabel,
+  getReminderStatusLabel,
+  getPlannerStorageKey,
+  listReminders,
+  type PlannerReminder,
+  type TaskSuggestion,
+} from '@/lib/planner'
 import { getExternalErrorMessage } from '@/lib/externalErrors'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
 import { shortenTxHash } from '@/lib/utils'
@@ -448,8 +452,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [whaleLoading,   setWhaleLoading]   = useState(false)
   const [whaleReady,     setWhaleReady]     = useState(false)
   const [whaleError,     setWhaleError]     = useState<string | null>(null)
-  const [dueReminders,   setDueReminders]   = useState<Reminder[]>([])
-  const [remindersLoading, setRemindersLoading] = useState(true)
+  const [plannerReminders, setPlannerReminders] = useState<PlannerReminder[]>([])
+  const [plannerRemindersLoading, setPlannerRemindersLoading] = useState(true)
+  const [plannerSuggestions, setPlannerSuggestions] = useState<TaskSuggestion[]>([])
+  const [plannerSuggestionsLoading, setPlannerSuggestionsLoading] = useState(true)
   const [transferError,  setTransferError]  = useState<string | null>(null)
   const [officialTweetsError, setOfficialTweetsError] = useState<string | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
@@ -690,34 +696,34 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   useEffect(() => {
     let cancelled = false
 
-    const loadDueReminders = async () => {
-      setRemindersLoading(true)
+    const loadPlannerReminders = async () => {
+      setPlannerRemindersLoading(true)
 
       try {
-        const items = await getDueReminders()
+        const items = await listReminders()
         if (!cancelled) {
-          setDueReminders(items)
+          setPlannerReminders(items)
         }
       } catch (error) {
-        debugWarn('[DailyBrief] reminder load failed:', error)
+        debugWarn('[DailyBrief] planner reminder load failed:', error)
         if (!cancelled) {
-          setDueReminders([])
+          setPlannerReminders([])
         }
       } finally {
         if (!cancelled) {
-          setRemindersLoading(false)
+          setPlannerRemindersLoading(false)
         }
       }
     }
 
     const onStorageChanged = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName !== 'local') return
-      if (changes[REMINDERS]) {
-        void loadDueReminders()
+      if (changes[getPlannerStorageKey()]) {
+        void loadPlannerReminders()
       }
     }
 
-    void loadDueReminders()
+    void loadPlannerReminders()
     chrome.storage.onChanged.addListener(onStorageChanged)
 
     return () => {
@@ -725,6 +731,46 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       chrome.storage.onChanged.removeListener(onStorageChanged)
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadPlannerSuggestions = async () => {
+      setPlannerSuggestionsLoading(true)
+
+      if (tipAdvisorLoading || portfolioIntelLoading || newsLoading) {
+        return
+      }
+
+      try {
+        const items = await generateTaskSuggestions({
+          tipAdvisor,
+          portfolioIntel,
+          newsItems,
+          newsFetchedAt,
+        })
+
+        if (!cancelled) {
+          setPlannerSuggestions(items)
+        }
+      } catch (error) {
+        debugWarn('[DailyBrief] planner suggestions load failed:', error)
+        if (!cancelled) {
+          setPlannerSuggestions([])
+        }
+      } finally {
+        if (!cancelled) {
+          setPlannerSuggestionsLoading(false)
+        }
+      }
+    }
+
+    void loadPlannerSuggestions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tipAdvisor, tipAdvisorLoading, portfolioIntel, portfolioIntelLoading, newsItems, newsFetchedAt, newsLoading])
 
   // -- effect: twitter feed --------------------------------------------------
   useEffect(() => {
@@ -1160,8 +1206,20 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     })
   })()
 
+  const plannerNow = Date.now()
+  const plannerDueReminders = plannerReminders.filter((reminder) => {
+    if (reminder.done || !reminder.dueAt) return false
+    const dueAt = new Date(reminder.dueAt).getTime()
+    return Number.isFinite(dueAt) && dueAt <= plannerNow
+  })
+  const plannerUpcomingReminders = plannerReminders.filter((reminder) => {
+    if (reminder.done) return false
+    if (!reminder.dueAt) return true
+    const dueAt = new Date(reminder.dueAt).getTime()
+    return !Number.isFinite(dueAt) || dueAt > plannerNow
+  })
+  const plannerVisibleReminders = [...plannerDueReminders, ...plannerUpcomingReminders]
   const recommendations: RecommendationItem[] = []
-  const safeDueReminders = Array.isArray(dueReminders) ? dueReminders : []
   const safeWhaleEntries = Array.isArray(whaleEntries) ? whaleEntries : []
   const safeOfficialTweets = Array.isArray(officialTweets) ? officialTweets : []
   const safeTweets = Array.isArray(tweets) ? tweets : []
@@ -1181,19 +1239,27 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     })
   }
 
-  const handleReminderOpenSend = (reminder: Reminder) => {
-    openSendWithPending({
-      recipient: reminder.recipient,
-      amount: reminder.amount,
-    })
+  const handlePlannerComplete = async (id: string) => {
+    try {
+      const completed = await completeReminder(id)
+      if (completed) {
+        setPlannerReminders((current) => current.map((reminder) => (
+          reminder.id === id ? { ...reminder, done: true } : reminder
+        )))
+      }
+    } catch (error) {
+      debugWarn('[DailyBrief] planner reminder complete failed:', error)
+    }
   }
 
-  const handleReminderDone = async (reminder: Reminder) => {
+  const handlePlannerDelete = async (id: string) => {
     try {
-      await markReminderTriggered(reminder.id)
-      setDueReminders((prev) => prev.filter((item) => item.id !== reminder.id))
+      const deleted = await deleteReminder(id)
+      if (deleted) {
+        setPlannerReminders((current) => current.filter((reminder) => reminder.id !== id))
+      }
     } catch (error) {
-      debugWarn('[DailyBrief] reminder done failed:', error)
+      debugWarn('[DailyBrief] planner reminder delete failed:', error)
     }
   }
 
@@ -1788,65 +1854,179 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
 
         <div className="space-y-4 overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-arc-accent/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
           <div className="flex items-center gap-2">
-            <Lightbulb size={14} className="text-arc-accent" />
+            <Bell size={14} className="text-arc-accent" />
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">{t('dailyBrief.recommendations')}</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">{t('planner.title')}</p>
             </div>
           </div>
 
-          {remindersLoading && safeDueReminders.length === 0 ? (
-            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
-              <div className="mt-2 h-2 w-3/4 animate-pulse rounded bg-arc-border/70" />
-              <div className="mt-3 h-8 w-32 animate-pulse rounded-xl bg-arc-border/70" />
-            </div>
-          ) : safeDueReminders.length > 0 ? (
-            <div className="space-y-3">
-              {safeDueReminders.map((reminder) => {
-                const hasPrefill = Boolean(reminder.recipient?.trim() || reminder.amount?.trim())
+          <div className="space-y-4">
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                    {t('planner.remindersTitle')}
+                  </p>
+                  <p className="mt-1 text-[11px] text-arc-text-dim">
+                    {formatText('planner.remindersCount', { count: plannerVisibleReminders.length })}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-arc-border/70 bg-arc-bg/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-arc-text-dim">
+                  {plannerDueReminders.length}
+                </span>
+              </div>
 
-                return (
-                  <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
-                        <Bell size={14} />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="space-y-1">
-                          <p className="text-sm leading-relaxed text-arc-text">
-                            {locale === 'tr' ? 'Hatırlatıcı' : 'Reminder'}: {reminder.title}
-                          </p>
-                          <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
-                            {getReminderDetails(reminder)}
-                          </p>
+              {plannerRemindersLoading && plannerVisibleReminders.length === 0 ? (
+                <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-arc-border/70" />
+                  <div className="mt-2 h-2 w-3/4 animate-pulse rounded bg-arc-border/70" />
+                  <div className="mt-3 h-8 w-32 animate-pulse rounded-xl bg-arc-border/70" />
+                </div>
+              ) : plannerVisibleReminders.length > 0 ? (
+                <div className="space-y-3">
+                  {plannerDueReminders.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-[10px] uppercase tracking-widest text-arc-accent/85">
+                        {t('planner.dueNow')}
+                      </p>
+                      {plannerDueReminders.map((reminder) => (
+                        <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-accent/20 bg-arc-accent/10 text-arc-accent">
+                              <Bell size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="space-y-1">
+                                <p className="text-sm leading-relaxed text-arc-text">
+                                  {reminder.text}
+                                </p>
+                                <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                                  {getReminderStatusLabel(reminder)} - {getReminderDueLabel(reminder)}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  className="h-8 px-3 text-[10px]"
+                                  onClick={() => void handlePlannerComplete(reminder.id)}
+                                >
+                                  {t('planner.complete')}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-[10px]"
+                                  onClick={() => void handlePlannerDelete(reminder.id)}
+                                >
+                                  {t('planner.delete')}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {hasPrefill && (
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              className="h-8 px-3 text-[10px]"
-                              onClick={() => handleReminderOpenSend(reminder)}
-                            >
-                              {t('dailyBrief.openSend')}
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3 text-[10px]"
-                            onClick={() => void handleReminderDone(reminder)}
-                          >
-                            {t('common.done')}
-                          </Button>
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : null}
+                  ) : null}
+
+                  {plannerUpcomingReminders.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                        {t('planner.upcoming')}
+                      </p>
+                      {plannerUpcomingReminders.map((reminder) => (
+                        <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border/70 bg-arc-elevated text-arc-text-dim">
+                              <Bell size={14} />
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-2">
+                              <div className="space-y-1">
+                                <p className="text-sm leading-relaxed text-arc-text">
+                                  {reminder.text}
+                                </p>
+                                <p className="text-[10px] uppercase tracking-widest text-arc-text-dim">
+                                  {getReminderStatusLabel(reminder)} - {getReminderDueLabel(reminder)}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-[10px]"
+                                  onClick={() => void handlePlannerComplete(reminder.id)}
+                                >
+                                  {t('planner.complete')}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 px-3 text-[10px]"
+                                  onClick={() => void handlePlannerDelete(reminder.id)}
+                                >
+                                  {t('planner.delete')}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <p className="text-sm font-medium text-arc-text">{t('planner.noReminders')}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{t('planner.noRemindersHint')}</p>
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3 border-t border-arc-border/60 pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">
+                    {t('planner.smartSuggestions')}
+                  </p>
+                  <p className="mt-1 text-[11px] text-arc-text-dim">
+                    {formatText('planner.suggestionsCount', { count: plannerSuggestions.length })}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-arc-border/70 bg-arc-bg/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-arc-text-dim">
+                  {plannerSuggestions.length}
+                </span>
+              </div>
+
+              {plannerSuggestionsLoading ? (
+                <div className="space-y-2">
+                  {[0, 1].map((index) => (
+                    <div key={index} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                      <div className="h-3 w-2/3 animate-pulse rounded bg-arc-border/70" />
+                      <div className="mt-2 h-2 w-3/4 animate-pulse rounded bg-arc-border/70" />
+                      <div className="mt-3 h-2 w-1/3 animate-pulse rounded bg-arc-border/70" />
+                    </div>
+                  ))}
+                </div>
+              ) : plannerSuggestions.length > 0 ? (
+                <div className="space-y-2">
+                  {plannerSuggestions.map((suggestion) => (
+                    <div key={suggestion.id} className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                      <p className="text-sm font-medium text-arc-text">{suggestion.title}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{suggestion.reason}</p>
+                      <p className="mt-2 text-[10px] uppercase tracking-widest text-arc-accent/85">
+                        {suggestion.actionHint}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+                  <p className="text-sm font-medium text-arc-text">{t('planner.noSuggestions')}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">{t('planner.noSuggestionsHint')}</p>
+                </div>
+              )}
+            </section>
+          </div>
 
           <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
             <div className="flex items-start justify-between gap-3">

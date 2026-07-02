@@ -35,7 +35,6 @@ import {
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
   NEWS_FEEDS_STORAGE_KEY,
-  REMINDERS,
   TIP_BUDGET,
   USER_X_HANDLE,
   VOICE_RESPONSES_STORAGE_KEY,
@@ -50,11 +49,14 @@ import {
   setAutonomousEnabled,
 } from '@/lib/agentBackend'
 import {
-  getReminders,
-  getReminderDetails,
-  removeReminder,
-  type Reminder,
-} from '@/lib/reminders'
+  listReminders,
+  completeReminder,
+  deleteReminder,
+  getReminderDueLabel,
+  getReminderStatusLabel,
+  getPlannerStorageKey,
+  type PlannerReminder,
+} from '@/lib/planner'
 import { getDefaultNewsFeedText, getNewsFeedText, resetNewsFeeds, saveNewsFeeds } from '@/lib/newsPulse'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { formatRelativeTime, formatAddress } from '@/lib/utils'
@@ -122,7 +124,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [userXHandle, setUserXHandleState] = useState('')
   const [isSavingUserXHandle, setIsSavingUserXHandle] = useState(false)
   const [userXHandleError, setUserXHandleError] = useState('')
-  const [reminders, setReminders] = useState<Reminder[]>([])
+  const [reminders, setReminders] = useState<PlannerReminder[]>([])
   const [remindersLoading, setRemindersLoading] = useState(true)
   const [creators, setCreators] = useState<CreatorEntry[]>([])
   const [creatorDiscovery, setCreatorDiscovery] = useState<CreatorDiscoveryResult | null>(null)
@@ -193,7 +195,7 @@ export function Settings({ onBack }: SettingsProps) {
     const loadReminders = async () => {
       setRemindersLoading(true)
       try {
-        const items = await getReminders()
+        const items = await listReminders()
         if (active) {
           setReminders(items)
         }
@@ -211,7 +213,7 @@ export function Settings({ onBack }: SettingsProps) {
 
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName !== 'local') return
-      if (changes[REMINDERS]) {
+      if (changes[getPlannerStorageKey()]) {
         void loadReminders()
       }
     }
@@ -826,10 +828,23 @@ export function Settings({ onBack }: SettingsProps) {
 
   const handleRemoveReminder = async (id: string) => {
     try {
-      await removeReminder(id)
+      await deleteReminder(id)
       setReminders((current) => current.filter((reminder) => reminder.id !== id))
     } catch (error) {
       debugWarn('[Settings] reminder remove failed:', error)
+    }
+  }
+
+  const handleCompleteReminder = async (id: string) => {
+    try {
+      const completed = await completeReminder(id)
+      if (completed) {
+        setReminders((current) => current.map((reminder) => (
+          reminder.id === id ? { ...reminder, done: true } : reminder
+        )))
+      }
+    } catch (error) {
+      debugWarn('[Settings] reminder complete failed:', error)
     }
   }
 
@@ -1697,17 +1712,36 @@ export function Settings({ onBack }: SettingsProps) {
             reminders.map((reminder, index) => (
               <div key={reminder.id} className={`flex items-start justify-between gap-3 px-4 py-3 hover:bg-arc-card/30 transition-colors ${index > 0 ? 'border-t border-arc-border/50' : ''}`}>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-sm font-semibold text-arc-text">{reminder.title}</p>
-                  <p className="text-[10px] text-arc-text-dim">{getReminderDetails(reminder)}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-sm font-semibold ${reminder.done ? 'text-arc-text-dim line-through' : 'text-arc-text'}`}>
+                      {reminder.text}
+                    </p>
+                    <span className="shrink-0 rounded-full border border-arc-border bg-arc-elevated px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-arc-text-dim">
+                      {getReminderStatusLabel(reminder)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-arc-text-dim">{getReminderDueLabel(reminder)}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleRemoveReminder(reminder.id)}
-                  className="shrink-0 rounded-lg p-2 text-arc-text-dim hover:text-arc-danger transition-colors"
-                  title={t('common.remove')}
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {!reminder.done && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCompleteReminder(reminder.id)}
+                      className="rounded-lg px-2 py-2 text-[11px] font-medium text-arc-text-dim hover:text-white transition-colors"
+                      title={t('common.done')}
+                    >
+                      {t('common.done')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveReminder(reminder.id)}
+                    className="shrink-0 rounded-lg p-2 text-arc-text-dim hover:text-arc-danger transition-colors"
+                    title={t('common.remove')}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))
           )}
