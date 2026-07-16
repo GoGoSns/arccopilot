@@ -197,6 +197,10 @@ export async function agentHealth(backendUrlOverride?: string): Promise<{ ok: tr
   return { ok: true }
 }
 
+// TODO(per-user tips): once the backend exposes a per-user tip endpoint,
+// branch here on `await isPaired()` (from '@/lib/pairing') to call it with
+// the paired session's bearer token instead of the shared operator token
+// below. Do NOT wire this until that endpoint exists - it doesn't yet.
 export async function agentTip(recipient: string, amount: string): Promise<AgentTipResult> {
   const normalizedRecipient = recipient.trim().toLowerCase()
   const normalizedAmount = amount.trim()

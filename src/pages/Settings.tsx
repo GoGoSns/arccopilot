@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, Bot, ChevronRight, Coins, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Users, Volume2 } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, Check, ChevronRight, Coins, Copy, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
@@ -59,8 +59,16 @@ import {
 } from '@/lib/planner'
 import { getDefaultNewsFeedText, getNewsFeedText, resetNewsFeeds, saveNewsFeeds } from '@/lib/newsPulse'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
-import { formatRelativeTime, formatAddress } from '@/lib/utils'
+import { formatRelativeTime, formatAddress, copyToClipboard } from '@/lib/utils'
 import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
+import {
+  getMe,
+  isPaired,
+  pairWithSignature,
+  provisionAgent,
+  unpair,
+  type PairingProfile,
+} from '@/lib/pairing'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
@@ -151,6 +159,12 @@ export function Settings({ onBack }: SettingsProps) {
   const [isSavingAgentBackendUrl, setIsSavingAgentBackendUrl] = useState(false)
   const [isSavingAgentToken, setIsSavingAgentToken] = useState(false)
   const [isTestingAgentConnection, setIsTestingAgentConnection] = useState(false)
+  const [pairingLoaded, setPairingLoaded] = useState(false)
+  const [pairingProfile, setPairingProfile] = useState<PairingProfile | null>(null)
+  const [isPairingNow, setIsPairingNow] = useState(false)
+  const [isFinishingSetup, setIsFinishingSetup] = useState(false)
+  const [pairingError, setPairingError] = useState('')
+  const [pairingCopied, setPairingCopied] = useState(false)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -446,6 +460,91 @@ export function Settings({ onBack }: SettingsProps) {
       chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const loadPairing = async () => {
+      try {
+        const paired = await isPaired()
+        if (!paired) {
+          if (active) {
+            setPairingProfile(null)
+          }
+          return
+        }
+
+        const profile = await getMe()
+        if (active) {
+          setPairingProfile(profile)
+        }
+      } catch (error) {
+        debugWarn('[Settings] pairing profile load failed:', error)
+        if (active) {
+          setPairingProfile(null)
+        }
+      } finally {
+        if (active) {
+          setPairingLoaded(true)
+        }
+      }
+    }
+
+    void loadPairing()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const handlePairWithMetaMask = async () => {
+    setIsPairingNow(true)
+    setPairingError('')
+
+    try {
+      await pairWithSignature()
+      const profile = await getMe()
+      setPairingProfile(profile)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setPairingError(message)
+    } finally {
+      setIsPairingNow(false)
+    }
+  }
+
+  const handleFinishAgentSetup = async () => {
+    setIsFinishingSetup(true)
+    setPairingError('')
+
+    try {
+      const profile = await provisionAgent()
+      setPairingProfile(profile)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('state.error')
+      setPairingError(message)
+    } finally {
+      setIsFinishingSetup(false)
+    }
+  }
+
+  const handleUnpair = async () => {
+    await unpair()
+    setPairingProfile(null)
+    setPairingError('')
+  }
+
+  const handleCopyAgentAddress = async () => {
+    if (!pairingProfile?.agentAddress) return
+
+    try {
+      await copyToClipboard(pairingProfile.agentAddress)
+      setPairingCopied(true)
+      setTimeout(() => setPairingCopied(false), 2000)
+    } catch (error) {
+      debugWarn('[Settings] copy agent address failed:', error)
+    }
+  }
 
   const handleToggleIncomingAlerts = async () => {
     const nextValue = !incomingAlerts
@@ -1256,6 +1355,106 @@ export function Settings({ onBack }: SettingsProps) {
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+          {t('settings.pairingSectionTitle')}
+        </p>
+        <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-arc-accent/10 p-2 text-arc-accent">
+              <Wallet size={20} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-4">
+              <p className="text-[10px] text-arc-text-dim">{t('settings.pairingSectionDescription')}</p>
+
+              {!pairingLoaded && (
+                <p className="text-[10px] text-arc-text-dim">{t('state.loading')}</p>
+              )}
+
+              {pairingLoaded && !pairingProfile && (
+                <div className="space-y-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handlePairWithMetaMask()}
+                    disabled={isPairingNow}
+                    className="min-w-40"
+                  >
+                    {isPairingNow ? t('settings.pairingInProgress') : t('settings.pairWithMetaMask')}
+                  </Button>
+                  {pairingError && <p className="text-xs text-arc-danger">{pairingError}</p>}
+                </div>
+              )}
+
+              {pairingLoaded && pairingProfile && (
+                <div className="space-y-4">
+                  {!pairingProfile.agentWalletReady && (
+                    <div className="space-y-3">
+                      <p className="text-[10px] text-arc-text-dim">{t('settings.pairingWalletNotReady')}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => void handleFinishAgentSetup()}
+                        disabled={isFinishingSetup}
+                        className="min-w-40"
+                      >
+                        {isFinishingSetup ? t('settings.pairingFinishingSetup') : t('settings.pairingFinishSetup')}
+                      </Button>
+                    </div>
+                  )}
+
+                  {pairingProfile.agentWalletReady && pairingProfile.agentAddress && (
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingAgentAddress')}</p>
+                        <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
+                          <span className="truncate font-mono text-xs text-arc-text">{formatAddress(pairingProfile.agentAddress, 6)}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyAgentAddress()}
+                            className="shrink-0 p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors"
+                            title={t('settings.pairingCopyAddress')}
+                          >
+                            {pairingCopied ? <Check size={14} /> : <Copy size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-arc-text-dim">{t('settings.pairingFundHint')}</p>
+
+                      {pairingProfile.policy && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
+                            <p className="text-[9px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingPolicyWeeklyBudget')}</p>
+                            <p className="text-sm font-semibold text-arc-text">{formatTipBudgetAmount(pairingProfile.policy.weeklyBudget)} USDC</p>
+                          </div>
+                          <div className="rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
+                            <p className="text-[9px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingPolicyPerTipCap')}</p>
+                            <p className="text-sm font-semibold text-arc-text">{formatTipBudgetAmount(pairingProfile.policy.perTipCap)} USDC</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {pairingError && <p className="text-xs text-arc-danger">{pairingError}</p>}
+
+                  <div className="flex items-center justify-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleUnpair()}
+                      className="min-w-24"
+                    >
+                      <Unlink size={14} />
+                      {t('settings.pairingUnpair')}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
