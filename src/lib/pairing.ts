@@ -21,6 +21,53 @@ export interface PairingPolicy {
   autonomousEnabled: boolean
 }
 
+export interface UserAgentAllowlistEntry {
+  recipient: string
+  label: string | null
+}
+
+export interface UserAgentPolicy extends PairingPolicy {
+  allowlist: UserAgentAllowlistEntry[]
+}
+
+export interface UserAgentTipResult {
+  state: 'COMPLETE'
+  txHash: string
+  arcscanUrl: string
+}
+
+export interface UserAgentLedgerEntry {
+  recipient: string
+  amount: string
+  txHash: string | null
+  status: string
+  createdAt: string
+}
+
+export class PairingApiError extends Error {
+  readonly status: number
+  readonly backendMessage: string | null
+  readonly action: 'finish-setup' | 'enable-autonomous' | 'fund-agent' | null
+  readonly agentAddress: string | null
+
+  constructor(
+    message: string,
+    options: {
+      status: number
+      backendMessage?: string | null
+      action?: 'finish-setup' | 'enable-autonomous' | 'fund-agent' | null
+      agentAddress?: string | null
+    },
+  ) {
+    super(message)
+    this.name = 'PairingApiError'
+    this.status = options.status
+    this.backendMessage = options.backendMessage ?? null
+    this.action = options.action ?? null
+    this.agentAddress = options.agentAddress ?? null
+  }
+}
+
 export interface PairingProfile {
   userId: string
   walletAddress: string
@@ -147,6 +194,152 @@ function parsePolicy(value: unknown): PairingPolicy | null {
     perTipCap,
     autonomousEnabled,
   }
+}
+
+function parseAllowlist(value: unknown): UserAgentAllowlistEntry[] | null {
+  if (!Array.isArray(value)) return null
+
+  const entries: UserAgentAllowlistEntry[] = []
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const recipient = readAddress(item)
+      if (!recipient) return null
+      entries.push({ recipient, label: null })
+      continue
+    }
+
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+    const candidate = item as { recipient?: unknown; address?: unknown; label?: unknown }
+    const recipient = readAddress(candidate.recipient) ?? readAddress(candidate.address)
+    if (!recipient) return null
+
+    entries.push({
+      recipient,
+      label: candidate.label == null ? null : readString(candidate.label),
+    })
+  }
+
+  return entries
+}
+
+function parseUserAgentPolicy(value: unknown): UserAgentPolicy {
+  const policy = parsePolicy(value)
+  if (!policy || !value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  const allowlist = parseAllowlist((value as { allowlist?: unknown }).allowlist)
+  if (!allowlist) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  return { ...policy, allowlist }
+}
+
+function parseUserAgentTipResult(payload: unknown): UserAgentTipResult {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(t('settings.agentBackendUnexpected'))
+  }
+
+  const candidate = payload as { state?: unknown; txHash?: unknown; arcscanUrl?: unknown }
+  const state = readString(candidate.state)
+  const txHash = readString(candidate.txHash)
+  const arcscanUrl = readString(candidate.arcscanUrl)
+
+  if (!state || !txHash || !arcscanUrl) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  if (state.toUpperCase() !== 'COMPLETE') {
+    throw new Error(formatText('settings.agentBackendIncomplete', { state }))
+  }
+
+  return { state: 'COMPLETE', txHash, arcscanUrl }
+}
+
+function parseLedger(payload: unknown): UserAgentLedgerEntry[] {
+  const rawEntries = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? ((payload as { ledger?: unknown; tips?: unknown }).ledger ?? (payload as { tips?: unknown }).tips)
+      : null
+
+  if (!Array.isArray(rawEntries)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  return rawEntries.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(t('settings.agentBackendMalformed'))
+    }
+
+    const candidate = item as {
+      recipient?: unknown
+      amount?: unknown
+      txHash?: unknown
+      status?: unknown
+      createdAt?: unknown
+    }
+    const recipient = readAddress(candidate.recipient)
+    const amount = readString(candidate.amount) ?? (readNumber(candidate.amount)?.toString() ?? null)
+    const txHash = candidate.txHash == null ? null : readString(candidate.txHash)
+    const status = readString(candidate.status)
+    const createdAt = readString(candidate.createdAt)
+
+    if (!recipient || !amount || !status || !createdAt) {
+      throw new Error(t('settings.agentBackendMalformed'))
+    }
+
+    return { recipient, amount, txHash, status, createdAt }
+  })
+}
+
+function isInsufficientFundsMessage(message: string | null): boolean {
+  return Boolean(message && /insufficient|not enough|balance.*(?:low|short)/i.test(message))
+}
+
+async function createUserAgentError(status: number, payload: unknown, tipContext = false): Promise<PairingApiError> {
+  const backendMessage = extractResponseMessage(payload)
+
+  if (tipContext && status === 409) {
+    return new PairingApiError(t('settings.userAgentFinishSetupError'), {
+      status,
+      backendMessage,
+      action: 'finish-setup',
+    })
+  }
+
+  if (tipContext && status === 403) {
+    return new PairingApiError(t('settings.userAgentEnableAutonomousError'), {
+      status,
+      backendMessage,
+      action: 'enable-autonomous',
+    })
+  }
+
+  if (tipContext && isInsufficientFundsMessage(backendMessage)) {
+    let agentAddress: string | null = null
+    try {
+      agentAddress = (await getMe()).agentAddress
+    } catch {
+      // The original Circle error remains the primary error if profile lookup fails.
+    }
+
+    return new PairingApiError(
+      backendMessage ?? t('settings.userAgentInsufficientFunds'),
+      {
+        status,
+        backendMessage,
+        action: 'fund-agent',
+        agentAddress,
+      },
+    )
+  }
+
+  return new PairingApiError(backendMessage ?? `HTTP ${status}`, {
+    status,
+    backendMessage,
+  })
 }
 
 function parseProfile(payload: unknown): PairingProfile {
@@ -535,6 +728,87 @@ export async function provisionAgent(): Promise<PairingProfile> {
   }
 
   return parseProfile(payload)
+}
+
+export async function userTip(recipient: string, amount: string): Promise<UserAgentTipResult> {
+  const response = await authorizedRequest('/me/tip', {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient: recipient.trim().toLowerCase(),
+      amount: amount.trim(),
+    }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload, true)
+  }
+
+  return parseUserAgentTipResult(payload)
+}
+
+export async function getPolicy(): Promise<UserAgentPolicy> {
+  const response = await authorizedRequest('/me/policy')
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+
+  return parseUserAgentPolicy(payload)
+}
+
+export async function updatePolicy(patch: Partial<Pick<PairingPolicy, 'weeklyBudget' | 'perTipCap' | 'autonomousEnabled'>>): Promise<UserAgentPolicy> {
+  const response = await authorizedRequest('/me/policy', {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+
+  return getPolicy()
+}
+
+export async function addAllowlist(recipient: string, label?: string): Promise<void> {
+  const normalizedLabel = label?.trim()
+  const response = await authorizedRequest('/me/allowlist', {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient: recipient.trim().toLowerCase(),
+      ...(normalizedLabel ? { label: normalizedLabel } : {}),
+    }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+}
+
+export async function removeAllowlist(recipient: string): Promise<void> {
+  const response = await authorizedRequest('/me/allowlist', {
+    method: 'DELETE',
+    body: JSON.stringify({ recipient: recipient.trim().toLowerCase() }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+}
+
+export async function getLedger(): Promise<UserAgentLedgerEntry[]> {
+  const response = await authorizedRequest('/me/ledger')
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+
+  return parseLedger(payload).slice(0, 20)
 }
 
 export async function isPaired(): Promise<boolean> {

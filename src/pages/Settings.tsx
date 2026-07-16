@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, Bot, Check, ChevronRight, Coins, Copy, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
@@ -62,17 +62,26 @@ import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { formatRelativeTime, formatAddress, copyToClipboard } from '@/lib/utils'
 import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
 import {
+  addAllowlist,
+  getLedger,
   getMe,
+  getPolicy,
   isPaired,
   pairWithSignature,
   provisionAgent,
+  removeAllowlist,
   unpair,
+  updatePolicy,
   type PairingProfile,
+  type UserAgentLedgerEntry,
+  type UserAgentPolicy,
 } from '@/lib/pairing'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
 import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
+import { EXPLORER_URL } from '@/lib/arc'
+import { isValidAddress } from '@/lib/validation'
 
 interface SettingsProps {
   onBack: () => void
@@ -165,6 +174,16 @@ export function Settings({ onBack }: SettingsProps) {
   const [isFinishingSetup, setIsFinishingSetup] = useState(false)
   const [pairingError, setPairingError] = useState('')
   const [pairingCopied, setPairingCopied] = useState(false)
+  const [userAgentPolicy, setUserAgentPolicy] = useState<UserAgentPolicy | null>(null)
+  const [userAgentLedger, setUserAgentLedger] = useState<UserAgentLedgerEntry[]>([])
+  const [userAgentWeeklyBudgetInput, setUserAgentWeeklyBudgetInput] = useState('')
+  const [userAgentPerTipCapInput, setUserAgentPerTipCapInput] = useState('')
+  const [userAgentPolicyError, setUserAgentPolicyError] = useState('')
+  const [isSavingUserAgentPolicy, setIsSavingUserAgentPolicy] = useState(false)
+  const [allowlistAddressInput, setAllowlistAddressInput] = useState('')
+  const [allowlistLabelInput, setAllowlistLabelInput] = useState('')
+  const [allowlistError, setAllowlistError] = useState('')
+  const [allowlistBusyRecipient, setAllowlistBusyRecipient] = useState<string | null>(null)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -178,6 +197,18 @@ export function Settings({ onBack }: SettingsProps) {
   const autoTipPreviewReady = Boolean(autoTipRule && tipBudget)
   const autoTipPreviewRecipients = autoTipPreview?.recipients.slice(0, 3) ?? []
   const autoTipPreviewHasMore = Boolean(autoTipPreview && autoTipPreview.recipients.length > autoTipPreviewRecipients.length)
+
+  const applyUserAgentPolicy = (policy: UserAgentPolicy) => {
+    setUserAgentPolicy(policy)
+    setUserAgentWeeklyBudgetInput(String(policy.weeklyBudget))
+    setUserAgentPerTipCapInput(String(policy.perTipCap))
+  }
+
+  const refreshUserAgentData = async () => {
+    const [policy, ledger] = await Promise.all([getPolicy(), getLedger()])
+    applyUserAgentPolicy(policy)
+    setUserAgentLedger(ledger)
+  }
 
   useEffect(() => {
     let active = true
@@ -478,10 +509,30 @@ export function Settings({ onBack }: SettingsProps) {
         if (active) {
           setPairingProfile(profile)
         }
+
+        if (profile.agentWalletReady) {
+          try {
+            const policy = await getPolicy()
+            if (active) {
+              applyUserAgentPolicy(policy)
+            }
+            const ledger = await getLedger()
+            if (active) {
+              setUserAgentLedger(ledger)
+            }
+          } catch (error) {
+            debugWarn('[Settings] user agent data load failed:', error)
+            if (active) {
+              setPairingError(error instanceof Error ? error.message : t('state.error'))
+            }
+          }
+        }
       } catch (error) {
         debugWarn('[Settings] pairing profile load failed:', error)
         if (active) {
           setPairingProfile(null)
+          setUserAgentPolicy(null)
+          setUserAgentLedger([])
         }
       } finally {
         if (active) {
@@ -505,6 +556,9 @@ export function Settings({ onBack }: SettingsProps) {
       await pairWithSignature()
       const profile = await getMe()
       setPairingProfile(profile)
+      if (profile.agentWalletReady) {
+        await refreshUserAgentData()
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : t('state.error')
       setPairingError(message)
@@ -520,6 +574,7 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       const profile = await provisionAgent()
       setPairingProfile(profile)
+      await refreshUserAgentData()
     } catch (error) {
       const message = error instanceof Error ? error.message : t('state.error')
       setPairingError(message)
@@ -531,6 +586,8 @@ export function Settings({ onBack }: SettingsProps) {
   const handleUnpair = async () => {
     await unpair()
     setPairingProfile(null)
+    setUserAgentPolicy(null)
+    setUserAgentLedger([])
     setPairingError('')
   }
 
@@ -543,6 +600,79 @@ export function Settings({ onBack }: SettingsProps) {
       setTimeout(() => setPairingCopied(false), 2000)
     } catch (error) {
       debugWarn('[Settings] copy agent address failed:', error)
+    }
+  }
+
+  const handleToggleUserAgentAutonomous = async () => {
+    if (!userAgentPolicy || isSavingUserAgentPolicy) return
+
+    setIsSavingUserAgentPolicy(true)
+    setUserAgentPolicyError('')
+    try {
+      applyUserAgentPolicy(await updatePolicy({ autonomousEnabled: !userAgentPolicy.autonomousEnabled }))
+    } catch (error) {
+      setUserAgentPolicyError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setIsSavingUserAgentPolicy(false)
+    }
+  }
+
+  const handleSaveUserAgentLimits = async () => {
+    const weeklyBudget = parseAutoTipAmount(userAgentWeeklyBudgetInput)
+    const perTipCap = parseAutoTipAmount(userAgentPerTipCapInput)
+    setUserAgentPolicyError('')
+
+    if (weeklyBudget == null || perTipCap == null) {
+      setUserAgentPolicyError(t('settings.userAgentPolicyPositiveError'))
+      return
+    }
+
+    if (perTipCap > weeklyBudget) {
+      setUserAgentPolicyError(t('settings.userAgentPolicyCapError'))
+      return
+    }
+
+    setIsSavingUserAgentPolicy(true)
+    try {
+      applyUserAgentPolicy(await updatePolicy({ weeklyBudget, perTipCap }))
+    } catch (error) {
+      setUserAgentPolicyError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setIsSavingUserAgentPolicy(false)
+    }
+  }
+
+  const handleAddUserAgentAllowlist = async () => {
+    const recipient = allowlistAddressInput.trim().toLowerCase()
+    setAllowlistError('')
+    if (!isValidAddress(recipient)) {
+      setAllowlistError(t('settings.userAgentAllowlistInvalidAddress'))
+      return
+    }
+
+    setAllowlistBusyRecipient(recipient)
+    try {
+      await addAllowlist(recipient, allowlistLabelInput)
+      applyUserAgentPolicy(await getPolicy())
+      setAllowlistAddressInput('')
+      setAllowlistLabelInput('')
+    } catch (error) {
+      setAllowlistError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setAllowlistBusyRecipient(null)
+    }
+  }
+
+  const handleRemoveUserAgentAllowlist = async (recipient: string) => {
+    setAllowlistBusyRecipient(recipient)
+    setAllowlistError('')
+    try {
+      await removeAllowlist(recipient)
+      applyUserAgentPolicy(await getPolicy())
+    } catch (error) {
+      setAllowlistError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setAllowlistBusyRecipient(null)
     }
   }
 
@@ -1424,15 +1554,140 @@ export function Settings({ onBack }: SettingsProps) {
                       </div>
                       <p className="text-[10px] text-arc-text-dim">{t('settings.pairingFundHint')}</p>
 
-                      {pairingProfile.policy && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
-                            <p className="text-[9px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingPolicyWeeklyBudget')}</p>
-                            <p className="text-sm font-semibold text-arc-text">{formatTipBudgetAmount(pairingProfile.policy.weeklyBudget)} USDC</p>
+                      {userAgentPolicy && (
+                        <div className="space-y-4 rounded-xl border border-arc-border bg-arc-bg p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-arc-text">{t('settings.userAgentAutonomousTitle')}</p>
+                              <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentAutonomousDescription')}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleUserAgentAutonomous()}
+                              disabled={isSavingUserAgentPolicy}
+                              className="inline-flex shrink-0 items-center gap-2 rounded-full border border-arc-border bg-arc-card px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white disabled:opacity-50"
+                            >
+                              <span className={`relative inline-flex h-5 w-10 items-center rounded-full border transition-colors ${userAgentPolicy.autonomousEnabled ? 'border-white/40 bg-white' : 'border-arc-border bg-arc-border/60'}`}>
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-arc-bg shadow transition-transform ${userAgentPolicy.autonomousEnabled ? 'translate-x-5' : 'translate-x-1'}`} />
+                              </span>
+                              {userAgentPolicy.autonomousEnabled ? t('settings.autoTipStateOn') : t('settings.autoTipStateOff')}
+                            </button>
                           </div>
-                          <div className="rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
-                            <p className="text-[9px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingPolicyPerTipCap')}</p>
-                            <p className="text-sm font-semibold text-arc-text">{formatTipBudgetAmount(pairingProfile.policy.perTipCap)} USDC</p>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              label={t('settings.pairingPolicyWeeklyBudget')}
+                              value={userAgentWeeklyBudgetInput}
+                              onChange={(event) => {
+                                setUserAgentWeeklyBudgetInput(event.target.value)
+                                setUserAgentPolicyError('')
+                              }}
+                              inputMode="decimal"
+                              className="bg-arc-card border-arc-border text-white"
+                            />
+                            <Input
+                              label={t('settings.pairingPolicyPerTipCap')}
+                              value={userAgentPerTipCapInput}
+                              onChange={(event) => {
+                                setUserAgentPerTipCapInput(event.target.value)
+                                setUserAgentPolicyError('')
+                              }}
+                              inputMode="decimal"
+                              className="bg-arc-card border-arc-border text-white"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-[10px] text-arc-text-dim">{t('settings.userAgentPolicyUnit')}</p>
+                            <Button type="button" size="sm" onClick={() => void handleSaveUserAgentLimits()} disabled={isSavingUserAgentPolicy}>
+                              {isSavingUserAgentPolicy ? t('common.loading') : t('settings.save')}
+                            </Button>
+                          </div>
+                          {userAgentPolicyError && <p className="text-xs text-arc-danger">{userAgentPolicyError}</p>}
+
+                          <div className="space-y-3 border-t border-arc-border pt-4">
+                            <div>
+                              <p className="text-sm font-semibold text-arc-text">{t('settings.userAgentAllowlistTitle')}</p>
+                              <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentAllowlistEmptyMeaning')}</p>
+                            </div>
+                            {userAgentPolicy.allowlist.length > 0 && (
+                              <div className="space-y-2">
+                                {userAgentPolicy.allowlist.map((entry) => (
+                                  <div key={entry.recipient} className="flex items-center gap-2 rounded-lg border border-arc-border bg-arc-card px-2.5 py-2">
+                                    <div className="min-w-0 flex-1">
+                                      {entry.label && <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>}
+                                      <p className="truncate font-mono text-[10px] text-arc-text-dim">{entry.recipient}</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRemoveUserAgentAllowlist(entry.recipient)}
+                                      disabled={allowlistBusyRecipient !== null}
+                                      className="rounded-lg p-1.5 text-arc-text-dim hover:text-arc-danger disabled:opacity-50"
+                                      title={t('settings.userAgentAllowlistRemove')}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <Input
+                              label={t('settings.userAgentAllowlistAddress')}
+                              value={allowlistAddressInput}
+                              onChange={(event) => {
+                                setAllowlistAddressInput(event.target.value)
+                                setAllowlistError('')
+                              }}
+                              placeholder="0x..."
+                              className="bg-arc-card border-arc-border text-white font-mono text-xs"
+                            />
+                            <Input
+                              label={t('settings.userAgentAllowlistLabel')}
+                              value={allowlistLabelInput}
+                              onChange={(event) => setAllowlistLabelInput(event.target.value)}
+                              placeholder={t('settings.userAgentAllowlistLabelPlaceholder')}
+                              className="bg-arc-card border-arc-border text-white"
+                            />
+                            {allowlistError && <p className="text-xs text-arc-danger">{allowlistError}</p>}
+                            <div className="flex justify-end">
+                              <Button type="button" size="sm" onClick={() => void handleAddUserAgentAllowlist()} disabled={allowlistBusyRecipient !== null}>
+                                {allowlistBusyRecipient ? t('common.loading') : t('settings.userAgentAllowlistAdd')}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 border-t border-arc-border pt-4">
+                            <p className="text-sm font-semibold text-arc-text">{t('settings.userAgentLedgerTitle')}</p>
+                            {userAgentLedger.length === 0 ? (
+                              <p className="text-[10px] text-arc-text-dim">{t('settings.userAgentLedgerEmpty')}</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {userAgentLedger.map((entry, index) => (
+                                  <div key={`${entry.txHash ?? entry.createdAt}-${index}`} className="rounded-lg border border-arc-border bg-arc-card px-2.5 py-2">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <p className="truncate font-mono text-[10px] text-arc-text">{formatAddress(entry.recipient, 5)}</p>
+                                        <p className="text-[10px] text-arc-text-dim">{formatRelativeTime(entry.createdAt)}</p>
+                                      </div>
+                                      <div className="shrink-0 text-right">
+                                        <p className="text-xs font-semibold text-arc-text">{entry.amount} USDC</p>
+                                        <p className="text-[9px] uppercase tracking-wider text-arc-text-dim">{entry.status}</p>
+                                      </div>
+                                    </div>
+                                    {entry.txHash && (
+                                      <a
+                                        href={`${EXPLORER_URL}/tx/${entry.txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-arc-accent hover:underline"
+                                      >
+                                        {t('settings.userAgentLedgerArcScan')}
+                                        <ExternalLink size={10} />
+                                      </a>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}

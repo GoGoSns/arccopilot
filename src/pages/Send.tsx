@@ -3,7 +3,14 @@ import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Loader2, Share2, User, Use
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
-import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipFallback, logAutoTipStart } from '@/lib/agentBackend'
+import { logAutoTipError, logAutoTipFallback, logAutoTipStart } from '@/lib/agentBackend'
+import {
+  isAutonomousTipRoute,
+  resolveTipRoute,
+  sendRoutedAutonomousTip,
+  type AutonomousTipSource,
+  type TipRoute,
+} from '@/lib/tipRouting'
 import { useStore } from '@/lib/store'
 import { AUTONOMOUS_MODE_ENABLED, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { formatText, t } from '@/lib/i18n'
@@ -24,6 +31,8 @@ import { formatAddress, openSafeUrl, shortenTxHash } from '@/lib/utils'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { MemoryCard } from '@/components/MemoryCard'
 import { isValidAddress, isValidAmount } from '@/lib/validation'
+import { PairingApiError } from '@/lib/pairing'
+import { UserAgentErrorActions } from '@/components/UserAgentErrorActions'
 
 interface SendProps {
   onBack: () => void
@@ -75,15 +84,16 @@ export function Send({ onBack }: SendProps) {
   const [amount, setAmount] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [userAgentError, setUserAgentError] = useState<PairingApiError | null>(null)
   const [txHash, setTxHash] = useState('')
   const [txStatus, setTxStatus] = useState<TxStatus>('idle')
-  const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string; explorerUrl?: string; autonomous?: boolean } | null>(null)
+  const [lastTransfer, setLastTransfer] = useState<{ recipient: string; amount: string; explorerUrl?: string; autonomous?: boolean; autonomousSource?: AutonomousTipSource } | null>(null)
   const [fromUniversalTip, setFromUniversalTip] = useState(false)
   const [recipientContractStatus, setRecipientContractStatus] = useState<'idle' | 'checking' | 'contract' | 'unknown'>('idle')
   const [metaMaskAccessState, setMetaMaskAccessState] = useState<MetaMaskAccessState>('checking')
   const [metaMaskConnecting, setMetaMaskConnecting] = useState(false)
   const [metaMaskAccount, setMetaMaskAccount] = useState<string | null>(walletAddress)
-  const [autonomousModeEnabled, setAutonomousModeEnabled] = useState(false)
+  const [tipRoute, setTipRoute] = useState<TipRoute>('signed')
 
   const amountRef = useRef<HTMLInputElement>(null)
   const successTimerRef = useRef<number | null>(null)
@@ -97,7 +107,7 @@ export function Send({ onBack }: SendProps) {
   const recipientValidationError = trimmedRecipient && !isExactRecipient ? t('send.invalidRecipientAddress') : ''
   const recipientMemory = isExactRecipient ? addressMemories[trimmedRecipient.toLowerCase()] ?? null : null
   const isUnknownRecipient = isExactRecipient && !recipientMemory && recipientContractStatus === 'unknown'
-  const canUseAutonomousTip = fromUniversalTip && autonomousModeEnabled
+  const canUseAutonomousTip = fromUniversalTip && isAutonomousTipRoute(tipRoute)
   const amountValidation = isValidAmount(amount, canUseAutonomousTip ? undefined : balance)
   const amountValidationError = amount.trim()
     ? !amountValidation.valid
@@ -230,13 +240,13 @@ export function Send({ onBack }: SendProps) {
 
     const syncAutonomousMode = async () => {
       try {
-        const enabled = await isAutonomousEnabled()
+        const route = await resolveTipRoute()
         if (active) {
-          setAutonomousModeEnabled(enabled)
+          setTipRoute(route)
         }
       } catch {
         if (active) {
-          setAutonomousModeEnabled(false)
+          setTipRoute('signed')
         }
       }
     }
@@ -503,17 +513,26 @@ export function Send({ onBack }: SendProps) {
 
   const handleSend = async () => {
     setError('')
+    setUserAgentError(null)
     setTxHash('')
     setTxStatus('idle')
     setLastTransfer(null)
     clearScheduledRefresh()
     receiptPollTokenRef.current += 1
-    const autonomousSend = fromUniversalTip && autonomousModeEnabled
+    let currentTipRoute: TipRoute = 'signed'
+    try {
+      currentTipRoute = fromUniversalTip ? await resolveTipRoute() : 'signed'
+    } catch (routeError) {
+      setError(routeError instanceof Error ? routeError.message : t('settings.agentBackendUnreachable'))
+      setUserAgentError(routeError instanceof PairingApiError ? routeError : null)
+      return
+    }
+    const autonomousSend = isAutonomousTipRoute(currentTipRoute)
     const amountToSend = amount.trim()
 
-    logAutoTipStart('Send.handleSend', autonomousModeEnabled, trimmedRecipient, amountToSend)
+    logAutoTipStart('Send.handleSend', autonomousSend, trimmedRecipient, amountToSend)
 
-    if (autonomousModeEnabled && !autonomousSend) {
+    if (isAutonomousTipRoute(tipRoute) && !autonomousSend) {
       logAutoTipFallback('Send.handleSend.metaMask')
     }
 
@@ -540,9 +559,9 @@ export function Send({ onBack }: SendProps) {
     setIsLoading(true)
 
     try {
-      if (autonomousSend) {
-        logAutoTipStart('Send.handleSend.autonomous', autonomousModeEnabled, trimmedRecipient, amountToSend)
-        const agentResult = await agentTip(trimmedRecipient, amountToSend)
+      if (isAutonomousTipRoute(currentTipRoute)) {
+        logAutoTipStart('Send.handleSend.autonomous', true, trimmedRecipient, amountToSend)
+        const agentResult = await sendRoutedAutonomousTip(currentTipRoute, trimmedRecipient, amountToSend)
 
         setTxHash(agentResult.txHash)
         setTxStatus('confirmed')
@@ -551,6 +570,7 @@ export function Send({ onBack }: SendProps) {
           amount: amountToSend,
           explorerUrl: agentResult.arcscanUrl,
           autonomous: true,
+          autonomousSource: agentResult.source,
         })
         return
       }
@@ -665,6 +685,7 @@ export function Send({ onBack }: SendProps) {
         setMetaMaskAccessState('unauthorized')
       }
       setError(message || (err?.message ?? t('send.failedToSend')))
+      setUserAgentError(err instanceof PairingApiError ? err : null)
     } finally {
       setIsLoading(false)
     }
@@ -699,7 +720,11 @@ export function Send({ onBack }: SendProps) {
             <p className="text-sm text-arc-text-dim">{formatText('send.successTo', { recipient: displayRecipient })}</p>
             {txStatus === 'confirmed' && (
               <span className="inline-block mt-1 rounded-full bg-arc-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-arc-success">
-                {lastTransfer.autonomous ? t('gogo.sentAutonomously') : t('send.confirmed')}
+                {lastTransfer.autonomous
+                  ? lastTransfer.autonomousSource === 'paired'
+                    ? t('gogo.sentFromYourAgentWallet')
+                    : t('gogo.sentAutonomously')
+                  : t('send.confirmed')}
               </span>
             )}
           </div>
@@ -887,6 +912,7 @@ export function Send({ onBack }: SendProps) {
             {error}
           </p>
         )}
+        <UserAgentErrorActions error={userAgentError} onResolved={() => setUserAgentError(null)} />
 
         <div className="flex items-center justify-between text-xs text-arc-text-dim">
           <span>{t('send.availableBalance')}</span>

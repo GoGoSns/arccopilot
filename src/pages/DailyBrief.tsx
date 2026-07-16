@@ -30,7 +30,14 @@ import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeo
 import { ARC_DISCORD_INVITE_URL, fetchArcDiscord, type ArcDiscordResult } from '@/lib/arcDiscord'
 import { fetchArcCommunity, type ArcCommunityItem } from '@/lib/arcCommunity'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
-import { agentTip, isAutonomousEnabled, logAutoTipError, logAutoTipStart } from '@/lib/agentBackend'
+import { logAutoTipError, logAutoTipStart } from '@/lib/agentBackend'
+import {
+  isAutonomousTipRoute,
+  resolveTipRoute,
+  sendRoutedAutonomousTip,
+  type AutonomousTipSource,
+  type TipRoute,
+} from '@/lib/tipRouting'
 import { generateTipSuggestions, type TipAdvisorResult, type TipSuggestion } from '@/lib/tipAdvisor'
 import { buildDailyBriefing, type DailyBriefingResult } from '@/lib/dailyBriefing'
 import { buildPortfolioIntel, type PortfolioIntelResult, type PortfolioIntelRecipient } from '@/lib/portfolioIntel'
@@ -63,6 +70,8 @@ import {
 import { getExternalErrorMessage } from '@/lib/externalErrors'
 import { formatText, getLocaleSync, t } from '@/lib/i18n'
 import { shortenTxHash } from '@/lib/utils'
+import { PairingApiError } from '@/lib/pairing'
+import { UserAgentErrorActions } from '@/components/UserAgentErrorActions'
 
 // --- constants ---------------------------------------------------------------
 const USDC_DECIMALS = 6
@@ -118,6 +127,8 @@ type TipAdvisorExecutionState = {
   explorerUrl?: string
   error?: string
   autonomous?: boolean
+  autonomousSource?: AutonomousTipSource
+  userAgentError?: PairingApiError
 }
 
 // --- localStorage cache -------------------------------------------------------
@@ -1287,15 +1298,17 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     }))
   }
 
-  const sendAdvisorTip = async (recipient: string, amount: string, autonomousMode: boolean): Promise<{ txHash: string; explorerUrl: string; autonomous: boolean }> => {
+  const sendAdvisorTip = async (recipient: string, amount: string, route: TipRoute): Promise<{ txHash: string; explorerUrl: string; autonomous: boolean; autonomousSource?: AutonomousTipSource }> => {
+    const autonomousMode = isAutonomousTipRoute(route)
     logAutoTipStart('DailyBrief.sendAdvisorTip', autonomousMode, recipient, amount)
 
-    if (autonomousMode) {
-      const result = await agentTip(recipient, amount)
+    if (isAutonomousTipRoute(route)) {
+      const result = await sendRoutedAutonomousTip(route, recipient, amount)
       return {
         txHash: result.txHash,
         explorerUrl: result.arcscanUrl,
         autonomous: true,
+        autonomousSource: result.source,
       }
     }
 
@@ -1321,11 +1334,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     setTipAdvisorBatchMessage(null)
     updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
 
-    const autonomousEnabled = await isAutonomousEnabled()
-    logAutoTipStart('DailyBrief.handleTipSuggestionSend', autonomousEnabled, normalizedAddress, suggestion.amount)
+    let tipRoute: TipRoute = 'signed'
+    let autonomousEnabled = false
 
     try {
-      const transportResult = await sendAdvisorTip(normalizedAddress, suggestion.amount, autonomousEnabled)
+      tipRoute = await resolveTipRoute()
+      autonomousEnabled = isAutonomousTipRoute(tipRoute)
+      logAutoTipStart('DailyBrief.handleTipSuggestionSend', autonomousEnabled, normalizedAddress, suggestion.amount)
+      const transportResult = await sendAdvisorTip(normalizedAddress, suggestion.amount, tipRoute)
       await recordTip(suggestion.handle, suggestion.amount).catch((error) => {
         debugWarn('[DailyBrief] tip budget record failed:', error)
       })
@@ -1335,6 +1351,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         txHash: transportResult.txHash,
         explorerUrl: transportResult.explorerUrl,
         autonomous: transportResult.autonomous,
+        autonomousSource: transportResult.autonomousSource,
       })
     } catch (error) {
       const message = error instanceof Error
@@ -1348,6 +1365,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       updateTipAdvisorExecution(suggestion.handle, {
         status: 'failed',
         error: message,
+        userAgentError: error instanceof PairingApiError ? error : undefined,
       })
     }
   }
@@ -1362,10 +1380,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       updateTipAdvisorExecution(suggestion.handle, { status: 'sending' })
     }
 
-    const autonomousEnabled = await isAutonomousEnabled()
-    logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, '', pendingTipSuggestions[0]?.amount ?? '')
+    let tipRoute: TipRoute = 'signed'
+    let autonomousEnabled = false
 
     try {
+      tipRoute = await resolveTipRoute()
+      autonomousEnabled = isAutonomousTipRoute(tipRoute)
+      logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, '', pendingTipSuggestions[0]?.amount ?? '')
       if (autonomousEnabled) {
         let paidCount = 0
         let failedCount = 0
@@ -1374,7 +1395,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         for (const suggestion of pendingTipSuggestions) {
           try {
             logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, suggestion.address, suggestion.amount)
-            const transportResult = await sendAdvisorTip(suggestion.address, suggestion.amount, true)
+            const transportResult = await sendAdvisorTip(suggestion.address, suggestion.amount, tipRoute)
             paidCount += 1
             totalSentAmount += Number(suggestion.amount)
 
@@ -1387,6 +1408,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               txHash: transportResult.txHash,
               explorerUrl: transportResult.explorerUrl,
               autonomous: true,
+              autonomousSource: transportResult.autonomousSource,
             })
           } catch (error) {
             failedCount += 1
@@ -1398,12 +1420,14 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               status: 'failed',
               error: message,
               autonomous: true,
+              autonomousSource: isAutonomousTipRoute(tipRoute) ? tipRoute : undefined,
+              userAgentError: error instanceof PairingApiError ? error : undefined,
             })
           }
         }
 
         setTipAdvisorBatchMessage(
-          `${formatText('gogo.autonomousBatchTipSuccess', {
+          `${formatText(tipRoute === 'paired' ? 'gogo.userAgentBatchTipSuccess' : 'gogo.autonomousBatchTipSuccess', {
             count: paidCount,
             total: formatTipBudgetAmount(totalSentAmount),
           })}${failedCount > 0 ? ` ${t('gogo.gatewayBatchPartialFailureNote')}` : ''}`,
@@ -1455,6 +1479,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         updateTipAdvisorExecution(suggestion.handle, {
           status: 'failed',
           error: message,
+          userAgentError: error instanceof PairingApiError ? error : undefined,
         })
       }
       setTipAdvisorBatchMessage(message)
@@ -2089,7 +2114,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   const isFailed = execution?.status === 'failed'
                   const executionLabel = isSent
                     ? execution?.autonomous
-                      ? t('gogo.sentAutonomously')
+                      ? execution.autonomousSource === 'paired'
+                        ? t('gogo.sentFromYourAgentWallet')
+                        : t('gogo.sentAutonomously')
                       : t('common.done')
                     : isFailed
                       ? t('gogo.gatewayBatchFailed')
@@ -2149,7 +2176,9 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                               </div>
                               {executionIsAutonomous && (
                                 <p className="mt-2 text-[10px] text-arc-text-dim">
-                                  {t('gogo.sentAutonomously')}
+                                  {execution?.autonomousSource === 'paired'
+                                    ? t('gogo.sentFromYourAgentWallet')
+                                    : t('gogo.sentAutonomously')}
                                 </p>
                               )}
                             </div>
@@ -2160,6 +2189,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                               {execution.error}
                             </p>
                           )}
+                          <UserAgentErrorActions error={execution?.userAgentError ?? null} />
 
                           <div className="flex flex-wrap gap-2">
                             {!isSent && (

@@ -170,6 +170,7 @@ export type GatewayBatchTipRecipientAction = {
   explorerUrl?: string
   error?: string
   autonomous?: boolean
+  autonomousSource?: 'paired' | 'legacy'
 }
 
 export type GatewayBatchTipActionParams = {
@@ -181,6 +182,7 @@ export type GatewayBatchTipActionParams = {
   availableBalance?: string
   prepared?: boolean
   autonomous?: boolean
+  autonomousSource?: 'paired' | 'legacy'
 }
 
 type PromptContext = {
@@ -208,9 +210,9 @@ export interface GogoContext {
 }
 
 export type GogoAction =
-  | { type: 'send'; params: { recipient?: string; amount?: string; txHash?: string; explorerUrl?: string; autonomous?: boolean }; completed?: boolean }
-  | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean; txHash?: string; explorerUrl?: string; autonomous?: boolean }; completed?: boolean }
-  | { type: 'gateway_tip'; params: { handle?: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean }; completed?: boolean }
+  | { type: 'send'; params: { recipient?: string; amount?: string; txHash?: string; explorerUrl?: string; autonomous?: boolean; autonomousSource?: 'paired' | 'legacy' }; completed?: boolean }
+  | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean; txHash?: string; explorerUrl?: string; autonomous?: boolean; autonomousSource?: 'paired' | 'legacy' }; completed?: boolean }
+  | { type: 'gateway_tip'; params: { handle?: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean; autonomousSource?: 'paired' | 'legacy' }; completed?: boolean }
   | { type: 'gateway_batch_tip'; params: GatewayBatchTipActionParams; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
@@ -949,6 +951,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
       const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
       const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
+      const autonomousSource = params.autonomousSource === 'paired' || params.autonomousSource === 'legacy' ? params.autonomousSource : undefined
       if (!recipient && !amount) return null
 
       return {
@@ -959,6 +962,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
           txHash: txHash || undefined,
           explorerUrl: explorerUrl || undefined,
           autonomous,
+          autonomousSource,
         },
         completed: Boolean(raw.completed),
       }
@@ -971,6 +975,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
       const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
       const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
+      const autonomousSource = params.autonomousSource === 'paired' || params.autonomousSource === 'legacy' ? params.autonomousSource : undefined
       if (!handle) return null
 
       return {
@@ -983,6 +988,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
           txHash: txHash || undefined,
           explorerUrl: explorerUrl || undefined,
           autonomous,
+          autonomousSource,
         },
         completed: Boolean(raw.completed),
       }
@@ -996,6 +1002,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const txHash = typeof params.txHash === 'string' ? params.txHash.trim() : ''
       const explorerUrl = typeof params.explorerUrl === 'string' ? params.explorerUrl.trim() : ''
       const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
+      const autonomousSource = params.autonomousSource === 'paired' || params.autonomousSource === 'legacy' ? params.autonomousSource : undefined
       if (!handle && !recipient) return null
       if (recipient && !isValidAddress(recipient)) return null
 
@@ -1010,6 +1017,7 @@ function normalizeAction(raw: unknown): GogoAction | null {
           explorerUrl: explorerUrl || undefined,
           prepared,
           autonomous,
+          autonomousSource,
         },
         completed: Boolean(raw.completed),
       }
@@ -1026,6 +1034,8 @@ function normalizeAction(raw: unknown): GogoAction | null {
               const txHash = typeof recipient.txHash === 'string' ? recipient.txHash.trim() : ''
               const explorerUrl = typeof recipient.explorerUrl === 'string' ? recipient.explorerUrl.trim() : ''
               const error = typeof recipient.error === 'string' ? recipient.error.trim() : ''
+              const autonomous = typeof recipient.autonomous === 'boolean' ? recipient.autonomous : undefined
+              const autonomousSource = recipient.autonomousSource === 'paired' || recipient.autonomousSource === 'legacy' ? recipient.autonomousSource : undefined
 
               if (!handle || !address || !amount) return null
 
@@ -1036,6 +1046,8 @@ function normalizeAction(raw: unknown): GogoAction | null {
                 txHash: txHash || undefined,
                 explorerUrl: explorerUrl || undefined,
                 error: error || undefined,
+                autonomous,
+                autonomousSource,
               }
             })
             .filter((recipient): recipient is GatewayBatchTipRecipientAction => recipient !== null)
@@ -1049,6 +1061,8 @@ function normalizeAction(raw: unknown): GogoAction | null {
       const failedCount = toFiniteNumber(params.failedCount)
       const availableBalance = normalizeUsdcAmountText(typeof params.availableBalance === 'string' ? params.availableBalance : '')
       const prepared = typeof params.prepared === 'boolean' ? params.prepared : undefined
+      const autonomous = typeof params.autonomous === 'boolean' ? params.autonomous : undefined
+      const autonomousSource = params.autonomousSource === 'paired' || params.autonomousSource === 'legacy' ? params.autonomousSource : undefined
 
       return {
         type: 'gateway_batch_tip',
@@ -1060,6 +1074,8 @@ function normalizeAction(raw: unknown): GogoAction | null {
           failedCount: failedCount ?? undefined,
           availableBalance: availableBalance || undefined,
           prepared,
+          autonomous,
+          autonomousSource,
         },
         completed: Boolean(raw.completed),
       }
