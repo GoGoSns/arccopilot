@@ -33,9 +33,9 @@ The shared storage layer is the bridge between the popup and the background work
 | Arc RPC | `src/lib/hooks/useUSDCBalance.ts`, `src/background/service-worker.ts` | Read USDC balance via `eth_call`. |
 | Blockscout | `src/lib/hooks/useTxHistory.ts`, `src/lib/hooks/useEcosystemStats.ts`, `src/lib/hooks/useAddressInsights.ts`, `src/lib/api.ts`, `src/lib/gogoAI.ts`, `src/background/service-worker.ts`, `src/pages/DailyBrief.tsx` | Activity history, ecosystem stats, address insights, spending analysis, whale tracking, and incoming transfer checks. |
 | TwitterAPI.io | `src/lib/twitterApi.ts`, `src/pages/DailyBrief.tsx` | Fetch Arc community tweets and the official accounts feed. |
-| Gemini | `src/lib/gogoAI.ts`, `src/lib/twitterApi.ts` | Power Gogo AI, the proactive Morning Brief, and tweet categorization. |
+| Gemini, OpenAI, Anthropic | `src/lib/aiProvider.ts` | Shared BYOK text and image generation for briefings, portfolio reads, news summaries, Gogo AI, and tweet categorization. |
 
-`src/lib/twitterApi.ts` also reuses Gemini for tweet classification when the Gemini key is present. `src/lib/gogoAI.ts` is the main orchestration layer for chat, proactive greetings, address risk analysis, spending summaries, and reminder creation.
+Every AI request routes through `src/lib/aiProvider.ts`; callers preserve their existing prompts, parsing, and honest real-data fallback behavior. `src/lib/gogoAI.ts` remains the main orchestration layer for chat, proactive greetings, address risk analysis, spending summaries, and reminder creation.
 
 ## Storage Key Inventory
 
@@ -45,7 +45,10 @@ The shared storage layer is the bridge between the popup and the background work
 | `PENDING_VIEW_STORAGE_KEY` | `arccopilot:pending_view` | Background worker and popup | Routes the popup to a specific screen after a notification click. |
 | `ADDRESS_BOOK_STORAGE_KEY` | `arccopilot:address_book` | Store, popup, content script, background worker | Persisted address memories, labels, tags, and notes. |
 | `DISMISSED_PATTERNS_KEY` | `arccopilot:patterns:dismissed` | Gogo AI and Daily Brief | Stores dismissed pattern IDs so repeated insights can be suppressed. |
-| `GEMINI_API_KEY_STORAGE_KEY` | `arccopilot:gemini-api-key` | Gogo AI and Settings | Stored Gemini key for chat, proactive greeting, and tweet categorization. |
+| `AI_PROVIDER_STORAGE_KEY` | `arccopilot:ai-provider` | AI provider and Settings | Selected AI provider; absent or invalid values resolve to Gemini. |
+| `GEMINI_API_KEY_STORAGE_KEY` | `arccopilot:gemini-api-key` | AI provider and Settings | Existing Gemini key, preserved for backward compatibility. |
+| `OPENAI_API_KEY_STORAGE_KEY` | `arccopilot:openai-api-key` | AI provider and Settings | Stored OpenAI key. |
+| `ANTHROPIC_API_KEY_STORAGE_KEY` | `arccopilot:anthropic-api-key` | AI provider and Settings | Stored Anthropic key. |
 | `TWITTERAPI_KEY` | `arccopilot:twitterapi-key` | Twitter API wrapper and Settings | Stored TwitterAPI.io key for Arc tweet feeds. |
 | `TWITTER_SEARCH_QUERY` | `arccopilot:twitter-search-query` | Twitter API wrapper and Settings | Custom Arc tweet search query. |
 | `TWITTER_OFFICIAL_ACCOUNTS` | `arccopilot:twitter-official-accounts` | Twitter API wrapper and Settings | Handles used for the official Arc/Circle section. |

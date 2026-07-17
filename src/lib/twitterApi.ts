@@ -6,9 +6,8 @@ import {
   TWITTER_TWEETS_CACHE_KEY,
   getTwitterFeedCacheKey,
 } from '@/lib/storageKeys'
-import { getApiKey as getGeminiApiKey } from '@/lib/gogoAI'
+import { generateText, getActiveAIProviderKey } from '@/lib/aiProvider'
 import {
-  GEMINI_MODEL,
   TWITTERAPI_BASE,
   TWITTER_FEED_CACHE_TTL_MS,
   TWITTER_FEED_RETRY_BACKOFF_MS,
@@ -327,46 +326,16 @@ export async function setOfficialAccounts(accounts: string): Promise<string> {
 export async function categorizeTweets(tweets: TwitterTweet[]): Promise<TwitterTweet[]> {
   if (tweets.length === 0) return tweets
 
-  const apiKey = await getGeminiApiKey()
+  const apiKey = await getActiveAIProviderKey()
   if (!apiKey) return tweets
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
-  const body = {
-    systemInstruction: {
-      parts: [{
-        text: 'You categorize Arc tweets. Return only a JSON array of categories.',
-      }],
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: buildCategorizationPrompt(tweets) }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
+  try {
+    const text = await generateText(buildCategorizationPrompt(tweets), {
+      systemPrompt: 'You categorize Arc tweets. Return only a JSON array of categories.',
+      responseFormat: 'json',
       temperature: 0,
       topP: 0.95,
-    },
-  }
-
-  try {
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
     })
-
-    if (!res.ok) return tweets
-
-    const data = await res.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>
-        }
-      }>
-    }
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) return tweets
 
     const payload = extractJsonPayload(text)

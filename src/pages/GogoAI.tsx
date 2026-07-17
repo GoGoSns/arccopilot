@@ -10,16 +10,22 @@ import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances, PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import {
+  AI_PROVIDER_CONFIG,
+  DEFAULT_AI_PROVIDER,
+  getActiveAIProviderKey,
+  getSelectedAIProvider,
+  setProviderApiKey,
+  type AIProvider,
+} from '@/lib/aiProvider'
+import {
   askGogo,
   analyzeAddress,
   analyzeSpending,
   clearGogoHistory,
-  getApiKey,
   getProactiveGreeting,
   loadGogoHistory,
   saveGogoHistory,
   sanitizeActions,
-  setApiKey as saveGeminiApiKey,
   type AddressAnalysis,
   type GatewayBatchTipRecipientAction,
   type GogoAction,
@@ -57,6 +63,10 @@ import {
   type TaskSuggestion,
 } from '@/lib/planner'
 import {
+  AI_PROVIDER_STORAGE_KEY,
+  ANTHROPIC_API_KEY_STORAGE_KEY,
+  GEMINI_API_KEY_STORAGE_KEY,
+  OPENAI_API_KEY_STORAGE_KEY,
   PENDING_SEND_STORAGE_KEY,
   PENDING_VIEW_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
@@ -1095,6 +1105,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   usePortfolioBalances(address)
 
   const [apiKey, setLocalApiKey] = useState<string | null>(null)
+  const [aiProvider, setAIProvider] = useState<AIProvider>(DEFAULT_AI_PROVIDER)
   const [keyInput, setKeyInput] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [userInput, setUserInput] = useState('')
@@ -1252,9 +1263,14 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     void (async () => {
       try {
-        const [storedKey, history] = await Promise.all([getApiKey(), loadGogoHistory()])
+        const [provider, storedKey, history] = await Promise.all([
+          getSelectedAIProvider(),
+          getActiveAIProviderKey(),
+          loadGogoHistory(),
+        ])
         if (!active) return
 
+        setAIProvider(provider)
         setLocalApiKey(storedKey)
         setMessages(history)
         messagesRef.current = history
@@ -1290,6 +1306,18 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
     const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
       if (areaName !== 'local') return
+      if (
+        AI_PROVIDER_STORAGE_KEY in changes
+        || GEMINI_API_KEY_STORAGE_KEY in changes
+        || OPENAI_API_KEY_STORAGE_KEY in changes
+        || ANTHROPIC_API_KEY_STORAGE_KEY in changes
+      ) {
+        void Promise.all([getSelectedAIProvider(), getActiveAIProviderKey()]).then(([provider, key]) => {
+          if (!active) return
+          setAIProvider(provider)
+          setLocalApiKey(key)
+        })
+      }
       if (VOICE_RESPONSES_STORAGE_KEY in changes) {
         const nextValue = changes[VOICE_RESPONSES_STORAGE_KEY]?.newValue === true
         setVoiceResponsesEnabled(nextValue)
@@ -1400,7 +1428,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const trimmed = keyInput.trim()
     if (!trimmed) return
 
-    await saveGeminiApiKey(trimmed)
+    await setProviderApiKey(aiProvider, trimmed)
     setLocalApiKey(trimmed)
     setKeyInput('')
   }
@@ -3660,7 +3688,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
               <div className="mt-4 space-y-3">
                 <Input
-                  placeholder={t('gogo.enterGeminiKey')}
+                  placeholder={formatText('gogo.enterProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   type="password"
@@ -3681,12 +3709,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   {t('gogo.readImage')}
                 </Button>
                 <a
-                  href="https://aistudio.google.com/apikey"
+                  href={AI_PROVIDER_CONFIG[aiProvider].keyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs text-arc-accent hover:underline"
                 >
-                  {t('gogo.getFreeKey')}
+                  {formatText('gogo.getProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
                   <ExternalLink size={10} />
                 </a>
               </div>
@@ -4088,14 +4116,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   <Sparkles size={18} className="text-arc-accent" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-arc-text">{t('gogo.addGeminiKey')}</p>
+                  <p className="text-sm font-medium text-arc-text">
+                    {formatText('gogo.addProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
+                  </p>
                   <p className="text-xs text-arc-text-dim">{t('gogo.historyStillHere')}</p>
                 </div>
               </div>
 
               <div className="mt-4 space-y-3">
                 <Input
-                  placeholder={t('gogo.enterGeminiKey')}
+                  placeholder={formatText('gogo.enterProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   type="password"
@@ -4185,14 +4215,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 <Sparkles size={18} className="text-arc-accent" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-arc-text">{t('gogo.setGeminiKey')}</p>
+                <p className="text-sm font-medium text-arc-text">
+                  {formatText('gogo.setProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
+                </p>
                 <p className="text-xs text-arc-text-dim">{t('gogo.conversationSaved')}</p>
               </div>
             </div>
 
             <div className="mt-4 space-y-3">
               <Input
-                placeholder={t('gogo.enterGeminiKey')}
+                placeholder={formatText('gogo.enterProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 type="password"
@@ -4213,12 +4245,12 @@ export function GogoAI({ onBack }: GogoAIProps) {
                 {t('gogo.readImage')}
               </Button>
               <a
-                href="https://aistudio.google.com/apikey"
+                href={AI_PROVIDER_CONFIG[aiProvider].keyUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-xs text-arc-accent hover:underline"
               >
-                {t('gogo.getFreeKey')}
+                {formatText('gogo.getProviderKey', { provider: AI_PROVIDER_CONFIG[aiProvider].label })}
                 <ExternalLink size={10} />
               </a>
             </div>

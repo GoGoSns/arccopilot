@@ -1,8 +1,7 @@
-import { GEMINI_MODEL } from '@/lib/constants'
+import { generateText, getActiveAIProviderKey } from '@/lib/aiProvider'
 import { getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import {
-  GEMINI_API_KEY_STORAGE_KEY,
   NEWS_CACHE_STORAGE_KEY,
   NEWS_FEEDS_STORAGE_KEY,
 } from '@/lib/storageKeys'
@@ -37,14 +36,6 @@ type StoredNewsCache = {
 type NewsFeedSource = {
   url: string
   label: string
-}
-
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>
-    }
-  }>
 }
 
 const NEWS_CACHE_TTL_MS = 60 * 60 * 1000
@@ -383,18 +374,6 @@ async function loadConfiguredFeedText(): Promise<string> {
   return normalizeNewsFeedText(DEFAULT_NEWS_FEED_TEXT)
 }
 
-async function getGeminiApiKey(): Promise<string | null> {
-  try {
-    const result = await chromeStorageGet(GEMINI_API_KEY_STORAGE_KEY)
-    const key = typeof result[GEMINI_API_KEY_STORAGE_KEY] === 'string'
-      ? result[GEMINI_API_KEY_STORAGE_KEY].trim()
-      : ''
-    return key || null
-  } catch {
-    return null
-  }
-}
-
 function normalizeSummaryText(text: string): string {
   const cleaned = text
     .replace(/\r\n/g, '\n')
@@ -539,52 +518,28 @@ export async function fetchNews(force = false): Promise<NewsItem[]> {
   return inFlightFetch
 }
 
-async function callGeminiSummary(items: NewsItem[], language: 'English' | 'Turkish'): Promise<string> {
-  const apiKey = await getGeminiApiKey()
+async function callAISummary(items: NewsItem[], language: 'English' | 'Turkish'): Promise<string> {
+  const apiKey = await getActiveAIProviderKey()
   if (!apiKey) throw new Error('NO_API_KEY')
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const numberedItems = items.map((item, index) => `${index + 1}. [${item.source}] ${item.title}`).join('\n')
+  const systemPrompt = [
+    'You summarize RSS/Atom headlines for a short ecosystem brief.',
+    'Use only the provided headlines and source names.',
+    'Do not invent facts, dates, numbers, partnerships, or outcomes that are not already present.',
+    'Write 3-5 short bullet points in plain text, each line starting with "- ".',
+    `Write in ${language}.`,
+  ].join(' ')
+  const prompt = [
+    'Headlines:',
+    numberedItems,
+  ].join('\n')
 
-  const body = {
-    systemInstruction: {
-      parts: [{
-        text: [
-          'You summarize RSS/Atom headlines for a short ecosystem brief.',
-          'Use only the provided headlines and source names.',
-          'Do not invent facts, dates, numbers, partnerships, or outcomes that are not already present.',
-          'Write 3-5 short bullet points in plain text, each line starting with "- ".',
-          `Write in ${language}.`,
-        ].join(' '),
-      }],
-    },
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: [
-          'Headlines:',
-          numberedItems,
-        ].join('\n'),
-      }],
-    }],
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.95,
-    },
-  }
-
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const text = await generateText(prompt, {
+    systemPrompt,
+    temperature: 0.2,
+    topP: 0.95,
   })
-
-  if (!response.ok) {
-    throw new Error(`API error ${response.status}`)
-  }
-
-  const data = await response.json() as GeminiResponse
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
   if (!text) throw new Error('PARSE_ERROR')
 
   return normalizeSummaryText(text)
@@ -602,7 +557,7 @@ export async function summarizeNews(items: NewsItem[]): Promise<string> {
 
   const language = getLocalePromptLanguage(getLocaleSync())
   const digest = buildNewsDigest(items)
-  const apiKey = await getGeminiApiKey()
+  const apiKey = await getActiveAIProviderKey()
 
   if (summaryCache && summaryCache.digest === digest && summaryCache.language === language) {
     if (summaryCache.mode === 'ai' || !apiKey) {
@@ -633,7 +588,7 @@ export async function summarizeNews(items: NewsItem[]): Promise<string> {
   }
 
   try {
-    const summary = await callGeminiSummary(items, language)
+    const summary = await callAISummary(items, language)
     const text = summary || formatHeadlineLines(items)
     const mode: Exclude<NewsSummaryMode, 'idle'> = summary ? 'ai' : 'fallback'
     summaryCache = {

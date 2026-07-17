@@ -5,7 +5,6 @@ export const BLOCKSCOUT_BASE = 'https://testnet.arcscan.app'
 export const BLOCKSCOUT_API_BASE = `${BLOCKSCOUT_BASE}/api/v2`
 export const USDC_CONTRACT = '0x3600000000000000000000000000000000000000' as `0x${string}`
 export const TWITTERAPI_BASE = 'https://api.twitterapi.io'
-export const GEMINI_MODEL = 'gemini-2.5-flash'
 export const BRIEF_TRANSFER_CACHE_TTL_MS = 60_000
 export const BRIEF_STATS_CACHE_TTL_MS = 5 * 60_000
 export const BRIEF_WHALE_CACHE_TTL_MS = 5 * 60_000

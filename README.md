@@ -106,7 +106,7 @@ To use your own autonomous agent:
 
 Your agent now pays from your own agent wallet without a signature for each transaction, while the backend enforces your policy.
 
-Optionally, add your own Gemini API key in Settings for AI summaries. Without it, briefing, portfolio, and news features degrade honestly to summaries built from real available data.
+Optionally, choose Gemini, OpenAI, or Anthropic in Settings and add your own provider key for AI wording. Without a key, briefing, portfolio, and news features degrade honestly to summaries built from real available data.
 
 ---
 

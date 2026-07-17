@@ -1,24 +1,17 @@
-import { BLOCKSCOUT_API_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
+import { BLOCKSCOUT_API_BASE, USDC_CONTRACT } from '@/lib/constants'
+import { generateText, getActiveAIProviderKey } from '@/lib/aiProvider'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, fetchWithTimeout } from '@/lib/external'
 import { fetchUsdcBalance } from '@/lib/hooks/useUSDCBalance'
 import { gatewayBalance, type GatewayBalanceSnapshot } from '@/lib/gatewayMetamask'
 import { listCreators, normalizeCreatorHandle } from '@/lib/creatorRegistry'
 import { getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
-import { GEMINI_API_KEY_STORAGE_KEY, TIP_BUDGET } from '@/lib/storageKeys'
+import { TIP_BUDGET } from '@/lib/storageKeys'
 import { useStore } from '@/lib/store'
 import { formatAddress } from '@/lib/utils'
 
 const USDC_DECIMALS = 6
 const PORTFOLIO_TRANSFER_LIMIT = 5
-
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>
-    }
-  }>
-}
 
 type StoredTipBudgetState = {
   log?: unknown
@@ -153,17 +146,6 @@ function sumUsdcValues(values: Array<string | number | bigint | null | undefined
 
 function canUseTipHistory(raw: unknown): raw is StoredTipBudgetState {
   return Boolean(raw) && typeof raw === 'object' && !Array.isArray(raw)
-}
-
-async function getGeminiApiKey(): Promise<string | null> {
-  try {
-    const result = await chromeStorageGet(GEMINI_API_KEY_STORAGE_KEY)
-    const raw = result[GEMINI_API_KEY_STORAGE_KEY]
-    const key = typeof raw === 'string' ? raw.trim() : ''
-    return key || null
-  } catch {
-    return null
-  }
 }
 
 async function readTipHistory(): Promise<TipHistoryAggregate> {
@@ -438,56 +420,31 @@ function buildFallbackPortfolioRead(data: PortfolioIntelResult): string {
   return sentences.slice(0, 4).join(' ')
 }
 
-async function callGeminiPortfolioRead(data: PortfolioIntelResult): Promise<string | null> {
-  const apiKey = await getGeminiApiKey()
+async function callAIPortfolioRead(data: PortfolioIntelResult): Promise<string | null> {
+  const apiKey = await getActiveAIProviderKey()
   if (!apiKey) return null
 
   const language = getLocalePromptLanguage(getLocaleSync())
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
-
-  const body = {
-    systemInstruction: {
-      parts: [{
-        text: [
-          'You write short portfolio reads for ArcCopilot.',
-          'Use only the supplied real data.',
-          'Do not invent balances, totals, recipients, transaction counts, or time windows.',
-          'If a value is null or unavailable, say that plainly instead of guessing.',
-          'Write 2-4 short sentences in plain text only.',
-          'No bullets, markdown, headings, or emojis.',
-          `Write in ${language}.`,
-        ].join(' '),
-      }],
-    },
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: [
-          'Portfolio data:',
-          JSON.stringify(buildPromptPayload(data)),
-        ].join('\n'),
-      }],
-    }],
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.95,
-    },
-  }
+  const systemPrompt = [
+    'You write short portfolio reads for ArcCopilot.',
+    'Use only the supplied real data.',
+    'Do not invent balances, totals, recipients, transaction counts, or time windows.',
+    'If a value is null or unavailable, say that plainly instead of guessing.',
+    'Write 2-4 short sentences in plain text only.',
+    'No bullets, markdown, headings, or emojis.',
+    `Write in ${language}.`,
+  ].join(' ')
+  const prompt = [
+    'Portfolio data:',
+    JSON.stringify(buildPromptPayload(data)),
+  ].join('\n')
 
   try {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const text = await generateText(prompt, {
+      systemPrompt,
+      temperature: 0.2,
+      topP: 0.95,
     })
-
-    if (!response.ok) {
-      debugWarn('[PORTFOLIO] AI request failed:', response.status)
-      return null
-    }
-
-    const result = await response.json() as GeminiResponse
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
     if (!text) return null
     return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
   } catch (error) {
@@ -571,7 +528,7 @@ export async function buildPortfolioIntel(): Promise<PortfolioIntelResult> {
     return data
   }
 
-  const aiText = await callGeminiPortfolioRead(data)
+  const aiText = await callAIPortfolioRead(data)
   data.mode = aiText ? 'ai' : 'fallback'
   data.read = aiText ?? buildFallbackPortfolioRead(data)
 

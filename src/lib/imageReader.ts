@@ -1,7 +1,5 @@
-import { GEMINI_MODEL } from '@/lib/constants'
+import { generateText, getActiveAIProviderKey } from '@/lib/aiProvider'
 import { debugWarn } from '@/lib/debug'
-import { fetchWithTimeout } from '@/lib/external'
-import { getApiKey } from '@/lib/gogoAI'
 import { isValidAddress } from '@/lib/validation'
 
 export type ImageReadSource = 'qr' | 'vision' | 'none'
@@ -136,52 +134,18 @@ async function decodeQr(imageData: ImageData): Promise<DecodeQrResult> {
 }
 
 export async function extractAddressWithVision(base64: string, mimeType: string): Promise<string | null> {
-  const apiKey = await getApiKey()
+  const apiKey = await getActiveAIProviderKey()
   if (!apiKey) return null
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            inline_data: {
-              mime_type: mimeType,
-              data: base64,
-            },
-          },
-          {
-            text: 'Extract any Ethereum-style address (0x + 40 hex chars) visible in this image. Respond ONLY with JSON: {"address": "0x..."} or {"address": null}. No other text.',
-          },
-        ],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0,
-      topP: 0.95,
-    },
-  }
+  const prompt = 'Extract any Ethereum-style address (0x + 40 hex chars) visible in this image. Respond ONLY with JSON: {"address": "0x..."} or {"address": null}. No other text.'
 
   try {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const text = await generateText(prompt, {
+      image: { base64, mimeType },
+      responseFormat: 'json',
+      temperature: 0,
+      topP: 0.95,
     })
-
-    if (!response.ok) return null
-
-    const data = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>
-        }
-      }>
-    }
-
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) return null
 
     const payload = extractJsonPayload(text)
@@ -191,7 +155,7 @@ export async function extractAddressWithVision(base64: string, mimeType: string)
     const address = normalizeAddress((parsed as { address?: unknown }).address as string | null | undefined)
     return address
   } catch (error) {
-    debugWarn('[imageReader] Gemini vision decode failed:', error)
+    debugWarn('[imageReader] AI vision decode failed:', error)
     return null
   }
 }
@@ -216,7 +180,7 @@ export async function readAddressFromImage(blob: Blob): Promise<ReadAddressFromI
       }
     }
 
-    const apiKey = await getApiKey()
+    const apiKey = await getActiveAIProviderKey()
     if (apiKey) {
       const visionAddress = await extractAddressWithVision(resized.base64, resized.mimeType)
       if (visionAddress) {

@@ -2,7 +2,17 @@
 import { ArrowLeft, AtSign, Bell, Book, Bot, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
-import { getApiKey, clearApiKey, setApiKey as saveGeminiKey } from '@/lib/gogoAI'
+import {
+  AI_PROVIDER_CONFIG,
+  AI_PROVIDERS,
+  DEFAULT_AI_PROVIDER,
+  clearProviderApiKey,
+  getAllProviderApiKeys,
+  getSelectedAIProvider,
+  setProviderApiKey,
+  setSelectedAIProvider,
+  type AIProvider,
+} from '@/lib/aiProvider'
 import { ARC_CHAIN_ID, ARC_RPC_URL } from '@/lib/constants'
 import { debugWarn } from '@/lib/debug'
 import {
@@ -124,9 +134,14 @@ function formatDiscoveryCandidatesMessage(candidates: CreatorDiscoveryResult['ca
 export function Settings({ onBack }: SettingsProps) {
   const setCurrentView = useStore((s) => s.setCurrentView)
   const localePreference = getLocalePreference()
-  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null)
+  const [aiProvider, setAIProviderState] = useState<AIProvider>(DEFAULT_AI_PROVIDER)
+  const [providerApiKeys, setProviderApiKeys] = useState<Record<AIProvider, string | null>>({
+    gemini: null,
+    openai: null,
+    anthropic: null,
+  })
   const [twitterApiKey, setTwitterApiKeyState] = useState<string | null>(null)
-  const [isAddingGemini, setIsAddingGemini] = useState(false)
+  const [isAddingAIKey, setIsAddingAIKey] = useState(false)
   const [isAddingTwitter, setIsAddingTwitter] = useState(false)
   const [incomingAlerts, setIncomingAlerts] = useState(true)
   const [balanceAlerts, setBalanceAlerts] = useState(true)
@@ -193,7 +208,9 @@ export function Settings({ onBack }: SettingsProps) {
   const [creatorError, setCreatorError] = useState('')
   const [isSavingCreator, setIsSavingCreator] = useState(false)
   const creatorAddressInputRef = useRef<HTMLInputElement>(null)
-  const geminiKeyLabel = getSavedKeyLabel(geminiApiKey)
+  const selectedProviderConfig = AI_PROVIDER_CONFIG[aiProvider]
+  const selectedProviderKey = providerApiKeys[aiProvider]
+  const selectedProviderKeyLabel = getSavedKeyLabel(selectedProviderKey)
   const twitterKeyLabel = getSavedKeyLabel(twitterApiKey)
   const tipBudgetRemaining = tipBudget ? Math.max(0, tipBudget.dailyLimitUsdc - tipBudget.spentTodayUsdc) : 0
   const recentTipEntries = tipBudget ? [...tipBudget.log].slice(-5).reverse() : []
@@ -231,9 +248,17 @@ export function Settings({ onBack }: SettingsProps) {
   useEffect(() => {
     let active = true
 
-    void Promise.all([getApiKey(), getTwitterApiKey(), getSearchQuery(), getOfficialAccounts(), getUserXHandle()]).then(([geminiKey, twitterKey, searchQuery, officialList, userHandle]) => {
+    void Promise.all([
+      getSelectedAIProvider(),
+      getAllProviderApiKeys(),
+      getTwitterApiKey(),
+      getSearchQuery(),
+      getOfficialAccounts(),
+      getUserXHandle(),
+    ]).then(([provider, providerKeys, twitterKey, searchQuery, officialList, userHandle]) => {
       if (!active) return
-      setGeminiApiKey(geminiKey)
+      setAIProviderState(provider)
+      setProviderApiKeys(providerKeys)
       setTwitterApiKeyState(twitterKey)
       setTwitterSearchQueryState(searchQuery)
       setOfficialAccountsState(officialList)
@@ -831,18 +856,26 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }
 
-  const handleClearGeminiKey = async () => {
-    await clearApiKey()
-    setGeminiApiKey(null)
-    setIsAddingGemini(false)
+  const handleProviderChange = async (provider: AIProvider) => {
+    await setSelectedAIProvider(provider)
+    setAIProviderState(provider)
+    setIsAddingAIKey(false)
     setTempKey('')
   }
 
-  const handleSaveGemini = async () => {
+  const handleClearAIKey = async () => {
+    await clearProviderApiKey(aiProvider)
+    setProviderApiKeys((keys) => ({ ...keys, [aiProvider]: null }))
+    setIsAddingAIKey(false)
+    setTempKey('')
+  }
+
+  const handleSaveAIKey = async () => {
     if (!tempKey.trim()) return
-    await saveGeminiKey(tempKey.trim())
-    setGeminiApiKey(tempKey.trim())
-    setIsAddingGemini(false)
+    const key = tempKey.trim()
+    await setProviderApiKey(aiProvider, key)
+    setProviderApiKeys((keys) => ({ ...keys, [aiProvider]: key }))
+    setIsAddingAIKey(false)
     setTempKey('')
   }
 
@@ -1178,9 +1211,26 @@ export function Settings({ onBack }: SettingsProps) {
           {t('settings.aiFeatures')}
         </p>
         <div className="border-b border-arc-border/50">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <label htmlFor="ai-provider" className="text-sm font-semibold text-arc-text">
+              {t('settings.aiProvider')}
+            </label>
+            <select
+              id="ai-provider"
+              value={aiProvider}
+              onChange={(event) => void handleProviderChange(event.target.value as AIProvider)}
+              className="rounded-lg border border-arc-border bg-arc-bg px-3 py-1.5 text-xs text-arc-text focus:border-arc-accent focus:outline-none"
+            >
+              {AI_PROVIDERS.map((provider) => (
+                <option key={provider} value={provider}>
+                  {AI_PROVIDER_CONFIG[provider].label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div
-            className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group"
-            onClick={() => geminiApiKey ? setCurrentView('gogo-ai') : setIsAddingGemini(!isAddingGemini)}
+            className="border-t border-arc-border/50 px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group"
+            onClick={() => selectedProviderKey ? setCurrentView('gogo-ai') : setIsAddingAIKey(!isAddingAIKey)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1188,40 +1238,42 @@ export function Settings({ onBack }: SettingsProps) {
                   <Key size={20} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-arc-text">{t('settings.geminiApiKey')}</p>
-                  <p className={`text-[10px] ${geminiApiKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                    {geminiKeyLabel}
+                  <p className="text-sm font-semibold text-arc-text">
+                    {formatText('settings.providerApiKey', { provider: selectedProviderConfig.label })}
+                  </p>
+                  <p className={`text-[10px] ${selectedProviderKey ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                    {selectedProviderKeyLabel}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                {geminiApiKey && (
+                {selectedProviderKey && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleClearGeminiKey() }}
+                    onClick={(e) => { e.stopPropagation(); void handleClearAIKey() }}
                     className="p-2 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors"
                     title={t('settings.clearApiKey')}
                   >
                     <Trash2 size={16} />
                   </button>
                 )}
-                {!geminiApiKey && <ChevronRight size={16} className="text-arc-text-dim" />}
+                {!selectedProviderKey && <ChevronRight size={16} className="text-arc-text-dim" />}
               </div>
             </div>
           </div>
-          {isAddingGemini && !geminiApiKey && (
+          {isAddingAIKey && !selectedProviderKey && (
             <div className="px-4 pb-4 animate-in slide-in-from-top-2">
               <div className="flex gap-2">
                 <input
                   autoFocus
                   type="password"
-                  placeholder={t('settings.pasteGeminiKey')}
+                  placeholder={formatText('settings.pasteProviderKey', { provider: selectedProviderConfig.label })}
                   className="flex-1 bg-arc-bg border border-arc-border rounded-lg px-3 py-1.5 text-xs text-arc-text placeholder:text-arc-hint focus:outline-none focus:border-arc-accent"
                   value={tempKey}
                   onChange={(e) => setTempKey(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveGemini()}
+                  onKeyDown={(e) => e.key === 'Enter' && void handleSaveAIKey()}
                 />
                 <button
-                  onClick={handleSaveGemini}
+                  onClick={() => void handleSaveAIKey()}
                   className="bg-white text-black px-3 py-1.5 rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                 >
                   {t('settings.save')}
@@ -1229,6 +1281,18 @@ export function Settings({ onBack }: SettingsProps) {
               </div>
             </div>
           )}
+          <div className="px-4 pb-4 text-[10px] leading-relaxed text-arc-text-dim">
+            <a
+              href={selectedProviderConfig.keyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-1 inline-flex items-center gap-1 text-arc-accent hover:underline"
+            >
+              {formatText('settings.getProviderKey', { provider: selectedProviderConfig.label })}
+              <ExternalLink size={10} />
+            </a>
+            <p>{t('settings.aiOptionalHelper')}</p>
+          </div>
           <div
             className="px-4 py-3 hover:bg-arc-card/30 transition-colors cursor-pointer group border-t border-arc-border/50"
             onClick={() => {

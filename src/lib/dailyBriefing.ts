@@ -1,10 +1,10 @@
-import { BLOCKSCOUT_API_BASE, GEMINI_MODEL } from '@/lib/constants'
+import { BLOCKSCOUT_API_BASE } from '@/lib/constants'
+import { generateText, getActiveAIProviderKey } from '@/lib/aiProvider'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { getLocalePromptLanguage, getLocaleSync, t, type Locale } from '@/lib/i18n'
 import { getCachedNewsSnapshot, type NewsItem } from '@/lib/newsPulse'
 import {
   DAILY_BRIEFING_CACHE_STORAGE_KEY,
-  GEMINI_API_KEY_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import { formatRelativeTime } from '@/lib/utils'
 import { useStore } from '@/lib/store'
@@ -61,14 +61,6 @@ type StoredDailyBriefing = {
   mode?: DailyBriefingMode
 }
 
-type GeminiResponse = {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{ text?: string }>
-    }
-  }>
-}
-
 type CollectedDailyBriefingData = {
   walletAddress: string | null
   displayName: string | null
@@ -79,22 +71,6 @@ type CollectedDailyBriefingData = {
   newsItems: NewsItem[]
   ecosystemStats: EcosystemStats | null
   locale: Locale
-}
-
-function canUseApiKey(): Promise<string | null> {
-  return (async () => {
-    try {
-      const result = await chromeStorageGet(GEMINI_API_KEY_STORAGE_KEY)
-      const raw = result[GEMINI_API_KEY_STORAGE_KEY]
-      const key = typeof raw === 'string' ? raw.trim() : ''
-      if (!key && Object.prototype.hasOwnProperty.call(result, GEMINI_API_KEY_STORAGE_KEY)) {
-        await chromeStorageRemove(GEMINI_API_KEY_STORAGE_KEY)
-      }
-      return key || null
-    } catch {
-      return null
-    }
-  })()
 }
 
 function normalizeWhitespace(value: string): string {
@@ -438,49 +414,24 @@ function buildFallbackBriefing(data: CollectedDailyBriefingData): string {
   return normalizeWhitespace(sentences.slice(0, 5).join(' '))
 }
 
-async function callGeminiBriefing(data: CollectedDailyBriefingData): Promise<string | null> {
-  const apiKey = await canUseApiKey()
+async function callAIBriefing(data: CollectedDailyBriefingData): Promise<string | null> {
+  const apiKey = await getActiveAIProviderKey()
   if (!apiKey) return null
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
-  const body = {
-    systemInstruction: {
-      parts: [{
-        text: [
-          'You write short, warm daily briefings for a chief-of-staff assistant.',
-          'Use only the provided data and omit missing parts gracefully.',
-          'Do not invent numbers, facts, headlines, or recommendations.',
-          'Keep the response to 3-5 sentences in plain text only.',
-          'No bullets, no markdown, no quotes.',
-        ].join(' '),
-      }],
-    },
-    contents: [{
-      role: 'user',
-      parts: [{
-        text: buildPrompt(data),
-      }],
-    }],
-    generationConfig: {
-      temperature: 0.25,
-      topP: 0.9,
-    },
-  }
+  const systemPrompt = [
+    'You write short, warm daily briefings for a chief-of-staff assistant.',
+    'Use only the provided data and omit missing parts gracefully.',
+    'Do not invent numbers, facts, headlines, or recommendations.',
+    'Keep the response to 3-5 sentences in plain text only.',
+    'No bullets, no markdown, no quotes.',
+  ].join(' ')
 
   try {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const text = await generateText(buildPrompt(data), {
+      systemPrompt,
+      temperature: 0.25,
+      topP: 0.9,
     })
-
-    if (!response.ok) {
-      console.log('[BRIEF]', { status: 'ai-error', httpStatus: response.status })
-      return null
-    }
-
-    const result = await response.json() as GeminiResponse
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
     if (!text) {
       console.log('[BRIEF]', { status: 'ai-empty' })
       return null
@@ -593,7 +544,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
   if (!force) {
     const cached = await getCachedBriefingDigest(digest)
     if (cached) {
-      const apiKey = await canUseApiKey()
+      const apiKey = await getActiveAIProviderKey()
       if (cached.mode === 'ai' || !apiKey) {
         console.log('[BRIEF]', {
           status: 'cache-hit',
@@ -631,7 +582,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
     }
   }
 
-  const aiText = await callGeminiBriefing(data)
+  const aiText = await callAIBriefing(data)
   const mode: DailyBriefingMode = aiText ? 'ai' : 'fallback'
   const text = aiText ?? buildFallbackBriefing(data)
   const fetchedAt = await writeCachedBriefing(digest, text, mode)

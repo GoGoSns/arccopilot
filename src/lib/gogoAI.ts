@@ -1,12 +1,12 @@
 import { formatAddress, formatBalance } from '@/lib/utils'
-import { BLOCKSCOUT_API_BASE, BLOCKSCOUT_BASE, GEMINI_MODEL, USDC_CONTRACT } from '@/lib/constants'
+import { BLOCKSCOUT_API_BASE, BLOCKSCOUT_BASE, USDC_CONTRACT } from '@/lib/constants'
+import { generateText } from '@/lib/aiProvider'
 import { debugWarn } from '@/lib/debug'
 import { formatText, getLocalePromptLanguage, getLocaleSync, t } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { PORTFOLIO_CACHE_TTL_MS } from '@/lib/portfolio'
 import { detectPatterns, type BlockscoutTransfer, type DismissedPattern, type Pattern } from '@/lib/patterns'
 import {
-  GEMINI_API_KEY_STORAGE_KEY,
   GOGO_HISTORY,
   TWITTER_OFFICIAL_TWEETS_CACHE_KEY,
   TWITTER_TWEETS_CACHE_KEY,
@@ -44,7 +44,7 @@ import { buildDailyBriefing } from '@/lib/dailyBriefing'
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
 const MAX_HISTORY_MESSAGES = 50
-const GEMINI_HISTORY_MESSAGES = 15
+const AI_HISTORY_MESSAGES = 15
 const MAX_BATCH_TIP_CREATORS = 20
 const USDC_DECIMALS = 6
 const PARSE_ERROR_MESSAGE = 'Tekrar dener misin?'
@@ -1827,7 +1827,7 @@ function extractJsonPayload(text: string): string {
   return (fenced?.[1] ?? trimmed).trim()
 }
 
-function parseGeminiJson(text: string): unknown | null {
+function parseAIJson(text: string): unknown | null {
   try {
     return JSON.parse(extractJsonPayload(text))
   } catch {
@@ -1901,28 +1901,6 @@ export async function saveGogoHistory(messages: Message[]): Promise<void> {
 
 export async function clearGogoHistory(): Promise<void> {
   await chromeRemove(GOGO_HISTORY)
-}
-
-export async function getApiKey(): Promise<string | null> {
-  const res = await chromeGet(GEMINI_API_KEY_STORAGE_KEY)
-  const hasKey = Object.prototype.hasOwnProperty.call(res, GEMINI_API_KEY_STORAGE_KEY)
-  const key = typeof res[GEMINI_API_KEY_STORAGE_KEY] === 'string' && res[GEMINI_API_KEY_STORAGE_KEY].trim()
-    ? (res[GEMINI_API_KEY_STORAGE_KEY] as string)
-    : null
-
-  if (!key && hasKey) {
-    await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
-  }
-
-  return key
-}
-
-export async function setApiKey(key: string): Promise<void> {
-  await chromeSet({ [GEMINI_API_KEY_STORAGE_KEY]: key })
-}
-
-export async function clearApiKey(): Promise<void> {
-  await chromeRemove(GEMINI_API_KEY_STORAGE_KEY)
 }
 
 async function fetchBlockscoutJsonResult<T>(path: string): Promise<BlockscoutFetchResult<T>> {
@@ -2187,56 +2165,24 @@ export async function analyzeSpending(period: '24h' | '7d' | '30d'): Promise<Spe
 }
 
 export async function getProactiveGreeting(): Promise<{ reply: string; action?: GogoAction }> {
-  const apiKey = await getApiKey()
-  if (!apiKey) throw new Error('NO_API_KEY')
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const [context, creators] = await Promise.all([
     Promise.resolve(buildGogoContextFromStore()),
     listCreators(),
   ])
   const promptContext = buildPromptContext(context, creators)
 
-  const body = {
-    systemInstruction: {
-      parts: [{ text: buildProactiveGreetingPrompt(promptContext) }],
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [{
-          text: 'Generate the proactive opening greeting now. Return JSON only.',
-        }],
-      },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.35,
-      topP: 0.95,
-    },
-  }
+  const prompt = 'Generate the proactive opening greeting now. Return JSON only.'
 
   try {
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const text = await generateText(prompt, {
+      systemPrompt: buildProactiveGreetingPrompt(promptContext),
+      responseFormat: 'json',
+      temperature: 0.35,
+      topP: 0.95,
     })
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      console.error('[GogoAI] Greeting API error:', res.status, errorText)
-      if (res.status === 403) throw new Error('Invalid API key. Update in Settings.')
-      if (res.status === 400) throw new Error('Bad request. Model may be deprecated.')
-      if (res.status === 429) throw new Error('Free tier limit reached. Try in a minute.')
-      throw new Error(`API error ${res.status}`)
-    }
-
-    const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) throw new Error('PARSE_ERROR')
 
-    const payload = parseGeminiJson(text)
+    const payload = parseAIJson(text)
     if (!payload) throw new Error(PARSE_ERROR_MESSAGE)
 
     const response = normalizeOptionalResponse(payload)
@@ -2272,7 +2218,7 @@ export async function askGogo(
     }
   }
 
-  // Gateway deposit intent — no Gemini key required; triggers MetaMask approve + deposit
+  // Gateway deposit intent — no AI key required; triggers MetaMask approve + deposit
   const gatewayDepositIntent = parseGatewayDepositIntent(userMessage)
   if (gatewayDepositIntent) {
     if (!gatewayDepositIntent.amount) {
@@ -2306,7 +2252,7 @@ export async function askGogo(
     }
   }
 
-  // Gateway balance intent — no Gemini key required
+  // Gateway balance intent — no AI key required
   if (parseGatewayBalanceIntent(userMessage)) {
     try {
       const snapshot = await gatewayBalance()
@@ -2493,10 +2439,6 @@ export async function askGogo(
   }
 
   console.info('[ROUTE] parser=ai resolvedIntent=pending recipient= amount=')
-  const apiKey = await getApiKey()
-  if (!apiKey) throw new Error('NO_API_KEY')
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
   const [creators, tipRequestIntent, gatewayTipIntent, gatewayBatchTipIntent, budgetState] = await Promise.all([
     listCreators(),
     Promise.resolve(parseTipRequestIntent(userMessage)),
@@ -2663,51 +2605,23 @@ export async function askGogo(
   const promptContext = buildPromptContext(context, creators)
   const recentHistory = history
     .filter((message) => message.role !== 'error')
-    .slice(-GEMINI_HISTORY_MESSAGES)
-
-  const contents = recentHistory.map((message) => ({
-    role: message.role === 'user' ? 'user' : 'model',
-    parts: [{ text: serializeHistoryMessage(message) }],
+    .slice(-AI_HISTORY_MESSAGES)
+  const aiHistory = recentHistory.map((message) => ({
+    role: message.role === 'user' ? 'user' as const : 'assistant' as const,
+    content: serializeHistoryMessage(message),
   }))
 
-  contents.push({
-    role: 'user',
-    parts: [{ text: userMessage }],
-  })
-
-  const body = {
-    systemInstruction: {
-      parts: [{ text: buildSystemPrompt(promptContext) }],
-    },
-    contents,
-    generationConfig: {
-      responseMimeType: 'application/json',
+  try {
+    const text = await generateText(userMessage, {
+      systemPrompt: buildSystemPrompt(promptContext),
+      history: aiHistory,
+      responseFormat: 'json',
       temperature: 0.2,
       topP: 0.95,
-    },
-  }
-
-  try {
-    const res = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
     })
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      console.error('[GogoAI] API error:', res.status, errorText)
-      if (res.status === 403) throw new Error('Invalid API key. Update in Settings.')
-      if (res.status === 400) throw new Error('Bad request. Model may be deprecated.')
-      if (res.status === 429) throw new Error('Free tier limit reached. Try in a minute.')
-      throw new Error(`API error ${res.status}`)
-    }
-
-    const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) throw new Error('PARSE_ERROR')
 
-    const payload = parseGeminiJson(text)
+    const payload = parseAIJson(text)
     if (!payload) throw new Error(PARSE_ERROR_MESSAGE)
 
     const normalizedResponse = normalizeResponse(payload)
