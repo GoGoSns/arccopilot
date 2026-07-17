@@ -198,6 +198,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [userAgentWeeklyBudgetInput, setUserAgentWeeklyBudgetInput] = useState('')
   const [userAgentPerTipCapInput, setUserAgentPerTipCapInput] = useState('')
   const [userAgentPolicyError, setUserAgentPolicyError] = useState('')
+  const [userAgentPolicyLoadError, setUserAgentPolicyLoadError] = useState('')
   const [isSavingUserAgentPolicy, setIsSavingUserAgentPolicy] = useState(false)
   const [allowlistAddressInput, setAllowlistAddressInput] = useState('')
   const [allowlistLabelInput, setAllowlistLabelInput] = useState('')
@@ -235,14 +236,33 @@ export function Settings({ onBack }: SettingsProps) {
 
   const applyUserAgentPolicy = (policy: UserAgentPolicy) => {
     setUserAgentPolicy(policy)
+    setUserAgentPolicyLoadError('')
     setUserAgentWeeklyBudgetInput(String(policy.weeklyBudget))
     setUserAgentPerTipCapInput(String(policy.perTipCap))
   }
 
+  const markUserAgentPolicyUnavailable = () => {
+    setUserAgentPolicy(null)
+    setUserAgentPolicyLoadError(t('settings.userAgentPolicyUnavailable'))
+  }
+
   const refreshUserAgentData = async () => {
-    const [policy, ledger] = await Promise.all([getPolicy(), getLedger()])
-    applyUserAgentPolicy(policy)
-    setUserAgentLedger(ledger)
+    setUserAgentPolicy(null)
+    setUserAgentPolicyLoadError('')
+
+    try {
+      applyUserAgentPolicy(await getPolicy())
+    } catch (error) {
+      markUserAgentPolicyUnavailable()
+      throw error
+    }
+
+    try {
+      setUserAgentLedger(await getLedger())
+    } catch (error) {
+      setUserAgentLedger([])
+      throw error
+    }
   }
 
   useEffect(() => {
@@ -544,6 +564,8 @@ export function Settings({ onBack }: SettingsProps) {
         if (!paired) {
           if (active) {
             setPairingProfile(null)
+            setUserAgentPolicy(null)
+            setUserAgentPolicyLoadError('')
           }
           return
         }
@@ -554,19 +576,32 @@ export function Settings({ onBack }: SettingsProps) {
         }
 
         if (profile.agentWalletReady) {
+          if (active) {
+            setUserAgentPolicy(null)
+            setUserAgentPolicyLoadError('')
+          }
+
           try {
             const policy = await getPolicy()
             if (active) {
               applyUserAgentPolicy(policy)
             }
+          } catch (error) {
+            debugWarn('[Settings] user agent policy load failed:', error)
+            if (active) {
+              markUserAgentPolicyUnavailable()
+            }
+          }
+
+          try {
             const ledger = await getLedger()
             if (active) {
               setUserAgentLedger(ledger)
             }
           } catch (error) {
-            debugWarn('[Settings] user agent data load failed:', error)
+            debugWarn('[Settings] user agent ledger load failed:', error)
             if (active) {
-              setPairingError(error instanceof Error ? error.message : t('state.error'))
+              setUserAgentLedger([])
             }
           }
         }
@@ -575,6 +610,7 @@ export function Settings({ onBack }: SettingsProps) {
         if (active) {
           setPairingProfile(null)
           setUserAgentPolicy(null)
+          setUserAgentPolicyLoadError('')
           setUserAgentLedger([])
         }
       } finally {
@@ -668,6 +704,7 @@ export function Settings({ onBack }: SettingsProps) {
     await unpair()
     setPairingProfile(null)
     setUserAgentPolicy(null)
+    setUserAgentPolicyLoadError('')
     setUserAgentLedger([])
     setPairingError('')
   }
@@ -692,6 +729,7 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       applyUserAgentPolicy(await updatePolicy({ autonomousEnabled: !userAgentPolicy.autonomousEnabled }))
     } catch (error) {
+      markUserAgentPolicyUnavailable()
       setUserAgentPolicyError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setIsSavingUserAgentPolicy(false)
@@ -717,6 +755,7 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       applyUserAgentPolicy(await updatePolicy({ weeklyBudget, perTipCap }))
     } catch (error) {
+      markUserAgentPolicyUnavailable()
       setUserAgentPolicyError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setIsSavingUserAgentPolicy(false)
@@ -738,6 +777,7 @@ export function Settings({ onBack }: SettingsProps) {
       setAllowlistAddressInput('')
       setAllowlistLabelInput('')
     } catch (error) {
+      markUserAgentPolicyUnavailable()
       setAllowlistError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setAllowlistBusyRecipient(null)
@@ -751,6 +791,7 @@ export function Settings({ onBack }: SettingsProps) {
       await removeAllowlist(recipient)
       applyUserAgentPolicy(await getPolicy())
     } catch (error) {
+      markUserAgentPolicyUnavailable()
       setAllowlistError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setAllowlistBusyRecipient(null)
@@ -1752,6 +1793,48 @@ export function Settings({ onBack }: SettingsProps) {
 
                   {pairingProfile.agentWalletReady && pairingProfile.agentAddress && (
                     <div className="space-y-3">
+                      {userAgentPolicy ? (
+                        <div className="space-y-3 rounded-xl border border-arc-accent/30 bg-arc-accent/5 p-3">
+                          <div>
+                            <p className="text-sm font-semibold text-arc-text">{t('settings.userAgentBudgetTitle')}</p>
+                            <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentBudgetDescription')}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              {
+                                label: t('settings.pairingPolicyWeeklyBudget'),
+                                value: userAgentPolicy.weeklyBudget,
+                              },
+                              {
+                                label: t('settings.userAgentSpentThisWeek'),
+                                value: userAgentPolicy.spentThisWeek,
+                              },
+                              {
+                                label: t('settings.userAgentRemainingWeekly'),
+                                value: userAgentPolicy.remainingWeekly,
+                              },
+                              {
+                                label: t('settings.userAgentMaxSuggestable'),
+                                value: userAgentPolicy.maxSuggestable,
+                              },
+                            ].map((item) => (
+                              <div key={item.label} className="rounded-lg border border-arc-border bg-arc-bg px-2.5 py-2.5">
+                                <p className="text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{item.label}</p>
+                                <p className="mt-1 text-sm font-semibold text-white">
+                                  {formatTipBudgetAmount(item.value)} {t('common.usdc')}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : userAgentPolicyLoadError ? (
+                        <div className="rounded-xl border border-arc-danger/30 bg-arc-danger/10 p-3">
+                          <p className="text-xs leading-relaxed text-arc-danger">{userAgentPolicyLoadError}</p>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-arc-text-dim">{t('state.loading')}</p>
+                      )}
+
                       {userAgentPolicy && (
                         <div className="space-y-4 rounded-xl border border-arc-border bg-arc-bg p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -1982,6 +2065,9 @@ export function Settings({ onBack }: SettingsProps) {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-white">{t('settings.tipBudgetTitle')}</p>
                   <p className="text-[10px] text-arc-text-dim">{t('settings.tipBudgetDescription')}</p>
+                  {pairingProfile && userAgentPolicy?.autonomousEnabled && (
+                    <p className="mt-1 text-[10px] leading-relaxed text-arc-accent">{t('settings.tipBudgetPairedNote')}</p>
+                  )}
                 </div>
                 <span className="rounded-full border border-white/25 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
                   {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : t('state.loading')}

@@ -28,6 +28,9 @@ export interface UserAgentAllowlistEntry {
 
 export interface UserAgentPolicy extends PairingPolicy {
   allowlist: UserAgentAllowlistEntry[]
+  spentThisWeek: number
+  remainingWeekly: number
+  maxSuggestable: number
 }
 
 export interface UserAgentTipResult {
@@ -233,12 +236,38 @@ function parseUserAgentPolicy(value: unknown): UserAgentPolicy {
     throw new Error(t('settings.agentBackendMalformed'))
   }
 
-  const allowlist = parseAllowlist((value as { allowlist?: unknown }).allowlist)
-  if (!allowlist) {
+  const candidate = value as {
+    allowlist?: unknown
+    spentThisWeek?: unknown
+    remainingWeekly?: unknown
+    maxSuggestable?: unknown
+  }
+  const allowlist = parseAllowlist(candidate.allowlist)
+  const spentThisWeek = readNumber(candidate.spentThisWeek)
+  const remainingWeekly = readNumber(candidate.remainingWeekly)
+  const maxSuggestable = readNumber(candidate.maxSuggestable)
+
+  if (
+    !allowlist
+    || spentThisWeek == null
+    || remainingWeekly == null
+    || maxSuggestable == null
+    || spentThisWeek < 0
+    || remainingWeekly < 0
+    || maxSuggestable < 0
+    || maxSuggestable > policy.perTipCap
+    || maxSuggestable > remainingWeekly
+  ) {
     throw new Error(t('settings.agentBackendMalformed'))
   }
 
-  return { ...policy, allowlist }
+  return {
+    ...policy,
+    allowlist,
+    spentThisWeek,
+    remainingWeekly,
+    maxSuggestable,
+  }
 }
 
 function parseUserAgentTipResult(payload: unknown): UserAgentTipResult {

@@ -4,6 +4,7 @@ import { formatText, getLocaleSync, t } from '@/lib/i18n'
 import { TWITTERAPI_BASE } from '@/lib/constants'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { formatTipBudgetAmount, getBudgetState, type TipBudgetLogEntry } from '@/lib/tipBudget'
+import { getPolicy, isPaired, type UserAgentPolicy } from '@/lib/pairing'
 
 export interface TipSuggestion {
   handle: string
@@ -20,6 +21,7 @@ export interface TipAdvisorSkippedCreator {
 
 export type TipAdvisorActivityState = 'used' | 'none' | 'unavailable'
 export type TipAdvisorActivityIssue = 'missing-key' | 'rate-limited' | 'invalid-key' | 'query-failed' | 'network' | 'unknown'
+export type TipAdvisorBudgetSource = 'paired-policy' | 'signed-local'
 
 export interface TipAdvisorResult {
   suggestions: TipSuggestion[]
@@ -33,6 +35,8 @@ export interface TipAdvisorResult {
   canExecute: boolean
   activityState: TipAdvisorActivityState
   activityIssue?: TipAdvisorActivityIssue
+  budgetSource: TipAdvisorBudgetSource
+  maxSuggestableUsdc?: number
 }
 
 type CreatorHistory = {
@@ -120,6 +124,10 @@ function toMicros(value: number): number {
 
 function fromMicros(value: number): number {
   return roundUsdc(value / USDC_MICROS)
+}
+
+function formatCanonicalUsdcAmount(value: number): string {
+  return roundUsdc(value).toFixed(USDC_DECIMALS).replace(/\.?0+$/, '')
 }
 
 function delay(ms: number): Promise<void> {
@@ -831,7 +839,12 @@ function getShareCap(entry: RankedCreator, index: number, count: number, now: nu
   return Math.max(0.34, Math.min(0.7, baseCap - rankPenalty + activityBoost))
 }
 
-function allocateBalancedMicros(totalBudgetMicros: number, rankedCreators: RankedCreator[], now: number): number[] {
+function allocateBalancedMicros(
+  totalBudgetMicros: number,
+  rankedCreators: RankedCreator[],
+  now: number,
+  perSuggestionCapMicros?: number,
+): number[] {
   const count = rankedCreators.length
   if (count === 0) return []
 
@@ -850,7 +863,10 @@ function allocateBalancedMicros(totalBudgetMicros: number, rankedCreators: Ranke
 
   const caps = rankedCreators.map((entry, index) => {
     const capShare = getShareCap(entry, index, count, now)
-    return Math.max(baseMicros, Math.floor(totalBudgetMicros * capShare))
+    const shareCapMicros = Math.max(baseMicros, Math.floor(totalBudgetMicros * capShare))
+    return perSuggestionCapMicros == null
+      ? shareCapMicros
+      : Math.min(perSuggestionCapMicros, shareCapMicros)
   })
 
   const eligible = new Set<number>(rankedCreators.map((_, index) => index))
@@ -930,10 +946,15 @@ function allocateBalancedMicros(totalBudgetMicros: number, rankedCreators: Ranke
     }
   }
 
-  const totalAllocated = allocations.reduce((sum, amount) => sum + amount, 0)
-  const correction = totalBudgetMicros - totalAllocated
-  if (correction !== 0 && allocations.length > 0) {
-    allocations[0] = Math.max(baseMicros, allocations[0] + correction)
+  // Preserve the signed-flow allocator's existing behavior of using the full
+  // local daily budget. A paired policy cap deliberately leaves any amount
+  // that cannot fit under the per-suggestion ceiling unallocated.
+  if (perSuggestionCapMicros == null) {
+    const totalAllocated = allocations.reduce((sum, amount) => sum + amount, 0)
+    const correction = totalBudgetMicros - totalAllocated
+    if (correction !== 0 && allocations.length > 0) {
+      allocations[0] = Math.max(baseMicros, allocations[0] + correction)
+    }
   }
 
   return allocations
@@ -948,7 +969,12 @@ function buildExplanation(result: TipAdvisorResult): string {
   const activityNote = getActivityStateNote(result.activityState, result.activityIssue)
   if (activityNote) explanationParts.push(activityNote)
 
-  const leadSuggestions = result.suggestions.slice(0, 3).map((suggestion) => `@${suggestion.handle} ${suggestion.amount} USDC: ${suggestion.reason}`)
+  const leadSuggestions = result.suggestions.slice(0, 3).map((suggestion) => {
+    const amount = result.budgetSource === 'paired-policy'
+      ? formatTipBudgetAmount(Number(suggestion.amount))
+      : suggestion.amount
+    return `@${suggestion.handle} ${amount} USDC: ${suggestion.reason}`
+  })
   if (leadSuggestions.length > 0) {
     explanationParts.push(leadSuggestions.join(' | '))
   }
@@ -960,18 +986,56 @@ function buildExplanation(result: TipAdvisorResult): string {
     }))
   }
 
-  explanationParts.push(t('gogo.tipAdvisorGatewayReady'))
+  explanationParts.push(t(result.budgetSource === 'paired-policy'
+    ? 'gogo.tipAdvisorPairedReady'
+    : 'gogo.tipAdvisorGatewayReady'))
   return explanationParts.filter(Boolean).join(' ')
 }
 
 export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
-  const [creators, budgetState] = await Promise.all([
-    listCreators(),
-    getBudgetState(),
-  ])
+  let paired = false
+  let policy: UserAgentPolicy | null = null
+
+  try {
+    paired = await isPaired()
+    if (paired) {
+      policy = await getPolicy()
+    }
+  } catch (error) {
+    console.warn('[TipAdvisor] paired policy unavailable', error)
+    throw new Error(t('gogo.tipAdvisorPolicyUnavailable'))
+  }
+
+  const [creators, budgetState] = await Promise.all([listCreators(), getBudgetState()])
 
   const totalCreators = creators.length
   const dailyRemainingUsdc = Math.max(0, roundUsdc(budgetState.dailyLimitUsdc - budgetState.spentTodayUsdc))
+  const budgetSource: TipAdvisorBudgetSource = policy ? 'paired-policy' : 'signed-local'
+  const availableBudgetUsdc = policy ? policy.remainingWeekly : dailyRemainingUsdc
+  const maxSuggestableUsdc = policy ? policy.maxSuggestable : availableBudgetUsdc
+  const minMicros = toMicros(MIN_SUGGESTION_AMOUNT_USDC)
+  const availableBudgetMicros = toMicros(availableBudgetUsdc)
+  const maxSuggestionMicros = toMicros(maxSuggestableUsdc)
+
+  if (policy && availableBudgetMicros === 0) {
+    const summary = formatText('gogo.tipAdvisorWeeklyBudgetUsed', {
+      remaining: formatTipBudgetAmount(policy.remainingWeekly),
+    })
+    return {
+      suggestions: [],
+      skipped: [],
+      totalCreators,
+      availableBudgetUsdc,
+      totalSuggestedUsdc: 0,
+      remainingBudgetUsdc: availableBudgetUsdc,
+      summary,
+      explanation: summary,
+      canExecute: false,
+      activityState: 'none',
+      budgetSource,
+      maxSuggestableUsdc,
+    }
+  }
 
   if (totalCreators === 0) {
     const summary = t('gogo.tipAdvisorNoCreators')
@@ -979,45 +1043,85 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
       suggestions: [],
       skipped: [],
       totalCreators,
-      availableBudgetUsdc: dailyRemainingUsdc,
+      availableBudgetUsdc,
       totalSuggestedUsdc: 0,
-      remainingBudgetUsdc: dailyRemainingUsdc,
+      remainingBudgetUsdc: availableBudgetUsdc,
       summary,
       explanation: summary,
       canExecute: false,
       activityState: 'none',
+      budgetSource,
+      ...(policy ? { maxSuggestableUsdc } : {}),
     }
   }
 
-  const minMicros = toMicros(MIN_SUGGESTION_AMOUNT_USDC)
-  const availableBudgetMicros = toMicros(dailyRemainingUsdc)
-
-  if (availableBudgetMicros < minMicros) {
-    const summary = formatText('gogo.tipAdvisorNoBudget', {
-      remaining: formatTipBudgetAmount(dailyRemainingUsdc),
-      min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
-    })
+  if (availableBudgetMicros < minMicros || maxSuggestionMicros < minMicros) {
+    const summary = policy
+      ? formatText('gogo.tipAdvisorPairedNoBudget', {
+          remaining: formatTipBudgetAmount(policy.remainingWeekly),
+          max: formatTipBudgetAmount(policy.maxSuggestable),
+          min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
+        })
+      : formatText('gogo.tipAdvisorNoBudget', {
+          remaining: formatTipBudgetAmount(dailyRemainingUsdc),
+          min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
+        })
     return {
       suggestions: [],
       skipped: [],
       totalCreators,
-      availableBudgetUsdc: dailyRemainingUsdc,
+      availableBudgetUsdc,
       totalSuggestedUsdc: 0,
-      remainingBudgetUsdc: dailyRemainingUsdc,
+      remainingBudgetUsdc: availableBudgetUsdc,
       summary,
       explanation: summary,
       canExecute: false,
       activityState: 'none',
+      budgetSource,
+      ...(policy ? { maxSuggestableUsdc } : {}),
+    }
+  }
+
+  const allowlist = policy?.allowlist ?? []
+  const allowedAddresses = new Set(allowlist.map((entry) => entry.recipient.toLowerCase()))
+  const eligibleCreators = allowlist.length > 0
+    ? creators.filter((creator) => allowedAddresses.has(creator.address.toLowerCase()))
+    : creators
+  const policySkippedCreators: TipAdvisorSkippedCreator[] = allowlist.length > 0
+    ? creators
+        .filter((creator) => !allowedAddresses.has(creator.address.toLowerCase()))
+        .map((creator) => ({
+          handle: creator.handle,
+          address: creator.address,
+          reason: t('gogo.tipAdvisorAllowlistSkippedReason'),
+        }))
+    : []
+
+  if (eligibleCreators.length === 0) {
+    const summary = t('gogo.tipAdvisorNoAllowedCreators')
+    return {
+      suggestions: [],
+      skipped: policySkippedCreators,
+      totalCreators,
+      availableBudgetUsdc,
+      totalSuggestedUsdc: 0,
+      remainingBudgetUsdc: availableBudgetUsdc,
+      summary,
+      explanation: summary,
+      canExecute: false,
+      activityState: 'none',
+      budgetSource,
+      ...(policy ? { maxSuggestableUsdc } : {}),
     }
   }
 
   const historyMap = buildHistoryMap(creators, budgetState.log)
   const historyRankMap = buildHistoryRankMap(historyMap)
   const now = Date.now()
-  const dailySeed = budgetState.lastResetDate || getDaySeed(now)
-  const cachedActivityEntries = await readCreatorActivityCacheEntries(uniqueHandlesInOrder(creators))
-  const previewActivityMap = buildActivityMapFromCache(creators, cachedActivityEntries)
-  const previewRankedCreators = buildRankedCreators(creators, historyMap, previewActivityMap, now, dailySeed)
+  const dailySeed = policy ? getDaySeed(now) : budgetState.lastResetDate || getDaySeed(now)
+  const cachedActivityEntries = await readCreatorActivityCacheEntries(uniqueHandlesInOrder(eligibleCreators))
+  const previewActivityMap = buildActivityMapFromCache(eligibleCreators, cachedActivityEntries)
+  const previewRankedCreators = buildRankedCreators(eligibleCreators, historyMap, previewActivityMap, now, dailySeed)
 
   const selectedCount = Math.min(
     MAX_SUGGESTIONS,
@@ -1026,21 +1130,29 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
   )
 
   if (selectedCount <= 0) {
-    const summary = formatText('gogo.tipAdvisorNoBudget', {
-      remaining: formatTipBudgetAmount(dailyRemainingUsdc),
-      min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
-    })
+    const summary = policy
+      ? formatText('gogo.tipAdvisorPairedNoBudget', {
+          remaining: formatTipBudgetAmount(policy.remainingWeekly),
+          max: formatTipBudgetAmount(policy.maxSuggestable),
+          min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
+        })
+      : formatText('gogo.tipAdvisorNoBudget', {
+          remaining: formatTipBudgetAmount(dailyRemainingUsdc),
+          min: formatTipBudgetAmount(MIN_SUGGESTION_AMOUNT_USDC),
+        })
     return {
       suggestions: [],
-      skipped: [],
+      skipped: policySkippedCreators,
       totalCreators,
-      availableBudgetUsdc: dailyRemainingUsdc,
+      availableBudgetUsdc,
       totalSuggestedUsdc: 0,
-      remainingBudgetUsdc: dailyRemainingUsdc,
+      remainingBudgetUsdc: availableBudgetUsdc,
       summary,
       explanation: summary,
       canExecute: false,
       activityState: 'none',
+      budgetSource,
+      ...(policy ? { maxSuggestableUsdc } : {}),
     }
   }
 
@@ -1048,38 +1160,59 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     .slice(0, Math.min(MAX_ACTIVITY_LOOKUP_CANDIDATES, selectedCount))
     .map((entry) => entry.creator)
   const { activityMap, activityLookupMap, activityState, activityIssue } = await fetchCreatorActivity(activityLookupCreators, cachedActivityEntries)
-  const rankedCreators = buildRankedCreators(creators, historyMap, activityMap, now, dailySeed)
+  const rankedCreators = buildRankedCreators(eligibleCreators, historyMap, activityMap, now, dailySeed)
 
   const selected = rankedCreators.slice(0, selectedCount)
-  const allocations = allocateBalancedMicros(availableBudgetMicros, selected, now)
+  const allocationBudgetMicros = Math.min(
+    availableBudgetMicros,
+    maxSuggestionMicros * selected.length,
+  )
+  const allocations = allocateBalancedMicros(
+    allocationBudgetMicros,
+    selected,
+    now,
+    policy ? maxSuggestionMicros : undefined,
+  )
 
   const suggestions: TipSuggestion[] = selected.map((entry, index) => ({
     handle: entry.creator.handle,
     address: entry.creator.address,
-    amount: formatTipBudgetAmount(fromMicros(allocations[index] ?? minMicros)),
+    amount: policy
+      ? formatCanonicalUsdcAmount(fromMicros(allocations[index] ?? minMicros))
+      : formatTipBudgetAmount(fromMicros(allocations[index] ?? minMicros)),
     reason: buildSuggestionReason(entry, historyRankMap.get(entry.creator.handle) ?? null, now, activityLookupMap.get(entry.creator.handle)),
   }))
 
-  const skipped = rankedCreators.slice(selectedCount).map((entry) => ({
-    handle: entry.creator.handle,
-    address: entry.creator.address,
-    reason: buildSkippedReason(selectedCount),
-  }))
+  const skipped = [
+    ...rankedCreators.slice(selectedCount).map((entry) => ({
+      handle: entry.creator.handle,
+      address: entry.creator.address,
+      reason: buildSkippedReason(selectedCount),
+    })),
+    ...policySkippedCreators,
+  ]
 
   const totalSuggestedMicros = allocations.reduce((sum, amount) => sum + amount, 0)
   const totalSuggestedUsdc = fromMicros(totalSuggestedMicros)
-  const remainingBudgetUsdc = roundUsdc(Math.max(0, dailyRemainingUsdc - totalSuggestedUsdc))
+  const remainingBudgetUsdc = roundUsdc(Math.max(0, availableBudgetUsdc - totalSuggestedUsdc))
 
-  const summary = formatText('gogo.tipAdvisorSummary', {
-    count: suggestions.length,
-    total: formatTipBudgetAmount(totalSuggestedUsdc),
-  })
+  const summary = policy
+    ? formatText('gogo.tipAdvisorPairedSummary', {
+        count: suggestions.length,
+        total: formatTipBudgetAmount(totalSuggestedUsdc),
+        remaining: formatTipBudgetAmount(policy.remainingWeekly),
+        max: formatTipBudgetAmount(policy.maxSuggestable),
+      })
+    : formatText('gogo.tipAdvisorSummary', {
+        count: suggestions.length,
+        total: formatTipBudgetAmount(totalSuggestedUsdc),
+      })
 
   const result: TipAdvisorResult = {
     suggestions,
     skipped,
     totalCreators,
-    availableBudgetUsdc: dailyRemainingUsdc,
+    availableBudgetUsdc,
     totalSuggestedUsdc,
     remainingBudgetUsdc,
     summary,
@@ -1087,6 +1220,8 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     canExecute: suggestions.length > 0,
     activityState,
     activityIssue,
+    budgetSource,
+    ...(policy ? { maxSuggestableUsdc } : {}),
   }
 
   result.explanation = buildExplanation(result)
