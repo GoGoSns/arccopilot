@@ -2199,8 +2199,13 @@ export function GogoAI({ onBack }: GogoAIProps) {
       setMessages(finalMessages)
       void saveGogoHistory(finalMessages)
 
-      const autonomousEnabled = isAutonomousTipRoute(await resolveTipRoute())
       const primaryAction = assistantMessage.action
+      const primaryParams = primaryAction?.params as { recipient?: unknown; amount?: unknown } | undefined
+      const autonomousEnabled = isAutonomousTipRoute(await resolveTipRoute({
+        intent: primaryAction?.type,
+        recipient: typeof primaryParams?.recipient === 'string' ? primaryParams.recipient : undefined,
+        amount: typeof primaryParams?.amount === 'string' ? primaryParams.amount : undefined,
+      }))
       if (
         autonomousEnabled &&
         primaryAction &&
@@ -2305,7 +2310,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const recipientToPersist = resolvedRecipient && isValidAddress(resolvedRecipient) ? resolvedRecipient : undefined
           const amountToPersist = amountInput || undefined
           const tipHandle = recipientToPersist ? await findCreatorHandleByAddress(recipientToPersist) : null
-          tipRoute = await resolveTipRoute()
+          tipRoute = await resolveTipRoute({
+            intent: action.type,
+            recipient: recipientToPersist,
+            amount: amountToPersist,
+          })
           autonomousEnabled = isAutonomousTipRoute(tipRoute)
           logAutoTipStart('GogoAI.handleAction.send', autonomousEnabled, recipientToPersist ?? '', amountToPersist ?? '')
 
@@ -2479,7 +2488,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
             amountInvalid,
             amountOverBalance,
           })
-          tipRoute = await resolveTipRoute()
+          tipRoute = await resolveTipRoute({
+            intent: action.type,
+            recipient: creatorWallet ?? undefined,
+            amount: amountInput || undefined,
+          })
           autonomousEnabled = isAutonomousTipRoute(tipRoute)
 
           if (amountInvalid || (!autonomousEnabled && amountOverBalance)) {
@@ -2522,7 +2535,6 @@ export function GogoAI({ onBack }: GogoAIProps) {
           const recipientToPersist = creatorWallet && isValidAddress(creatorWallet) ? creatorWallet : undefined
           const amountToPersist = amountInput || undefined
 
-          tipRoute = await resolveTipRoute()
           autonomousEnabled = isAutonomousTipRoute(tipRoute)
           logAutoTipStart('GogoAI.handleAction.tip_creator', autonomousEnabled, recipientToPersist ?? '', amountToPersist ?? '')
           if (autonomousEnabled && recipientToPersist && amountToPersist) {
@@ -2684,7 +2696,11 @@ export function GogoAI({ onBack }: GogoAIProps) {
             amountInvalid,
             amountOverBalance,
           })
-          tipRoute = await resolveTipRoute()
+          tipRoute = await resolveTipRoute({
+            intent: action.type,
+            recipient: recipientToPersist,
+            amount: amountInput || undefined,
+          })
           autonomousEnabled = isAutonomousTipRoute(tipRoute)
 
           if (amountInvalid || (!autonomousEnabled && amountOverBalance)) {
@@ -2888,7 +2904,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
             break
           }
 
-          tipRoute = await resolveTipRoute()
+          tipRoute = await resolveTipRoute({ intent: action.type })
           autonomousEnabled = isAutonomousTipRoute(tipRoute)
           logAutoTipStart('GogoAI.handleAction.gateway_batch_tip', autonomousEnabled, recipients[0]?.address ?? '', recipients[0]?.amount ?? '')
 

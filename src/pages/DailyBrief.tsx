@@ -1338,7 +1338,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     let autonomousEnabled = false
 
     try {
-      tipRoute = await resolveTipRoute()
+      tipRoute = await resolveTipRoute({
+        intent: 'tip_advisor',
+        recipient: normalizedAddress,
+        amount: suggestion.amount,
+      })
       autonomousEnabled = isAutonomousTipRoute(tipRoute)
       logAutoTipStart('DailyBrief.handleTipSuggestionSend', autonomousEnabled, normalizedAddress, suggestion.amount)
       const transportResult = await sendAdvisorTip(normalizedAddress, suggestion.amount, tipRoute)
@@ -1384,7 +1388,11 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     let autonomousEnabled = false
 
     try {
-      tipRoute = await resolveTipRoute()
+      tipRoute = await resolveTipRoute({
+        intent: 'tip_advisor_batch',
+        recipient: pendingTipSuggestions[0]?.address,
+        amount: pendingTipSuggestions[0]?.amount,
+      })
       autonomousEnabled = isAutonomousTipRoute(tipRoute)
       logAutoTipStart('DailyBrief.handleTipAdvisorSendAll', autonomousEnabled, '', pendingTipSuggestions[0]?.amount ?? '')
       if (autonomousEnabled) {

@@ -521,7 +521,13 @@ export function Send({ onBack }: SendProps) {
     receiptPollTokenRef.current += 1
     let currentTipRoute: TipRoute = 'signed'
     try {
-      currentTipRoute = fromUniversalTip ? await resolveTipRoute() : 'signed'
+      currentTipRoute = fromUniversalTip
+        ? await resolveTipRoute({
+            intent: 'send',
+            recipient: trimmedRecipient || undefined,
+            amount: amount.trim() || undefined,
+          })
+        : 'signed'
     } catch (routeError) {
       setError(routeError instanceof Error ? routeError.message : t('settings.agentBackendUnreachable'))
       setUserAgentError(routeError instanceof PairingApiError ? routeError : null)

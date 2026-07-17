@@ -365,6 +365,136 @@ function normalizeUsdcAmountText(value?: string | null): string {
   return withoutCurrency
 }
 
+export type DeterministicTipIntent = {
+  recipient: string
+  amount: string
+}
+
+const DIRECT_TIP_ADDRESS_PATTERN = /\b0x[a-fA-F0-9]{40}\b/g
+const DIRECT_TIP_AMOUNT_PATTERN = /\b\d+(?:[.,]\d{1,6})?\b/g
+const DIRECT_TIP_VERB_PATTERN = /(?:^|[^a-z])(?:ti+p+|send+|sned|snd|gond+er+|gndr|yolla|bahsis|transfer)(?=[^a-z]|$)/
+const DIRECT_TIP_CURRENCY_PATTERN = /(?:usdc|uscd|usd\s*c)/
+const DIRECT_TIP_VERBS = ['tip', 'send', 'gonder', 'yolla', 'bahsis', 'transfer'] as const
+
+function isSingleEditOrTransposition(value: string, target: string): boolean {
+  if (value === target) return true
+  if (Math.abs(value.length - target.length) > 1) return false
+
+  if (value.length === target.length) {
+    const mismatches: number[] = []
+    for (let index = 0; index < value.length; index += 1) {
+      if (value[index] !== target[index]) mismatches.push(index)
+      if (mismatches.length > 2) return false
+    }
+
+    if (mismatches.length <= 1) return true
+    const [first, second] = mismatches
+    return second === first + 1
+      && value[first] === target[second]
+      && value[second] === target[first]
+  }
+
+  const shorter = value.length < target.length ? value : target
+  const longer = value.length < target.length ? target : value
+  let shortIndex = 0
+  let longIndex = 0
+  let skipped = false
+
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1
+      longIndex += 1
+      continue
+    }
+    if (skipped) return false
+    skipped = true
+    longIndex += 1
+  }
+
+  return true
+}
+
+function hasDirectTipVerb(normalized: string): boolean {
+  if (DIRECT_TIP_VERB_PATTERN.test(normalized)) return true
+  const words = normalized.match(/[a-z]+/g) ?? []
+  return words.some((word) => (
+    word.length >= 2 && DIRECT_TIP_VERBS.some((verb) => isSingleEditOrTransposition(word, verb))
+  ))
+}
+
+/**
+ * Resolves only unambiguous direct-address transfers. This intentionally runs
+ * before Gemini so an explicit recipient and amount never depend on AI intent
+ * classification or availability.
+ */
+export function parseDeterministicTipIntent(message: string): DeterministicTipIntent | null {
+  const text = message.trim()
+  if (!text) return null
+
+  const addressMatches = [...text.matchAll(DIRECT_TIP_ADDRESS_PATTERN)]
+  if (addressMatches.length !== 1) return null
+
+  const recipient = addressMatches[0]?.[0]?.toLowerCase() ?? ''
+  if (!isValidAddress(recipient)) return null
+
+  const textWithoutAddress = text.replace(addressMatches[0][0], ' ')
+  const normalized = normalizeIntentText(textWithoutAddress)
+    .replace(/ı/g, 'i')
+  if (!hasDirectTipVerb(normalized)) return null
+
+  const amountMatches = [...textWithoutAddress.matchAll(DIRECT_TIP_AMOUNT_PATTERN)]
+  if (amountMatches.length === 0) return null
+
+  const currencyMarkedMatches = amountMatches.filter((match) => {
+    const index = match.index ?? 0
+    const afterAmount = normalizeIntentText(textWithoutAddress.slice(index + match[0].length, index + match[0].length + 12))
+    return DIRECT_TIP_CURRENCY_PATTERN.test(afterAmount)
+  })
+  const selectedMatch = currencyMarkedMatches.length === 1
+    ? currencyMarkedMatches[0]
+    : amountMatches.length === 1
+      ? amountMatches[0]
+      : null
+  if (!selectedMatch) return null
+
+  const amount = normalizeUsdcAmountText(selectedMatch[0])
+  const amountValue = Number(amount)
+  if (!amount || !Number.isFinite(amountValue) || amountValue <= 0) return null
+
+  return { recipient, amount }
+}
+
+function logResolvedIntent(parser: 'deterministic' | 'ai', action?: GogoAction | null): void {
+  const params = action?.params as { recipient?: unknown; amount?: unknown } | undefined
+  const recipient = typeof params?.recipient === 'string' ? params.recipient : ''
+  const amount = typeof params?.amount === 'string' ? params.amount : ''
+  console.info(`[ROUTE] parser=${parser} resolvedIntent=${action?.type ?? 'none'} recipient=${recipient} amount=${amount}`)
+}
+
+function convergeResolvedDirectTips(response: GogoResponse, userMessage: string): GogoResponse {
+  const normalizedMessage = normalizeIntentText(userMessage).replace(/ı/g, 'i')
+  if (!hasDirectTipVerb(normalizedMessage)) return response
+
+  const actions = response.actions.map((action) => {
+    if (action.type !== 'send') return action
+
+    const recipient = action.params.recipient?.trim().toLowerCase() ?? ''
+    const amount = normalizeUsdcAmountText(action.params.amount)
+    const amountValue = Number(amount)
+    if (!isValidAddress(recipient) || !amount || !Number.isFinite(amountValue) || amountValue <= 0) {
+      return action
+    }
+
+    return buildGatewayTipAction({ recipient, amount })
+  })
+
+  return {
+    ...response,
+    actions,
+    action: actions[0],
+  }
+}
+
 type CreatorTipIntent = {
   handle: string
   amount?: string
@@ -2125,6 +2255,23 @@ export async function askGogo(
   context: GogoContext,
   history: Message[],
 ): Promise<GogoResponse> {
+  const deterministicTipIntent = parseDeterministicTipIntent(userMessage)
+  if (deterministicTipIntent) {
+    const action = buildGatewayTipAction({
+      recipient: deterministicTipIntent.recipient,
+      amount: deterministicTipIntent.amount,
+    })
+    logResolvedIntent('deterministic', action)
+    return {
+      reply: formatText('gogo.directTipResolved', {
+        recipient: formatAddress(deterministicTipIntent.recipient, 4),
+        amount: deterministicTipIntent.amount,
+      }),
+      actions: [action],
+      action,
+    }
+  }
+
   // Gateway deposit intent — no Gemini key required; triggers MetaMask approve + deposit
   const gatewayDepositIntent = parseGatewayDepositIntent(userMessage)
   if (gatewayDepositIntent) {
@@ -2345,6 +2492,7 @@ export async function askGogo(
     }
   }
 
+  console.info('[ROUTE] parser=ai resolvedIntent=pending recipient= amount=')
   const apiKey = await getApiKey()
   if (!apiKey) throw new Error('NO_API_KEY')
 
@@ -2562,8 +2710,9 @@ export async function askGogo(
     const payload = parseGeminiJson(text)
     if (!payload) throw new Error(PARSE_ERROR_MESSAGE)
 
-    const response = normalizeResponse(payload)
-    if (!response) throw new Error(PARSE_ERROR_MESSAGE)
+    const normalizedResponse = normalizeResponse(payload)
+    if (!normalizedResponse) throw new Error(PARSE_ERROR_MESSAGE)
+    const response = convergeResolvedDirectTips(normalizedResponse, userMessage)
 
     if (gatewayTipIntent) {
       const gatewayRecipient = gatewayTipIntent.recipient?.trim().toLowerCase() ?? ''
@@ -2660,6 +2809,7 @@ export async function askGogo(
       }
 
       const nextActions = prioritizeGatewayTipAction(response.actions, gatewayAction)
+      logResolvedIntent('ai', nextActions[0])
       return {
         reply: response.reply ? `${budgetReply} ${response.reply}`.trim() : budgetReply,
         actions: nextActions,
@@ -2787,6 +2937,7 @@ export async function askGogo(
         return action
       })
 
+      logResolvedIntent('ai', nextActions[0])
       return {
         reply: response.reply ? `${budgetReply} ${response.reply}`.trim() : budgetReply,
         actions: nextActions,
@@ -2794,8 +2945,10 @@ export async function askGogo(
       }
     }
 
+    logResolvedIntent('ai', response.action)
     return response
   } catch (err: unknown) {
+    console.info('[ROUTE] parser=ai resolvedIntent=error recipient= amount=')
     console.error('[GogoAI] Caught:', err)
     if (err instanceof Error) throw err
     throw new Error(String(err))
