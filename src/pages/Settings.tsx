@@ -82,6 +82,7 @@ import { formatText, getLocalePreference, setLocale, t } from '@/lib/i18n'
 import { APP_NAME, APP_VERSION } from '@/lib/appMeta'
 import { EXPLORER_URL } from '@/lib/arc'
 import { isValidAddress } from '@/lib/validation'
+import { fetchUsdcBalance } from '@/lib/hooks/useUSDCBalance'
 
 interface SettingsProps {
   onBack: () => void
@@ -174,6 +175,9 @@ export function Settings({ onBack }: SettingsProps) {
   const [isFinishingSetup, setIsFinishingSetup] = useState(false)
   const [pairingError, setPairingError] = useState('')
   const [pairingCopied, setPairingCopied] = useState(false)
+  const [agentWalletBalance, setAgentWalletBalance] = useState<string | null>(null)
+  const [agentWalletBalanceLoading, setAgentWalletBalanceLoading] = useState(false)
+  const [agentWalletBalanceError, setAgentWalletBalanceError] = useState(false)
   const [userAgentPolicy, setUserAgentPolicy] = useState<UserAgentPolicy | null>(null)
   const [userAgentLedger, setUserAgentLedger] = useState<UserAgentLedgerEntry[]>([])
   const [userAgentWeeklyBudgetInput, setUserAgentWeeklyBudgetInput] = useState('')
@@ -197,6 +201,20 @@ export function Settings({ onBack }: SettingsProps) {
   const autoTipPreviewReady = Boolean(autoTipRule && tipBudget)
   const autoTipPreviewRecipients = autoTipPreview?.recipients.slice(0, 3) ?? []
   const autoTipPreviewHasMore = Boolean(autoTipPreview && autoTipPreview.recipients.length > autoTipPreviewRecipients.length)
+  const agentWalletFunded = agentWalletBalance != null && Number(agentWalletBalance) > 0
+  const userAgentLimitsSet = Boolean(
+    userAgentPolicy
+    && userAgentPolicy.weeklyBudget > 0
+    && userAgentPolicy.perTipCap > 0
+    && userAgentPolicy.perTipCap <= userAgentPolicy.weeklyBudget,
+  )
+  const userAgentReady = Boolean(
+    pairingProfile?.agentWalletReady
+    && pairingProfile.agentAddress
+    && agentWalletFunded
+    && userAgentPolicy?.autonomousEnabled
+    && userAgentLimitsSet,
+  )
 
   const applyUserAgentPolicy = (policy: UserAgentPolicy) => {
     setUserAgentPolicy(policy)
@@ -547,6 +565,44 @@ export function Settings({ onBack }: SettingsProps) {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    const agentAddress = pairingProfile?.agentWalletReady ? pairingProfile.agentAddress : null
+    if (!agentAddress) {
+      setAgentWalletBalance(null)
+      setAgentWalletBalanceLoading(false)
+      setAgentWalletBalanceError(false)
+      return
+    }
+
+    let active = true
+    setAgentWalletBalanceLoading(true)
+    setAgentWalletBalanceError(false)
+
+    const loadAgentWalletBalance = async () => {
+      try {
+        const balance = await fetchUsdcBalance(agentAddress)
+        if (!active) return
+        setAgentWalletBalance(balance)
+        setAgentWalletBalanceError(balance == null)
+      } catch (error) {
+        debugWarn('[Settings] agent wallet balance load failed:', error)
+        if (!active) return
+        setAgentWalletBalance(null)
+        setAgentWalletBalanceError(true)
+      } finally {
+        if (active) setAgentWalletBalanceLoading(false)
+      }
+    }
+
+    void loadAgentWalletBalance()
+    const intervalId = window.setInterval(() => void loadAgentWalletBalance(), 15_000)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+    }
+  }, [pairingProfile?.agentAddress, pairingProfile?.agentWalletReady])
 
   const handlePairWithMetaMask = async () => {
     setIsPairingNow(true)
@@ -1370,15 +1426,20 @@ export function Settings({ onBack }: SettingsProps) {
           </div>
         </div>
 
-        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          {t('settings.autonomousModeTitle')}
-        </p>
-        <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-arc-accent/10 p-2 text-arc-accent">
-              <Bot size={20} />
-            </div>
-            <div className="min-w-0 flex-1 space-y-4">
+        <div className="flex flex-col">
+          <details className="group order-2 border-b border-arc-border/50 bg-arc-card/20">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-y border-arc-border px-4 py-3 text-arc-text marker:content-none">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="rounded-xl bg-arc-accent/10 p-2 text-arc-accent">
+                  <Bot size={18} />
+                </span>
+                <span className="text-sm font-semibold">{t('settings.legacyAdvancedTitle')}</span>
+              </span>
+              <ChevronRight size={16} className="shrink-0 text-arc-text-dim transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="space-y-4 px-4 py-4">
+              <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.legacyAdvancedNote')}</p>
+              <div className="min-w-0 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-arc-text">{t('settings.autonomousModeToggle')}</p>
@@ -1485,20 +1546,108 @@ export function Settings({ onBack }: SettingsProps) {
                   </p>
                 )}
               </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </details>
 
-        <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
-          {t('settings.pairingSectionTitle')}
-        </p>
-        <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
+          <div className="order-1">
+            <p className="px-4 py-2 text-[10px] font-mono uppercase tracking-widest text-arc-text-dim bg-arc-card/30 border-y border-arc-border">
+              {t('settings.pairingSectionTitle')}
+            </p>
+            <div className="border-b border-arc-border/50 bg-arc-card/20 px-4 py-4">
           <div className="flex items-start gap-3">
             <div className="rounded-xl bg-arc-accent/10 p-2 text-arc-accent">
               <Wallet size={20} />
             </div>
             <div className="min-w-0 flex-1 space-y-4">
-              <p className="text-[10px] text-arc-text-dim">{t('settings.pairingSectionDescription')}</p>
+              {userAgentReady && (
+                <div className="flex items-center gap-2 rounded-xl border border-arc-success/30 bg-arc-success/10 px-3 py-2.5 text-arc-success">
+                  <Check size={15} />
+                  <p className="text-xs font-semibold">{t('settings.userAgentReady')}</p>
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-xl border border-arc-border bg-arc-bg p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.userAgentSetupTitle')}</p>
+
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${pairingProfile ? 'border-arc-success/40 bg-arc-success/10 text-arc-success' : 'border-arc-border text-arc-text-dim'}`}>
+                    {pairingProfile ? <Check size={12} /> : '1'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-arc-text">{t('settings.userAgentStepPair')}</p>
+                    <p className="text-[10px] text-arc-text-dim">{pairingProfile ? t('common.done') : t('settings.userAgentStepPending')}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${agentWalletFunded ? 'border-arc-success/40 bg-arc-success/10 text-arc-success' : 'border-arc-border text-arc-text-dim'}`}>
+                    {agentWalletFunded ? <Check size={12} /> : '2'}
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <p className="text-xs font-medium text-arc-text">{t('settings.userAgentStepFund')}</p>
+                    <p className={`text-[10px] ${agentWalletBalance === '0.00' ? 'text-arc-accent' : 'text-arc-text-dim'}`}>
+                      {!pairingProfile
+                        ? t('settings.userAgentStepPending')
+                        : !pairingProfile.agentWalletReady
+                          ? t('settings.pairingWalletNotReady')
+                          : agentWalletBalanceLoading
+                            ? t('settings.userAgentBalanceLoading')
+                            : agentWalletBalanceError || agentWalletBalance == null
+                              ? t('settings.userAgentBalanceUnavailable')
+                              : agentWalletBalance === '0.00'
+                                ? t('settings.userAgentBalanceEmpty')
+                                : formatText('settings.userAgentBalanceValue', { balance: agentWalletBalance })}
+                    </p>
+                    {pairingProfile?.agentAddress && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-arc-border bg-arc-card px-2.5 py-2">
+                        <span className="truncate font-mono text-[10px] text-arc-text">{pairingProfile.agentAddress}</span>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyAgentAddress()}
+                          className="shrink-0 rounded-lg p-1 text-arc-text-dim transition-colors hover:text-arc-text"
+                          title={t('settings.pairingCopyAddress')}
+                        >
+                          {pairingCopied ? <Check size={13} /> : <Copy size={13} />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${userAgentPolicy?.autonomousEnabled ? 'border-arc-success/40 bg-arc-success/10 text-arc-success' : 'border-arc-border text-arc-text-dim'}`}>
+                    {userAgentPolicy?.autonomousEnabled ? <Check size={12} /> : '3'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-arc-text">{t('settings.userAgentStepAutonomous')}</p>
+                    <p className="text-[10px] text-arc-text-dim">
+                      {userAgentPolicy
+                        ? userAgentPolicy.autonomousEnabled
+                          ? t('settings.autoTipStateOn')
+                          : t('settings.autoTipStateOff')
+                        : t('settings.userAgentStepPending')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold ${userAgentLimitsSet ? 'border-arc-success/40 bg-arc-success/10 text-arc-success' : 'border-arc-border text-arc-text-dim'}`}>
+                    {userAgentLimitsSet ? <Check size={12} /> : '4'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-arc-text">{t('settings.userAgentStepLimits')}</p>
+                    <p className="text-[10px] text-arc-text-dim">
+                      {userAgentLimitsSet && userAgentPolicy
+                        ? formatText('settings.userAgentLimitsSummary', {
+                            weekly: formatTipBudgetAmount(userAgentPolicy.weeklyBudget),
+                            perTip: formatTipBudgetAmount(userAgentPolicy.perTipCap),
+                          })
+                        : t('settings.userAgentStepPending')}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               {!pairingLoaded && (
                 <p className="text-[10px] text-arc-text-dim">{t('state.loading')}</p>
@@ -1506,6 +1655,7 @@ export function Settings({ onBack }: SettingsProps) {
 
               {pairingLoaded && !pairingProfile && (
                 <div className="space-y-3">
+                  <p className="text-xs leading-relaxed text-arc-text-dim">{t('settings.pairingSectionDescription')}</p>
                   <Button
                     type="button"
                     size="sm"
@@ -1538,22 +1688,6 @@ export function Settings({ onBack }: SettingsProps) {
 
                   {pairingProfile.agentWalletReady && pairingProfile.agentAddress && (
                     <div className="space-y-3">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wider text-arc-text-dim">{t('settings.pairingAgentAddress')}</p>
-                        <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-arc-border bg-arc-bg px-3 py-2">
-                          <span className="truncate font-mono text-xs text-arc-text">{formatAddress(pairingProfile.agentAddress, 6)}</span>
-                          <button
-                            type="button"
-                            onClick={() => void handleCopyAgentAddress()}
-                            className="shrink-0 p-1.5 rounded-lg text-arc-text-dim hover:text-arc-text transition-colors"
-                            title={t('settings.pairingCopyAddress')}
-                          >
-                            {pairingCopied ? <Check size={14} /> : <Copy size={14} />}
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-arc-text-dim">{t('settings.pairingFundHint')}</p>
-
                       {userAgentPolicy && (
                         <div className="space-y-4 rounded-xl border border-arc-border bg-arc-bg p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -1710,6 +1844,8 @@ export function Settings({ onBack }: SettingsProps) {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
             </div>
           </div>
         </div>

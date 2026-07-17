@@ -128,13 +128,13 @@ function readAddress(value: unknown): string | null {
   return raw.toLowerCase()
 }
 
-function extractResponseMessage(payload: unknown): string | null {
+function extractResponseMessage(payload: unknown, depth = 0): string | null {
   if (typeof payload === 'string') {
     const trimmed = payload.trim()
     return trimmed || null
   }
 
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || depth > 3) {
     return null
   }
 
@@ -142,13 +142,18 @@ function extractResponseMessage(payload: unknown): string | null {
     message?: unknown
     error?: unknown
     detail?: unknown
+    errorDetails?: unknown
     reason?: unknown
+    data?: unknown
   }
 
   return readString(candidate.message)
-    ?? readString(candidate.error)
     ?? readString(candidate.detail)
+    ?? readString(candidate.errorDetails)
     ?? readString(candidate.reason)
+    ?? readString(candidate.error)
+    ?? extractResponseMessage(candidate.error, depth + 1)
+    ?? extractResponseMessage(candidate.data, depth + 1)
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {
@@ -294,12 +299,41 @@ function parseLedger(payload: unknown): UserAgentLedgerEntry[] {
   })
 }
 
-function isInsufficientFundsMessage(message: string | null): boolean {
-  return Boolean(message && /insufficient|not enough|balance.*(?:low|short)/i.test(message))
+function isInsufficientFundsError(payload: unknown, message: string | null): boolean {
+  let serializedPayload = ''
+  try {
+    serializedPayload = JSON.stringify(payload)
+  } catch {
+    // Parsed response payloads should be serializable; the message still covers the fallback.
+  }
+
+  const signal = `${message ?? ''} ${serializedPayload}`
+  return /\b(?:155201|155204|155205)\b|INSUFFICIENT_(?:TOKEN_BALANCE|NATIVE_TOKEN)|insufficient\s+(?:available\s+)?(?:funds?|balance|token)|not enough funds|balance.*(?:low|short)|transfer amount exceeds balance|total cost.*higher than.*balance|due to insufficient token/i.test(signal)
 }
 
 async function createUserAgentError(status: number, payload: unknown, tipContext = false): Promise<PairingApiError> {
   const backendMessage = extractResponseMessage(payload)
+
+  if (tipContext && isInsufficientFundsError(payload, backendMessage)) {
+    let agentAddress: string | null = null
+    try {
+      agentAddress = (await getMe()).agentAddress
+    } catch {
+      // The original Circle error remains the primary error if profile lookup fails.
+    }
+
+    return new PairingApiError(
+      agentAddress
+        ? formatText('settings.userAgentInsufficientFundsWithAddress', { address: agentAddress })
+        : t('settings.userAgentInsufficientFunds'),
+      {
+        status,
+        backendMessage,
+        action: 'fund-agent',
+        agentAddress,
+      },
+    )
+  }
 
   if (tipContext && status === 409) {
     return new PairingApiError(t('settings.userAgentFinishSetupError'), {
@@ -315,25 +349,6 @@ async function createUserAgentError(status: number, payload: unknown, tipContext
       backendMessage,
       action: 'enable-autonomous',
     })
-  }
-
-  if (tipContext && isInsufficientFundsMessage(backendMessage)) {
-    let agentAddress: string | null = null
-    try {
-      agentAddress = (await getMe()).agentAddress
-    } catch {
-      // The original Circle error remains the primary error if profile lookup fails.
-    }
-
-    return new PairingApiError(
-      backendMessage ?? t('settings.userAgentInsufficientFunds'),
-      {
-        status,
-        backendMessage,
-        action: 'fund-agent',
-        agentAddress,
-      },
-    )
   }
 
   return new PairingApiError(backendMessage ?? `HTTP ${status}`, {
@@ -384,10 +399,6 @@ function parseProfile(payload: unknown): PairingProfile {
 
 async function getPairingBackendUrl(): Promise<string> {
   const config = await getAgentBackendConfig()
-  if (!config.backendUrl) {
-    throw new Error(t('settings.agentBackendUrlMissing'))
-  }
-
   return config.backendUrl ?? DEFAULT_AGENT_BACKEND_URL
 }
 
@@ -741,6 +752,10 @@ export async function userTip(recipient: string, amount: string): Promise<UserAg
   const payload = await readResponsePayload(response)
 
   if (!response.ok) {
+    throw await createUserAgentError(response.status, payload, true)
+  }
+
+  if (isInsufficientFundsError(payload, extractResponseMessage(payload))) {
     throw await createUserAgentError(response.status, payload, true)
   }
 
