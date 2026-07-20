@@ -74,6 +74,7 @@ import {
 import { isValidAddress, isValidAmount } from '@/lib/validation'
 import { PairingApiError } from '@/lib/pairing'
 import { UserAgentErrorActions } from '@/components/UserAgentErrorActions'
+import { payX402Resource } from '@/lib/x402'
 
 interface GogoAIProps {
   onBack: () => void
@@ -235,6 +236,8 @@ function getActionLabel(action?: GogoAction | null): string {
       return t('gogo.gatewayTip')
     case 'gateway_batch_tip':
       return t('gogo.gatewayBatchTip')
+    case 'x402_access':
+      return t('gogo.x402PayAndAccess')
     case 'view_address':
       return t('gogo.viewAddress')
     case 'track_whale':
@@ -275,6 +278,8 @@ function getActionLoadingLabel(action?: GogoAction | null): string {
       return t('gogo.preparingGatewayTip')
     case 'gateway_batch_tip':
       return t('gogo.preparingGatewayBatchTip')
+    case 'x402_access':
+      return t('gogo.x402Signing')
     default:
       return t('gogo.working')
   }
@@ -305,6 +310,10 @@ function getCompletedActionLabel(action?: GogoAction | null): string {
     if (action.params?.autonomous) return t('gogo.sentAutonomously')
     const { paidCount } = getGatewayBatchTipStats(action)
     return formatText('gogo.gatewayBatchPaidCreators', { count: paidCount })
+  }
+
+  if (action?.type === 'x402_access') {
+    return t('gogo.x402Accessed')
   }
 
   if (action?.type === 'open_settings') {
@@ -860,6 +869,15 @@ function getRecipientDisplayName(
   return trimmed
 }
 
+function formatX402ResponsePreview(value: unknown): string {
+  if (typeof value === 'string') return value.slice(0, 1200)
+  try {
+    return JSON.stringify(value, null, 2).slice(0, 1200)
+  } catch {
+    return String(value).slice(0, 1200)
+  }
+}
+
 function getMultiStepActionTitle(
   action: GogoAction | null | undefined,
   resolveAddress: (value?: string) => string | null,
@@ -924,6 +942,10 @@ function getMultiStepActionTitle(
         count: recipients.length,
       })
     }
+    case 'x402_access':
+      return formatText('gogo.x402ActionTitle', {
+        amount: typeof params.amountUsdc === 'string' ? params.amountUsdc : '?',
+      })
     case 'view_address':
       return `${t('gogo.viewAddress')} ${getRecipientDisplayName(typeof params.address === 'string' ? params.address : undefined, resolveAddress, addressMemories)}`
     case 'track_whale':
@@ -2079,6 +2101,60 @@ export function GogoAI({ onBack }: GogoAIProps) {
     )
   }
 
+  const renderX402AccessCard = (
+    action: GogoAction | null | undefined,
+    isUser: boolean,
+    isActionLoading: boolean,
+  ) => {
+    if (!action || action.type !== 'x402_access') return null
+
+    const responsePreview = action.params.responsePreview?.trim() ?? ''
+    return (
+      <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>
+        <Card className="border border-arc-accent/25 bg-arc-card p-4 shadow-lg shadow-black/10">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-arc-text-dim">x402</p>
+              <h4 className="mt-1 text-sm font-semibold text-arc-text">{action.params.description}</h4>
+            </div>
+            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${action.completed ? 'border-arc-success/20 bg-arc-success/10 text-arc-success' : 'border-arc-accent/20 bg-arc-accent/10 text-arc-accent'}`}>
+              {action.completed ? t('gogo.x402Paid') : t('gogo.x402Review')}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.x402Price')}</p>
+              <p className="mt-1 text-sm font-semibold text-arc-text">{action.params.amountUsdc} USDC</p>
+            </div>
+            <div className="rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.x402Network')}</p>
+              <p className="mt-1 text-sm font-medium text-arc-text">Arc Testnet</p>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.x402Seller')}</p>
+            <p className="mt-1 break-all font-mono text-[11px] text-arc-text">{action.params.payTo}</p>
+          </div>
+
+          {!action.completed && (
+            <p className="mt-3 text-[11px] leading-relaxed text-arc-text-dim">
+              {isActionLoading ? t('gogo.x402Signing') : t('gogo.x402ApprovalNote')}
+            </p>
+          )}
+
+          {responsePreview && (
+            <div className="mt-3 rounded-xl border border-arc-success/20 bg-arc-success/5 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.x402Response')}</p>
+              <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed text-arc-text">{responsePreview}</pre>
+            </div>
+          )}
+        </Card>
+      </div>
+    )
+  }
+
   const speakMessage = (messageKey: string, text: string) => {
     if (!voiceResponsesReady || !speechSynthesisSupported) {
       debugWarn('[GogoAI] voice responses unavailable in this context')
@@ -2294,7 +2370,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
 
   const handleAction = async (messageIndex: number, actionIndex: number, action: GogoAction | null | undefined, messageKey: string) => {
     if (!action || action.type === 'none' || action.completed) return
-    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip') && analysisLoadingKey === messageKey) return
+    if ((action.type === 'analyze_address' || action.type === 'summarize_activity' || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip' || action.type === 'x402_access') && analysisLoadingKey === messageKey) return
 
     const requiresAddress = action.type === 'view_address' || action.type === 'analyze_address' || action.type === 'track_whale'
     const resolvedAddress = requiresAddress ? resolveAddress(action.params?.address) : null
@@ -3068,6 +3144,46 @@ export function GogoAI({ onBack }: GogoAIProps) {
         }
         break
       }
+      case 'x402_access': {
+        setAnalysisLoadingKey(messageKey)
+        try {
+          const result = await payX402Resource(action.params)
+          const responsePreview = formatX402ResponsePreview(result.data)
+          updateMessageAction(
+            messageIndex,
+            actionIndex,
+            (currentAction) => currentAction.type === 'x402_access'
+              ? {
+                  ...currentAction,
+                  completed: true,
+                  params: {
+                    ...currentAction.params,
+                    transaction: result.transaction || undefined,
+                    responsePreview,
+                  },
+                }
+              : currentAction,
+            (message) => ({
+              ...message,
+              content: formatText('gogo.x402Success', {
+                amount: result.amountUsdc,
+                recipient: formatAddress(result.payTo, 5),
+              }),
+            }),
+          )
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : t('state.error')
+          const nextMessages = messagesRef.current.map((message, index) => index === messageIndex
+            ? { ...message, content: formatText('gogo.x402PaymentFailed', { reason }) }
+            : message)
+          messagesRef.current = nextMessages
+          setMessages(nextMessages)
+          void saveGogoHistory(nextMessages)
+        } finally {
+          setAnalysisLoadingKey(null)
+        }
+        break
+      }
       case 'create_reminder': {
         setAnalysisLoadingKey(messageKey)
 
@@ -3286,7 +3402,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
       action &&
       analysisLoadingKey === actionKey &&
       !action.completed &&
-      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'),
+      (isAnalyzeAction || isSummaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip' || action.type === 'x402_access'),
     )
     const draftText = draftTweetAction?.params?.text ?? ''
     const draftLength = draftText.length
@@ -3374,6 +3490,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
             )}
 
             {renderGatewayBatchTipCard(action, isUser, isActionLoading)}
+
+            {renderX402AccessCard(action, isUser, isActionLoading)}
 
             {draftTweetAction && (
               <div className="rounded-xl border border-arc-border bg-arc-bg/80 p-3">
@@ -3747,7 +3865,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
               const isAnalyzeAction = Boolean(analyzeAction)
               const isSummaryAction = Boolean(summaryAction)
               const actionCompleted = Boolean(action?.completed)
-              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip'))
+              const isActionLoading = Boolean(action && analysisLoadingKey === actionKey && !action.completed && (analyzeAction || summaryAction || action.type === 'create_reminder' || action.type === 'send' || action.type === 'tip_creator' || action.type === 'gateway_tip' || action.type === 'gateway_batch_tip' || action.type === 'x402_access'))
               const draftText = draftTweet?.params.text ?? ''
               const draftLength = draftText.length
               const analysis = analyzeAction?.analysis ?? null
@@ -3892,6 +4010,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   )}
 
                   {renderGatewayBatchTipCard(action, isUser, isActionLoading)}
+
+                  {renderX402AccessCard(action, isUser, isActionLoading)}
 
                   {transferResult.txHash && (
                     <div className={`mt-2 w-full max-w-[88%] ${isUser ? 'ml-auto' : 'mr-auto'}`}>

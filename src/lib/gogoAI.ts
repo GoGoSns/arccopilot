@@ -35,7 +35,8 @@ import { discoverCreators } from '@/lib/creatorDiscovery'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { buildPortfolioIntel } from '@/lib/portfolioIntel'
-import { agentTip, isAutonomousEnabled } from '@/lib/agentBackend'
+import { DEFAULT_AGENT_BACKEND_URL, agentTip, getAgentBackendConfig, isAutonomousEnabled } from '@/lib/agentBackend'
+import { inspectX402Resource, sanitizeX402PaymentPreview, type X402PaymentPreview } from '@/lib/x402'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
 import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
@@ -185,6 +186,11 @@ export type GatewayBatchTipActionParams = {
   autonomousSource?: 'paired' | 'legacy'
 }
 
+export type X402AccessActionParams = X402PaymentPreview & {
+  transaction?: string
+  responsePreview?: string
+}
+
 type PromptContext = {
   wallet: {
     address: string
@@ -214,6 +220,7 @@ export type GogoAction =
   | { type: 'tip_creator'; params: { handle: string; amount?: string; recipient?: string; prepared?: boolean; txHash?: string; explorerUrl?: string; autonomous?: boolean; autonomousSource?: 'paired' | 'legacy' }; completed?: boolean }
   | { type: 'gateway_tip'; params: { handle?: string; amount?: string; recipient?: string; destinationDomain?: number; txHash?: string; explorerUrl?: string; prepared?: boolean; autonomous?: boolean; autonomousSource?: 'paired' | 'legacy' }; completed?: boolean }
   | { type: 'gateway_batch_tip'; params: GatewayBatchTipActionParams; completed?: boolean }
+  | { type: 'x402_access'; params: X402AccessActionParams; completed?: boolean }
   | { type: 'view_address'; params: { address: string }; completed?: boolean }
   | { type: 'track_whale'; params: { address: string }; completed?: boolean }
   | { type: 'analyze_address'; params: { address: string }; completed?: boolean; analysis?: AddressAnalysis }
@@ -836,6 +843,26 @@ function parseGatewayBalanceIntent(message: string): boolean {
   return /gateway/.test(lowered) && /balance|bakiye|ne kadar|nedir|how much/.test(lowered)
 }
 
+type X402AccessIntent = {
+  url?: string
+  useDemo: boolean
+}
+
+function parseX402AccessIntent(message: string): X402AccessIntent | null {
+  const text = message.trim()
+  if (!text || !/\bx[\s-]?402\b/i.test(text)) return null
+
+  const urlMatch = text.match(/https?:\/\/[^\s<>"']+/i)
+  const url = urlMatch?.[0]?.replace(/[),.;!?]+$/, '')
+  const lowered = normalizeIntentText(text)
+  const useDemo = /\b(demo|test|dene|deneme|ornek|örnek)\b/.test(lowered)
+
+  return {
+    url: url || undefined,
+    useDemo,
+  }
+}
+
 type AutoTipIntent = {
   enabled: boolean
   periodBudgetUsdc?: string
@@ -1046,6 +1073,7 @@ function isSupportedActionType(value: unknown): value is GogoAction['type'] {
     || value === 'tip_creator'
     || value === 'gateway_tip'
     || value === 'gateway_batch_tip'
+    || value === 'x402_access'
     || value === 'view_address'
     || value === 'track_whale'
     || value === 'analyze_address'
@@ -1206,6 +1234,22 @@ function normalizeAction(raw: unknown): GogoAction | null {
           prepared,
           autonomous,
           autonomousSource,
+        },
+        completed: Boolean(raw.completed),
+      }
+    }
+    case 'x402_access': {
+      const preview = sanitizeX402PaymentPreview(params)
+      if (!preview) return null
+      const transaction = typeof params.transaction === 'string' ? params.transaction.trim() : ''
+      const responsePreview = typeof params.responsePreview === 'string' ? params.responsePreview.trim().slice(0, 1200) : ''
+
+      return {
+        type: 'x402_access',
+        params: {
+          ...preview,
+          transaction: transaction || undefined,
+          responsePreview: responsePreview || undefined,
         },
         completed: Boolean(raw.completed),
       }
@@ -2201,6 +2245,48 @@ export async function askGogo(
   context: GogoContext,
   history: Message[],
 ): Promise<GogoResponse> {
+  const x402Intent = parseX402AccessIntent(userMessage)
+  if (x402Intent) {
+    let resourceUrl = x402Intent.url
+    if (!resourceUrl && x402Intent.useDemo) {
+      const backend = await getAgentBackendConfig().catch(() => null)
+      resourceUrl = `${backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL}/x402/arc-insight`
+    }
+
+    if (!resourceUrl) {
+      return {
+        reply: t('gogo.x402NeedUrl'),
+        actions: [],
+      }
+    }
+
+    try {
+      const preview = await inspectX402Resource(resourceUrl)
+      const action: GogoAction = {
+        type: 'x402_access',
+        params: preview,
+        completed: false,
+      }
+      return {
+        reply: formatText('gogo.x402QuoteReady', {
+          amount: preview.amountUsdc,
+          network: preview.network,
+          recipient: formatAddress(preview.payTo, 5),
+          description: preview.description,
+        }),
+        actions: [action],
+        action,
+      }
+    } catch (error) {
+      return {
+        reply: formatText('gogo.x402InspectFailed', {
+          reason: error instanceof Error ? error.message : t('state.error'),
+        }),
+        actions: [],
+      }
+    }
+  }
+
   const deterministicTipIntent = parseDeterministicTipIntent(userMessage)
   if (deterministicTipIntent) {
     const action = buildGatewayTipAction({

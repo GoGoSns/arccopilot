@@ -251,6 +251,18 @@ export type BatchEvmSigner = {
   signTypedData: (parameters: Omit<GatewaySignTypedDataParameters, 'account'>) => Promise<Hex>
 }
 
+export async function createGatewayBatchSigner(requiredAmount?: bigint): Promise<BatchEvmSigner> {
+  const { tabId, account, walletClient } = await getConnectedGatewayContext()
+  const gateway = await readGatewayBalance(account)
+
+  if (requiredAmount != null && gateway.available < requiredAmount) {
+    throw new Error(`Insufficient Gateway balance. Have: ${gateway.formattedAvailable} USDC, need: ${formatUnits(requiredAmount, 6)} USDC.`)
+  }
+
+  await ensureChain(tabId, ARC_TESTNET_CHAIN)
+  return createBatchEvmSigner(walletClient, account)
+}
+
 function canUseChrome(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.tabs?.query) && Boolean(chrome.scripting?.executeScript)
 }

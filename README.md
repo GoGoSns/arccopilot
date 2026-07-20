@@ -37,6 +37,9 @@ One cohesive, chief-of-staff style briefing that synthesizes the above into a sh
 ### Planner
 Reminders you set, plus smart task suggestions the agent proposes from real state ("top up your Gateway balance", "you have budget left this week", "add an address for a discovered creator"). Only surfaced when the real precondition is met.
 
+### x402 paid access
+Gogo can inspect an x402 URL without paying, verify that it is an Arc Testnet USDC + Circle Gateway offer, and show the exact price, network, and seller. The user must then tap **Pay & access** before MetaMask is asked for an EIP-712 authorization. ArcCopilot re-fetches and compares the quote immediately before signing, rejects changed terms, and caps this initial flow at 1 USDC. Type `x402 demo` in Gogo to use the companion backend's protected test resource.
+
 ---
 
 ## Circle stack
@@ -46,6 +49,7 @@ ArcCopilot is built end-to-end on Circle's tooling for Arc:
 - **USDC on Arc Testnet** — the unit for every payment.
 - **Circle W3S Programmable Wallets** — one signatureless agent wallet provisioned per paired user, signed server-side with no local key.
 - **Circle Gateway** — deposits, single tips, and batch tips, with real on-chain settlement.
+- **x402 + Gateway Nanopayments** — HTTP-native paid access using offchain MetaMask authorization and batched USDC settlement.
 
 ---
 
@@ -75,6 +79,7 @@ Explorer: https://testnet.arcscan.app
 - **Neon Postgres:** stores users, sessions, agent wallet records, policies, allowlists, recurring payment rules, occurrence records, and the per-user tip ledger. Session tokens are stored only as hashes.
 - **Key custody:** Circle W3S holds the wallet keys. Private keys are never returned to or stored by the extension.
 - **Fallback paths preserved:** with per-user autonomous mode off, the extension uses the existing signed MetaMask / Circle Gateway flow. The legacy single-operator autonomous mode remains available as a fallback.
+- **x402 isolation:** paid-resource discovery and signing live in their own client module and backend routes. Existing wallet, transfer, tipping, and scheduled-payment endpoints are unchanged.
 
 **Arc Testnet constants:**
 - Chain ID: `5042002`
@@ -97,6 +102,8 @@ pnpm build
 Then open `chrome://extensions/` in Chrome, enable Developer mode, click **Load unpacked**, and select the `dist` folder.
 
 Connect MetaMask on Arc Testnet. The signed MetaMask / Circle Gateway flow works right away.
+
+To try x402 safely, open Gogo and type `x402 demo`. Review the displayed 0.001 USDC quote. No payment or signature happens until you tap **Pay & access**. The buyer must already have enough available Circle Gateway balance.
 
 To use your own autonomous agent:
 
@@ -124,7 +131,7 @@ Optionally, choose Gemini, OpenAI, or Anthropic in Settings and add your own pro
 
 - **Chrome Web Store publishing** — move from unpacked installation to a published extension release.
 - **Mainnet** — move from Arc Testnet to Arc mainnet (config-driven).
-- **Pay-per-access (x402)** — let creators gate content and get paid per request in sub-cent USDC.
+- **x402 marketplace expansion** — add creator-defined resources, richer discovery, receipts, and user-configurable payment policies on top of the working paid-access flow.
 - **Deeper ecosystem integration** — richer creator onboarding, more news and portfolio signals, and calendar/task automation to complete the chief-of-staff vision.
 
 ---
