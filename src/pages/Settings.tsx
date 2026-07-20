@@ -82,6 +82,7 @@ import {
   getSchedules,
   isPaired,
   pairWithSignature,
+  preflightSchedule,
   provisionAgent,
   removeAllowlist,
   unpair,
@@ -91,6 +92,7 @@ import {
   type UserAgentLedgerEntry,
   type UserAgentPolicy,
   type UserAgentSchedule,
+  type UserAgentSchedulePreflight,
   type UserAgentScheduleRun,
 } from '@/lib/pairing'
 import { Button } from '@/components/ui/Button'
@@ -237,6 +239,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null)
   const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
   const [scheduleRunsById, setScheduleRunsById] = useState<Record<string, UserAgentScheduleRun[]>>({})
+  const [schedulePreflight, setSchedulePreflight] = useState<UserAgentSchedulePreflight | null>(null)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -266,6 +269,16 @@ export function Settings({ onBack }: SettingsProps) {
     && userAgentPolicy?.autonomousEnabled
     && userAgentLimitsSet,
   )
+  const schedulePreflightItems = schedulePreflight ? [
+    { id: 'wallet', ok: schedulePreflight.checks.walletReady, label: t('settings.userAgentScheduleCheckWallet') },
+    { id: 'autonomous', ok: schedulePreflight.checks.autonomousEnabled, label: t('settings.userAgentScheduleCheckAutonomous') },
+    { id: 'recipient', ok: schedulePreflight.checks.recipientAllowed, label: t('settings.userAgentScheduleCheckRecipient') },
+    { id: 'cap', ok: schedulePreflight.checks.withinPerTipCap, label: t('settings.userAgentScheduleCheckCap') },
+    { id: 'budget', ok: schedulePreflight.checks.withinWeeklyBudget, label: t('settings.userAgentScheduleCheckBudget') },
+    { id: 'balance-read', ok: schedulePreflight.checks.balanceAvailable, label: t('settings.userAgentScheduleCheckBalanceRead') },
+    { id: 'balance', ok: schedulePreflight.checks.sufficientUsdcBalance, label: t('settings.userAgentScheduleCheckBalance') },
+    { id: 'gas', ok: schedulePreflight.checks.gasAvailable, label: t('settings.userAgentScheduleCheckGas') },
+  ] : []
 
   const applyUserAgentPolicy = (policy: UserAgentPolicy) => {
     setUserAgentPolicy(policy)
@@ -852,6 +865,47 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }
 
+  const handleUserAgentSchedulePreflight = async () => {
+    const recipient = scheduleRecipientInput.trim().toLowerCase()
+    const amount = scheduleAmountInput.trim().replace(',', '.')
+    const intervalHours = Number(scheduleIntervalHoursInput)
+    const firstRun = new Date(scheduleFirstRunInput)
+    setScheduleError('')
+    setSchedulePreflight(null)
+
+    if (!isValidAddress(recipient)) {
+      setScheduleError(t('settings.userAgentScheduleInvalidAddress'))
+      return
+    }
+    if (parseAutoTipAmount(amount) == null) {
+      setScheduleError(t('settings.userAgentScheduleInvalidAmount'))
+      return
+    }
+    if (!Number.isInteger(intervalHours) || intervalHours < 1 || intervalHours > 8760) {
+      setScheduleError(t('settings.userAgentScheduleInvalidInterval'))
+      return
+    }
+    if (!Number.isFinite(firstRun.getTime()) || firstRun.getTime() <= Date.now()) {
+      setScheduleError(t('settings.userAgentScheduleInvalidStart'))
+      return
+    }
+
+    setScheduleBusyId('preflight')
+    try {
+      setSchedulePreflight(await preflightSchedule({
+        recipient,
+        amount,
+        label: scheduleLabelInput,
+        intervalHours,
+        firstRunAt: firstRun.toISOString(),
+      }))
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setScheduleBusyId(null)
+    }
+  }
+
   const handleCreateUserAgentSchedule = async () => {
     const recipient = scheduleRecipientInput.trim().toLowerCase()
     const amount = scheduleAmountInput.trim().replace(',', '.')
@@ -890,6 +944,7 @@ export function Settings({ onBack }: SettingsProps) {
       setScheduleAmountInput('')
       setScheduleLabelInput('')
       setScheduleFirstRunInput(getDefaultScheduleTimeInput())
+      setSchedulePreflight(null)
     } catch (error) {
       setScheduleError(error instanceof Error ? error.message : t('state.error'))
     } finally {
@@ -2215,6 +2270,7 @@ export function Settings({ onBack }: SettingsProps) {
                                 onChange={(event) => {
                                   setScheduleRecipientInput(event.target.value)
                                   setScheduleError('')
+                                  setSchedulePreflight(null)
                                 }}
                                 placeholder="0x..."
                                 className="bg-arc-bg border-arc-border text-white font-mono text-xs"
@@ -2226,6 +2282,7 @@ export function Settings({ onBack }: SettingsProps) {
                                   onChange={(event) => {
                                     setScheduleAmountInput(event.target.value)
                                     setScheduleError('')
+                                    setSchedulePreflight(null)
                                   }}
                                   inputMode="decimal"
                                   placeholder="1"
@@ -2240,6 +2297,7 @@ export function Settings({ onBack }: SettingsProps) {
                                     onChange={(event) => {
                                       setScheduleIntervalHoursInput(event.target.value)
                                       setScheduleError('')
+                                      setSchedulePreflight(null)
                                     }}
                                     className="w-full rounded-xl border border-arc-border bg-arc-bg px-3 py-2.5 text-sm text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
                                   >
@@ -2257,6 +2315,7 @@ export function Settings({ onBack }: SettingsProps) {
                                 onChange={(event) => {
                                   setScheduleFirstRunInput(event.target.value)
                                   setScheduleError('')
+                                  setSchedulePreflight(null)
                                 }}
                                 className="bg-arc-bg border-arc-border text-white"
                               />
@@ -2269,8 +2328,44 @@ export function Settings({ onBack }: SettingsProps) {
                                 className="bg-arc-bg border-arc-border text-white"
                               />
                               <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentSchedulePolicyNote')}</p>
+                              {schedulePreflight && (
+                                <div className={`space-y-2 rounded-lg border px-2.5 py-2 ${schedulePreflight.ready ? 'border-arc-success/30 bg-arc-success/5' : 'border-arc-danger/30 bg-arc-danger/5'}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className={`text-xs font-semibold ${schedulePreflight.ready ? 'text-arc-success' : 'text-arc-danger'}`}>
+                                      {schedulePreflight.ready
+                                        ? t('settings.userAgentSchedulePreflightReady')
+                                        : t('settings.userAgentSchedulePreflightBlocked')}
+                                    </p>
+                                    <span className="text-[9px] text-arc-text-dim">
+                                      {formatText('settings.userAgentSchedulePreflightRemaining', {
+                                        amount: schedulePreflight.limits.remainingWeekly,
+                                      })}
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                                    {schedulePreflightItems.map((item) => (
+                                      <div key={item.id} className="flex min-w-0 items-center gap-1.5">
+                                        <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${item.ok ? 'bg-arc-success/15 text-arc-success' : 'bg-arc-danger/15 text-arc-danger'}`}>
+                                          {item.ok ? <Check size={9} /> : '!'}
+                                        </span>
+                                        <span className="truncate text-[9px] text-arc-text-dim" title={item.label}>{item.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {schedulePreflight.balances.usdc != null && (
+                                    <p className="text-[9px] text-arc-text-dim">
+                                      {formatText('settings.userAgentSchedulePreflightBalance', {
+                                        amount: schedulePreflight.balances.usdc,
+                                      })}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                               {scheduleError && <p className="text-xs text-arc-danger">{scheduleError}</p>}
-                              <div className="flex justify-end">
+                              <div className="flex justify-end gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={() => void handleUserAgentSchedulePreflight()} disabled={scheduleBusyId !== null}>
+                                  {scheduleBusyId === 'preflight' ? t('common.loading') : t('settings.userAgentSchedulePreflight')}
+                                </Button>
                                 <Button type="button" size="sm" onClick={() => void handleCreateUserAgentSchedule()} disabled={scheduleBusyId !== null}>
                                   {scheduleBusyId === 'create' ? t('common.loading') : t('settings.userAgentScheduleCreate')}
                                 </Button>

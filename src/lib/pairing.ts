@@ -77,6 +77,31 @@ export interface UserAgentScheduleRun {
   completedAt: string | null
 }
 
+export interface UserAgentSchedulePreflight {
+  ready: boolean
+  checks: {
+    walletReady: boolean
+    autonomousEnabled: boolean
+    recipientAllowed: boolean
+    withinPerTipCap: boolean
+    withinWeeklyBudget: boolean
+    balanceAvailable: boolean
+    sufficientUsdcBalance: boolean
+    gasAvailable: boolean
+  }
+  requestedAmount: string
+  limits: {
+    perTipCap: string
+    weeklyBudget: string
+    reservedWeekly: string
+    remainingWeekly: string
+  }
+  balances: {
+    usdc: string | null
+    native: string | null
+  }
+}
+
 export interface UserAgentScheduleInput {
   recipient: string
   amount: string
@@ -469,6 +494,66 @@ function parseScheduleRuns(payload: unknown): UserAgentScheduleRun[] {
       completedAt: candidate.completedAt == null ? null : readString(candidate.completedAt),
     }
   })
+}
+
+function parseSchedulePreflight(payload: unknown): UserAgentSchedulePreflight {
+  const value = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as { preflight?: unknown }).preflight
+    : null
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+  const candidate = value as Record<string, unknown>
+  const checksValue = candidate.checks
+  const limitsValue = candidate.limits
+  const balancesValue = candidate.balances
+  if (
+    !checksValue || typeof checksValue !== 'object' || Array.isArray(checksValue)
+    || !limitsValue || typeof limitsValue !== 'object' || Array.isArray(limitsValue)
+    || !balancesValue || typeof balancesValue !== 'object' || Array.isArray(balancesValue)
+  ) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  const checks = checksValue as Record<string, unknown>
+  const limits = limitsValue as Record<string, unknown>
+  const balances = balancesValue as Record<string, unknown>
+  const ready = readBoolean(candidate.ready)
+  const requestedAmount = readString(candidate.requestedAmount)
+  const parsedChecks = {
+    walletReady: readBoolean(checks.walletReady),
+    autonomousEnabled: readBoolean(checks.autonomousEnabled),
+    recipientAllowed: readBoolean(checks.recipientAllowed),
+    withinPerTipCap: readBoolean(checks.withinPerTipCap),
+    withinWeeklyBudget: readBoolean(checks.withinWeeklyBudget),
+    balanceAvailable: readBoolean(checks.balanceAvailable),
+    sufficientUsdcBalance: readBoolean(checks.sufficientUsdcBalance),
+    gasAvailable: readBoolean(checks.gasAvailable),
+  }
+  const parsedLimits = {
+    perTipCap: readString(limits.perTipCap),
+    weeklyBudget: readString(limits.weeklyBudget),
+    reservedWeekly: readString(limits.reservedWeekly),
+    remainingWeekly: readString(limits.remainingWeekly),
+  }
+  if (
+    ready == null || !requestedAmount
+    || Object.values(parsedChecks).some((entry) => entry == null)
+    || Object.values(parsedLimits).some((entry) => entry == null)
+  ) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  return {
+    ready,
+    checks: parsedChecks as UserAgentSchedulePreflight['checks'],
+    requestedAmount,
+    limits: parsedLimits as UserAgentSchedulePreflight['limits'],
+    balances: {
+      usdc: balances.usdc == null ? null : readString(balances.usdc),
+      native: balances.native == null ? null : readString(balances.native),
+    },
+  }
 }
 
 function parseSchedules(payload: unknown): UserAgentSchedule[] {
@@ -1035,6 +1120,27 @@ export async function getScheduleRuns(scheduleId: string): Promise<UserAgentSche
   }
 
   return parseScheduleRuns(payload)
+}
+
+export async function preflightSchedule(input: UserAgentScheduleInput): Promise<UserAgentSchedulePreflight> {
+  const response = await authorizedRequest('/me/schedule/preflight', {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient: input.recipient.trim().toLowerCase(),
+      amount: input.amount.trim(),
+      label: input.label?.trim() || undefined,
+      intervalHours: input.intervalHours,
+      firstRunAt: input.firstRunAt,
+      enabled: input.enabled ?? true,
+    }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload, true)
+  }
+
+  return parseSchedulePreflight(payload)
 }
 
 export async function createSchedule(input: UserAgentScheduleInput): Promise<UserAgentSchedule> {
