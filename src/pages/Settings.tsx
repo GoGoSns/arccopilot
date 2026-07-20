@@ -78,6 +78,7 @@ import {
   getLedger,
   getMe,
   getPolicy,
+  getScheduleRuns,
   getSchedules,
   isPaired,
   pairWithSignature,
@@ -90,6 +91,7 @@ import {
   type UserAgentLedgerEntry,
   type UserAgentPolicy,
   type UserAgentSchedule,
+  type UserAgentScheduleRun,
 } from '@/lib/pairing'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -233,6 +235,8 @@ export function Settings({ onBack }: SettingsProps) {
   const [scheduleFirstRunInput, setScheduleFirstRunInput] = useState(getDefaultScheduleTimeInput)
   const [scheduleError, setScheduleError] = useState('')
   const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null)
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
+  const [scheduleRunsById, setScheduleRunsById] = useState<Record<string, UserAgentScheduleRun[]>>({})
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -912,7 +916,33 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       await deleteSchedule(scheduleId)
       setUserAgentSchedules((schedules) => schedules.filter((schedule) => schedule.id !== scheduleId))
+      setScheduleRunsById((runs) => {
+        const next = { ...runs }
+        delete next[scheduleId]
+        return next
+      })
+      setExpandedScheduleId((current) => current === scheduleId ? null : current)
     } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setScheduleBusyId(null)
+    }
+  }
+
+  const handleToggleUserAgentScheduleHistory = async (scheduleId: string) => {
+    if (expandedScheduleId === scheduleId) {
+      setExpandedScheduleId(null)
+      return
+    }
+
+    setExpandedScheduleId(scheduleId)
+    setScheduleBusyId(`history:${scheduleId}`)
+    setScheduleError('')
+    try {
+      const runs = await getScheduleRuns(scheduleId)
+      setScheduleRunsById((current) => ({ ...current, [scheduleId]: runs }))
+    } catch (error) {
+      setExpandedScheduleId(null)
       setScheduleError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setScheduleBusyId(null)
@@ -2110,19 +2140,68 @@ export function Settings({ onBack }: SettingsProps) {
                                       </div>
                                     </div>
                                     <div className="mt-2 flex items-center justify-between gap-2 border-t border-arc-border pt-2">
-                                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${schedule.enabled ? 'text-arc-success' : 'text-arc-text-dim'}`}>
-                                        {schedule.enabled ? t('settings.userAgentScheduleActive') : t('settings.userAgentSchedulePaused')}
-                                      </span>
-                                      {schedule.lastStatus && (
-                                        <span className="text-[9px] uppercase tracking-wider text-arc-text-dim">
-                                          {formatText('settings.userAgentScheduleLastStatus', { status: schedule.lastStatus })}
+                                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                                        <span className={`text-[9px] font-semibold uppercase tracking-wider ${schedule.enabled ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                                          {schedule.enabled ? t('settings.userAgentScheduleActive') : t('settings.userAgentSchedulePaused')}
                                         </span>
-                                      )}
+                                        {schedule.lastStatus && (
+                                          <span className="text-[9px] uppercase tracking-wider text-arc-text-dim">
+                                            {formatText('settings.userAgentScheduleLastStatus', { status: schedule.lastStatus })}
+                                          </span>
+                                        )}
+                                        {schedule.consecutiveFailures > 0 && (
+                                          <span className="text-[9px] text-arc-danger">
+                                            {formatText('settings.userAgentScheduleFailureStreak', { count: schedule.consecutiveFailures })}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleToggleUserAgentScheduleHistory(schedule.id)}
+                                        disabled={scheduleBusyId !== null}
+                                        className="shrink-0 text-[9px] font-semibold text-arc-accent hover:text-arc-accent/80 disabled:opacity-40"
+                                      >
+                                        {scheduleBusyId === `history:${schedule.id}`
+                                          ? t('common.loading')
+                                          : t('settings.userAgentScheduleHistory')}
+                                      </button>
                                     </div>
+                                    {schedule.pausedReason && (
+                                      <p className="mt-2 break-words rounded-md border border-arc-danger/20 bg-arc-danger/5 px-2 py-1.5 text-[10px] leading-relaxed text-arc-danger">
+                                        {formatText('settings.userAgentScheduleAutoPaused', { count: schedule.consecutiveFailures })}
+                                      </p>
+                                    )}
                                     {schedule.lastError && (
                                       <p className="mt-2 break-words text-[10px] leading-relaxed text-arc-danger" title={schedule.lastError}>
                                         {schedule.lastError}
                                       </p>
+                                    )}
+                                    {expandedScheduleId === schedule.id && scheduleRunsById[schedule.id] && (
+                                      <div className="mt-2 space-y-1.5 border-t border-arc-border pt-2">
+                                        {scheduleRunsById[schedule.id].length === 0 ? (
+                                          <p className="text-[10px] text-arc-text-dim">{t('settings.userAgentScheduleHistoryEmpty')}</p>
+                                        ) : scheduleRunsById[schedule.id].slice(0, 5).map((run) => (
+                                          <div key={run.id} className="rounded-md bg-arc-bg/70 px-2 py-1.5">
+                                            <div className="flex items-center justify-between gap-2">
+                                              <span className={`text-[9px] font-semibold uppercase tracking-wider ${run.status === 'complete' ? 'text-arc-success' : run.status === 'failed' ? 'text-arc-danger' : 'text-arc-text-dim'}`}>
+                                                {run.status}
+                                              </span>
+                                              <span className="text-[9px] text-arc-text-dim">{formatScheduleDate(run.scheduledFor)}</span>
+                                            </div>
+                                            {run.txHash && (
+                                              <a
+                                                href={`${EXPLORER_URL}/tx/${run.txHash}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="mt-1 inline-flex items-center gap-1 font-mono text-[9px] text-arc-accent hover:underline"
+                                              >
+                                                {formatAddress(run.txHash, 6)} <ExternalLink size={9} />
+                                              </a>
+                                            )}
+                                            {run.error && <p className="mt-1 break-words text-[9px] leading-relaxed text-arc-danger">{run.error}</p>}
+                                          </div>
+                                        ))}
+                                      </div>
                                     )}
                                   </div>
                                 ))}

@@ -58,8 +58,23 @@ export interface UserAgentSchedule {
   lastRunAt: string | null
   lastStatus: string | null
   lastError: string | null
+  consecutiveFailures: number
+  pausedReason: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface UserAgentScheduleRun {
+  id: string
+  scheduledFor: string
+  status: string
+  attempts: number
+  circleTransactionId: string | null
+  txHash: string | null
+  error: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
 }
 
 export interface UserAgentScheduleInput {
@@ -368,6 +383,8 @@ function parseSchedule(value: unknown): UserAgentSchedule {
     lastRunAt?: unknown
     lastStatus?: unknown
     lastError?: unknown
+    consecutiveFailures?: unknown
+    pausedReason?: unknown
     createdAt?: unknown
     updatedAt?: unknown
   }
@@ -377,6 +394,7 @@ function parseSchedule(value: unknown): UserAgentSchedule {
   const intervalHours = readNumber(candidate.intervalHours)
   const nextRunAt = readString(candidate.nextRunAt)
   const enabled = readBoolean(candidate.enabled)
+  const consecutiveFailures = readNumber(candidate.consecutiveFailures) ?? 0
   const createdAt = readString(candidate.createdAt)
   const updatedAt = readString(candidate.updatedAt)
 
@@ -391,6 +409,8 @@ function parseSchedule(value: unknown): UserAgentSchedule {
     || intervalHours < 1
     || !nextRunAt
     || enabled == null
+    || !Number.isInteger(consecutiveFailures)
+    || consecutiveFailures < 0
     || !createdAt
     || !updatedAt
   ) {
@@ -408,9 +428,47 @@ function parseSchedule(value: unknown): UserAgentSchedule {
     lastRunAt: candidate.lastRunAt == null ? null : readString(candidate.lastRunAt),
     lastStatus: candidate.lastStatus == null ? null : readString(candidate.lastStatus),
     lastError: candidate.lastError == null ? null : readString(candidate.lastError),
+    consecutiveFailures,
+    pausedReason: candidate.pausedReason == null ? null : readString(candidate.pausedReason),
     createdAt,
     updatedAt,
   }
+}
+
+function parseScheduleRuns(payload: unknown): UserAgentScheduleRun[] {
+  const raw = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as { runs?: unknown }).runs
+    : null
+  if (!Array.isArray(raw)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  return raw.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(t('settings.agentBackendMalformed'))
+    }
+    const candidate = value as Record<string, unknown>
+    const id = readString(candidate.id)
+    const scheduledFor = readString(candidate.scheduledFor)
+    const status = readString(candidate.status)
+    const attempts = readNumber(candidate.attempts)
+    const createdAt = readString(candidate.createdAt)
+    if (!id || !scheduledFor || !status || attempts == null || !Number.isInteger(attempts) || attempts < 0 || !createdAt) {
+      throw new Error(t('settings.agentBackendMalformed'))
+    }
+    return {
+      id,
+      scheduledFor,
+      status,
+      attempts,
+      circleTransactionId: candidate.circleTransactionId == null ? null : readString(candidate.circleTransactionId),
+      txHash: candidate.txHash == null ? null : readString(candidate.txHash),
+      error: candidate.error == null ? null : readString(candidate.error),
+      createdAt,
+      startedAt: candidate.startedAt == null ? null : readString(candidate.startedAt),
+      completedAt: candidate.completedAt == null ? null : readString(candidate.completedAt),
+    }
+  })
 }
 
 function parseSchedules(payload: unknown): UserAgentSchedule[] {
@@ -966,6 +1024,17 @@ export async function getSchedules(): Promise<UserAgentSchedule[]> {
   }
 
   return parseSchedules(payload)
+}
+
+export async function getScheduleRuns(scheduleId: string): Promise<UserAgentScheduleRun[]> {
+  const response = await authorizedRequest(`/me/schedule/${encodeURIComponent(scheduleId)}/runs`)
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+
+  return parseScheduleRuns(payload)
 }
 
 export async function createSchedule(input: UserAgentScheduleInput): Promise<UserAgentSchedule> {
