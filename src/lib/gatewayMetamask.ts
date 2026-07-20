@@ -334,7 +334,7 @@ async function getActiveWebTabId(): Promise<number> {
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-    throw new Error('Please open a regular web page first.')
+    throw new Error(t('gogo.x402OpenWebPage'))
   }
 
   return tab.id
