@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, Bot, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, CalendarClock, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, Pause, Play, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import {
@@ -73,18 +73,23 @@ import { formatRelativeTime, formatAddress, copyToClipboard } from '@/lib/utils'
 import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
 import {
   addAllowlist,
+  createSchedule,
+  deleteSchedule,
   getLedger,
   getMe,
   getPolicy,
+  getSchedules,
   isPaired,
   pairWithSignature,
   provisionAgent,
   removeAllowlist,
   unpair,
   updatePolicy,
+  updateSchedule,
   type PairingProfile,
   type UserAgentLedgerEntry,
   type UserAgentPolicy,
+  type UserAgentSchedule,
 } from '@/lib/pairing'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -121,6 +126,22 @@ function parseAutoTipAmount(value: string): number | null {
 function getSavedKeyLabel(key: string | null): string {
   if (!key) return t('settings.notSet')
   return formatText('settings.savedMasked', { suffix: key.slice(-4) })
+}
+
+function formatDateTimeLocal(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function getDefaultScheduleTimeInput(): string {
+  return formatDateTimeLocal(new Date(Date.now() + 24 * 60 * 60 * 1000))
+}
+
+function formatScheduleDate(value: string | null): string {
+  if (!value) return t('common.never')
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return t('common.unknown')
+  return date.toLocaleString()
 }
 
 function formatDiscoveryCandidatesMessage(candidates: CreatorDiscoveryResult['candidates']): string {
@@ -204,6 +225,14 @@ export function Settings({ onBack }: SettingsProps) {
   const [allowlistLabelInput, setAllowlistLabelInput] = useState('')
   const [allowlistError, setAllowlistError] = useState('')
   const [allowlistBusyRecipient, setAllowlistBusyRecipient] = useState<string | null>(null)
+  const [userAgentSchedules, setUserAgentSchedules] = useState<UserAgentSchedule[]>([])
+  const [scheduleRecipientInput, setScheduleRecipientInput] = useState('')
+  const [scheduleAmountInput, setScheduleAmountInput] = useState('')
+  const [scheduleLabelInput, setScheduleLabelInput] = useState('')
+  const [scheduleIntervalHoursInput, setScheduleIntervalHoursInput] = useState('168')
+  const [scheduleFirstRunInput, setScheduleFirstRunInput] = useState(getDefaultScheduleTimeInput)
+  const [scheduleError, setScheduleError] = useState('')
+  const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null)
   const [creatorHandle, setCreatorHandle] = useState('')
   const [creatorAddress, setCreatorAddress] = useState('')
   const [creatorError, setCreatorError] = useState('')
@@ -261,6 +290,13 @@ export function Settings({ onBack }: SettingsProps) {
       setUserAgentLedger(await getLedger())
     } catch (error) {
       setUserAgentLedger([])
+      throw error
+    }
+
+    try {
+      setUserAgentSchedules(await getSchedules())
+    } catch (error) {
+      setUserAgentSchedules([])
       throw error
     }
   }
@@ -604,6 +640,18 @@ export function Settings({ onBack }: SettingsProps) {
               setUserAgentLedger([])
             }
           }
+
+          try {
+            const schedules = await getSchedules()
+            if (active) {
+              setUserAgentSchedules(schedules)
+            }
+          } catch (error) {
+            debugWarn('[Settings] user agent schedules load failed:', error)
+            if (active) {
+              setUserAgentSchedules([])
+            }
+          }
         }
       } catch (error) {
         debugWarn('[Settings] pairing profile load failed:', error)
@@ -612,6 +660,7 @@ export function Settings({ onBack }: SettingsProps) {
           setUserAgentPolicy(null)
           setUserAgentPolicyLoadError('')
           setUserAgentLedger([])
+          setUserAgentSchedules([])
         }
       } finally {
         if (active) {
@@ -706,6 +755,7 @@ export function Settings({ onBack }: SettingsProps) {
     setUserAgentPolicy(null)
     setUserAgentPolicyLoadError('')
     setUserAgentLedger([])
+    setUserAgentSchedules([])
     setPairingError('')
   }
 
@@ -795,6 +845,77 @@ export function Settings({ onBack }: SettingsProps) {
       setAllowlistError(error instanceof Error ? error.message : t('state.error'))
     } finally {
       setAllowlistBusyRecipient(null)
+    }
+  }
+
+  const handleCreateUserAgentSchedule = async () => {
+    const recipient = scheduleRecipientInput.trim().toLowerCase()
+    const amount = scheduleAmountInput.trim().replace(',', '.')
+    const intervalHours = Number(scheduleIntervalHoursInput)
+    const firstRun = new Date(scheduleFirstRunInput)
+    setScheduleError('')
+
+    if (!isValidAddress(recipient)) {
+      setScheduleError(t('settings.userAgentScheduleInvalidAddress'))
+      return
+    }
+    if (parseAutoTipAmount(amount) == null) {
+      setScheduleError(t('settings.userAgentScheduleInvalidAmount'))
+      return
+    }
+    if (!Number.isInteger(intervalHours) || intervalHours < 1 || intervalHours > 8760) {
+      setScheduleError(t('settings.userAgentScheduleInvalidInterval'))
+      return
+    }
+    if (!Number.isFinite(firstRun.getTime()) || firstRun.getTime() <= Date.now()) {
+      setScheduleError(t('settings.userAgentScheduleInvalidStart'))
+      return
+    }
+
+    setScheduleBusyId('create')
+    try {
+      await createSchedule({
+        recipient,
+        amount,
+        label: scheduleLabelInput,
+        intervalHours,
+        firstRunAt: firstRun.toISOString(),
+      })
+      setUserAgentSchedules(await getSchedules())
+      setScheduleRecipientInput('')
+      setScheduleAmountInput('')
+      setScheduleLabelInput('')
+      setScheduleFirstRunInput(getDefaultScheduleTimeInput())
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setScheduleBusyId(null)
+    }
+  }
+
+  const handleToggleUserAgentSchedule = async (schedule: UserAgentSchedule) => {
+    setScheduleBusyId(schedule.id)
+    setScheduleError('')
+    try {
+      await updateSchedule(schedule.id, { enabled: !schedule.enabled })
+      setUserAgentSchedules(await getSchedules())
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setScheduleBusyId(null)
+    }
+  }
+
+  const handleDeleteUserAgentSchedule = async (scheduleId: string) => {
+    setScheduleBusyId(scheduleId)
+    setScheduleError('')
+    try {
+      await deleteSchedule(scheduleId)
+      setUserAgentSchedules((schedules) => schedules.filter((schedule) => schedule.id !== scheduleId))
+    } catch (error) {
+      setScheduleError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setScheduleBusyId(null)
     }
   }
 
@@ -1933,6 +2054,148 @@ export function Settings({ onBack }: SettingsProps) {
                               <Button type="button" size="sm" onClick={() => void handleAddUserAgentAllowlist()} disabled={allowlistBusyRecipient !== null}>
                                 {allowlistBusyRecipient ? t('common.loading') : t('settings.userAgentAllowlistAdd')}
                               </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 border-t border-arc-border pt-4">
+                            <div className="flex items-start gap-2.5">
+                              <span className="mt-0.5 rounded-lg border border-arc-border bg-arc-card p-1.5 text-arc-text-dim">
+                                <CalendarClock size={14} />
+                              </span>
+                              <div>
+                                <p className="text-sm font-semibold text-arc-text">{t('settings.userAgentScheduleTitle')}</p>
+                                <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentScheduleDescription')}</p>
+                              </div>
+                            </div>
+
+                            {userAgentSchedules.length === 0 ? (
+                              <p className="text-[10px] text-arc-text-dim">{t('settings.userAgentScheduleEmpty')}</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {userAgentSchedules.map((schedule) => (
+                                  <div key={schedule.id} className="rounded-lg border border-arc-border bg-arc-card px-2.5 py-2.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-xs font-medium text-arc-text">{schedule.label || formatAddress(schedule.recipient, 6)}</p>
+                                        <p className="truncate font-mono text-[9px] text-arc-text-dim">{schedule.recipient}</p>
+                                        <p className="mt-1 text-[10px] text-arc-text-dim">
+                                          {formatText('settings.userAgentScheduleSummary', {
+                                            amount: schedule.amount,
+                                            hours: schedule.intervalHours,
+                                          })}
+                                        </p>
+                                        <p className="text-[10px] text-arc-text-dim">
+                                          {formatText('settings.userAgentScheduleNextRun', { date: formatScheduleDate(schedule.nextRunAt) })}
+                                        </p>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleToggleUserAgentSchedule(schedule)}
+                                          disabled={scheduleBusyId !== null}
+                                          className="rounded-lg p-1.5 text-arc-text-dim hover:text-arc-text disabled:opacity-40"
+                                          title={schedule.enabled ? t('settings.userAgentSchedulePause') : t('settings.userAgentScheduleResume')}
+                                        >
+                                          {schedule.enabled ? <Pause size={13} /> : <Play size={13} />}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleDeleteUserAgentSchedule(schedule.id)}
+                                          disabled={scheduleBusyId !== null}
+                                          className="rounded-lg p-1.5 text-arc-text-dim hover:text-arc-danger disabled:opacity-40"
+                                          title={t('settings.userAgentScheduleRemove')}
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-arc-border pt-2">
+                                      <span className={`text-[9px] font-semibold uppercase tracking-wider ${schedule.enabled ? 'text-arc-success' : 'text-arc-text-dim'}`}>
+                                        {schedule.enabled ? t('settings.userAgentScheduleActive') : t('settings.userAgentSchedulePaused')}
+                                      </span>
+                                      {schedule.lastStatus && (
+                                        <span className="text-[9px] uppercase tracking-wider text-arc-text-dim">
+                                          {formatText('settings.userAgentScheduleLastStatus', { status: schedule.lastStatus })}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {schedule.lastError && (
+                                      <p className="mt-2 break-words text-[10px] leading-relaxed text-arc-danger" title={schedule.lastError}>
+                                        {schedule.lastError}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="space-y-2 rounded-lg border border-arc-border bg-arc-card/60 p-2.5">
+                              <Input
+                                label={t('settings.userAgentScheduleRecipient')}
+                                value={scheduleRecipientInput}
+                                onChange={(event) => {
+                                  setScheduleRecipientInput(event.target.value)
+                                  setScheduleError('')
+                                }}
+                                placeholder="0x..."
+                                className="bg-arc-bg border-arc-border text-white font-mono text-xs"
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                  label={t('settings.userAgentScheduleAmount')}
+                                  value={scheduleAmountInput}
+                                  onChange={(event) => {
+                                    setScheduleAmountInput(event.target.value)
+                                    setScheduleError('')
+                                  }}
+                                  inputMode="decimal"
+                                  placeholder="1"
+                                  className="bg-arc-bg border-arc-border text-white"
+                                />
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-xs font-medium uppercase tracking-wider text-arc-text-dim">
+                                    {t('settings.userAgentScheduleFrequency')}
+                                  </label>
+                                  <select
+                                    value={scheduleIntervalHoursInput}
+                                    onChange={(event) => {
+                                      setScheduleIntervalHoursInput(event.target.value)
+                                      setScheduleError('')
+                                    }}
+                                    className="w-full rounded-xl border border-arc-border bg-arc-bg px-3 py-2.5 text-sm text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
+                                  >
+                                    <option value="24">{t('settings.userAgentScheduleDaily')}</option>
+                                    <option value="168">{t('settings.userAgentScheduleWeekly')}</option>
+                                    <option value="720">{t('settings.userAgentScheduleEveryThirtyDays')}</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <Input
+                                label={t('settings.userAgentScheduleFirstRun')}
+                                type="datetime-local"
+                                min={formatDateTimeLocal(new Date())}
+                                value={scheduleFirstRunInput}
+                                onChange={(event) => {
+                                  setScheduleFirstRunInput(event.target.value)
+                                  setScheduleError('')
+                                }}
+                                className="bg-arc-bg border-arc-border text-white"
+                              />
+                              <Input
+                                label={t('settings.userAgentScheduleLabel')}
+                                value={scheduleLabelInput}
+                                onChange={(event) => setScheduleLabelInput(event.target.value)}
+                                placeholder={t('settings.userAgentScheduleLabelPlaceholder')}
+                                maxLength={80}
+                                className="bg-arc-bg border-arc-border text-white"
+                              />
+                              <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.userAgentSchedulePolicyNote')}</p>
+                              {scheduleError && <p className="text-xs text-arc-danger">{scheduleError}</p>}
+                              <div className="flex justify-end">
+                                <Button type="button" size="sm" onClick={() => void handleCreateUserAgentSchedule()} disabled={scheduleBusyId !== null}>
+                                  {scheduleBusyId === 'create' ? t('common.loading') : t('settings.userAgentScheduleCreate')}
+                                </Button>
+                              </div>
                             </div>
                           </div>
 

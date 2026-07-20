@@ -47,6 +47,30 @@ export interface UserAgentLedgerEntry {
   createdAt: string
 }
 
+export interface UserAgentSchedule {
+  id: string
+  recipient: string
+  amount: string
+  label: string | null
+  intervalHours: number
+  nextRunAt: string
+  enabled: boolean
+  lastRunAt: string | null
+  lastStatus: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UserAgentScheduleInput {
+  recipient: string
+  amount: string
+  label?: string
+  intervalHours: number
+  firstRunAt: string
+  enabled?: boolean
+}
+
 export class PairingApiError extends Error {
   readonly status: number
   readonly backendMessage: string | null
@@ -326,6 +350,84 @@ function parseLedger(payload: unknown): UserAgentLedgerEntry[] {
 
     return { recipient, amount, txHash, status, createdAt }
   })
+}
+
+function parseSchedule(value: unknown): UserAgentSchedule {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  const candidate = value as {
+    id?: unknown
+    recipient?: unknown
+    amount?: unknown
+    label?: unknown
+    intervalHours?: unknown
+    nextRunAt?: unknown
+    enabled?: unknown
+    lastRunAt?: unknown
+    lastStatus?: unknown
+    lastError?: unknown
+    createdAt?: unknown
+    updatedAt?: unknown
+  }
+  const id = readString(candidate.id)
+  const recipient = readAddress(candidate.recipient)
+  const amount = readString(candidate.amount) ?? (readNumber(candidate.amount)?.toString() ?? null)
+  const intervalHours = readNumber(candidate.intervalHours)
+  const nextRunAt = readString(candidate.nextRunAt)
+  const enabled = readBoolean(candidate.enabled)
+  const createdAt = readString(candidate.createdAt)
+  const updatedAt = readString(candidate.updatedAt)
+
+  if (
+    !id
+    || !recipient
+    || !amount
+    || !Number.isFinite(Number(amount))
+    || Number(amount) <= 0
+    || intervalHours == null
+    || !Number.isInteger(intervalHours)
+    || intervalHours < 1
+    || !nextRunAt
+    || enabled == null
+    || !createdAt
+    || !updatedAt
+  ) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+
+  return {
+    id,
+    recipient,
+    amount,
+    label: candidate.label == null ? null : readString(candidate.label),
+    intervalHours,
+    nextRunAt,
+    enabled,
+    lastRunAt: candidate.lastRunAt == null ? null : readString(candidate.lastRunAt),
+    lastStatus: candidate.lastStatus == null ? null : readString(candidate.lastStatus),
+    lastError: candidate.lastError == null ? null : readString(candidate.lastError),
+    createdAt,
+    updatedAt,
+  }
+}
+
+function parseSchedules(payload: unknown): UserAgentSchedule[] {
+  const raw = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as { schedules?: unknown }).schedules
+    : null
+  if (!Array.isArray(raw)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+  return raw.map(parseSchedule)
+}
+
+function parseSchedulePayload(payload: unknown): UserAgentSchedule {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(t('settings.agentBackendMalformed'))
+  }
+  return parseSchedule((payload as { schedule?: unknown }).schedule)
 }
 
 function isInsufficientFundsError(payload: unknown, message: string | null): boolean {
@@ -853,6 +955,71 @@ export async function getLedger(): Promise<UserAgentLedgerEntry[]> {
   }
 
   return parseLedger(payload).slice(0, 20)
+}
+
+export async function getSchedules(): Promise<UserAgentSchedule[]> {
+  const response = await authorizedRequest('/me/schedule')
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
+
+  return parseSchedules(payload)
+}
+
+export async function createSchedule(input: UserAgentScheduleInput): Promise<UserAgentSchedule> {
+  const response = await authorizedRequest('/me/schedule', {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient: input.recipient.trim().toLowerCase(),
+      amount: input.amount.trim(),
+      label: input.label?.trim() || undefined,
+      intervalHours: input.intervalHours,
+      firstRunAt: input.firstRunAt,
+      enabled: input.enabled ?? true,
+    }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload, true)
+  }
+
+  return parseSchedulePayload(payload)
+}
+
+export async function updateSchedule(
+  scheduleId: string,
+  patch: Partial<UserAgentScheduleInput>,
+): Promise<UserAgentSchedule> {
+  const response = await authorizedRequest(`/me/schedule/${encodeURIComponent(scheduleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...patch,
+      ...(patch.recipient !== undefined ? { recipient: patch.recipient.trim().toLowerCase() } : {}),
+      ...(patch.amount !== undefined ? { amount: patch.amount.trim() } : {}),
+      ...(patch.label !== undefined ? { label: patch.label.trim() } : {}),
+    }),
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload, true)
+  }
+
+  return parseSchedulePayload(payload)
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<void> {
+  const response = await authorizedRequest(`/me/schedule/${encodeURIComponent(scheduleId)}`, {
+    method: 'DELETE',
+  })
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throw await createUserAgentError(response.status, payload)
+  }
 }
 
 export async function isPaired(): Promise<boolean> {

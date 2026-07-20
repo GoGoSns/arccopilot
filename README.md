@@ -15,6 +15,8 @@ ArcCopilot is a personal onchain assistant built as a multi-user product. Each u
 ### Autonomous, signatureless payments (Circle W3S)
 The agent can send USDC on Arc **without a per-transaction wallet signature**. Pairing starts with a SIWE-style MetaMask signature, then the backend provisions that user their own Circle W3S (developer-controlled) agent wallet. The user funds that wallet and defines its weekly budget, per-tip cap, and recipient allowlist. Every autonomous transfer is enforced against that user's policy server-side and recorded in their ledger. No private key ever lives in the extension.
 
+Users can also create recurring autonomous payments from Settings. Daily, weekly, and 30-day schedules execute from the paired agent wallet, use a stable idempotency key for each occurrence, and recheck the live policy and wallet state before every payment. Schedules can be paused, resumed, or removed from the extension.
+
 This is opt-in. When "Autonomous mode for my agent" is off, ArcCopilot uses the standard MetaMask / Circle Gateway flow and you sign each transaction yourself. The legacy single-operator autonomous mode remains available as a fallback.
 
 ### Proactive tip advisor
@@ -70,7 +72,7 @@ Explorer: https://testnet.arcscan.app
 
 - **Extension (Chrome MV3):** React + TypeScript + wagmi/viem. Runs the agent logic, advisor, discovery, news, briefing, portfolio, planner, pairing UI, and the Gogo AI chat surface. Pairing uses a SIWE-style MetaMask signature. No private key is stored in the client.
 - **Agent backend (separate service):** a Node service that authenticates paired users, provisions one Circle W3S agent wallet per user, and routes autonomous tips from the correct wallet. Per-user weekly budget, per-tip cap, and allowlist policy are enforced server-side before every transfer.
-- **Neon Postgres:** stores users, sessions, agent wallet records, policies, allowlists, and the per-user tip ledger. Session tokens are stored only as hashes.
+- **Neon Postgres:** stores users, sessions, agent wallet records, policies, allowlists, recurring payment rules, occurrence records, and the per-user tip ledger. Session tokens are stored only as hashes.
 - **Key custody:** Circle W3S holds the wallet keys. Private keys are never returned to or stored by the extension.
 - **Fallback paths preserved:** with per-user autonomous mode off, the extension uses the existing signed MetaMask / Circle Gateway flow. The legacy single-operator autonomous mode remains available as a fallback.
 
