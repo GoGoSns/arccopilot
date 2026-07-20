@@ -44,6 +44,7 @@ import {
   AUTO_TIP_RULE,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
+  NOTIF_REMINDERS_STORAGE_KEY,
   NEWS_FEEDS_STORAGE_KEY,
   TIP_BUDGET,
   USER_X_HANDLE,
@@ -170,6 +171,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [isAddingTwitter, setIsAddingTwitter] = useState(false)
   const [incomingAlerts, setIncomingAlerts] = useState(true)
   const [balanceAlerts, setBalanceAlerts] = useState(true)
+  const [reminderAlerts, setReminderAlerts] = useState(true)
   const [voiceResponsesEnabled, setVoiceResponsesEnabled] = useState(false)
   const [tempKey, setTempKey] = useState('')
   const [twitterTempKey, setTwitterTempKey] = useState('')
@@ -338,10 +340,11 @@ export function Settings({ onBack }: SettingsProps) {
       setUserXHandleState(userHandle ?? '')
     })
 
-    void chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY]).then((result) => {
+    void chromeStorageGet([NOTIF_INCOMING_STORAGE_KEY, NOTIF_BALANCE_STORAGE_KEY, NOTIF_REMINDERS_STORAGE_KEY, VOICE_RESPONSES_STORAGE_KEY]).then((result) => {
       if (!active) return
       setIncomingAlerts(readStoredBoolean(result[NOTIF_INCOMING_STORAGE_KEY], true))
       setBalanceAlerts(readStoredBoolean(result[NOTIF_BALANCE_STORAGE_KEY], true))
+      setReminderAlerts(readStoredBoolean(result[NOTIF_REMINDERS_STORAGE_KEY], true))
       setVoiceResponsesEnabled(readStoredBoolean(result[VOICE_RESPONSES_STORAGE_KEY], false))
     })
 
@@ -1014,6 +1017,12 @@ export function Settings({ onBack }: SettingsProps) {
     const nextValue = !balanceAlerts
     setBalanceAlerts(nextValue)
     await chromeStorageSet({ [NOTIF_BALANCE_STORAGE_KEY]: nextValue })
+  }
+
+  const handleToggleReminderAlerts = async () => {
+    const nextValue = !reminderAlerts
+    setReminderAlerts(nextValue)
+    await chromeStorageSet({ [NOTIF_REMINDERS_STORAGE_KEY]: nextValue })
   }
 
   const handleToggleVoiceResponses = async () => {
@@ -2940,6 +2949,12 @@ export function Settings({ onBack }: SettingsProps) {
               description: t('settings.balanceAlertsDescription'),
               enabled: balanceAlerts,
               onToggle: handleToggleBalanceAlerts,
+            },
+            {
+              label: t('settings.reminderAlerts'),
+              description: t('settings.reminderAlertsDescription'),
+              enabled: reminderAlerts,
+              onToggle: handleToggleReminderAlerts,
             },
           ].map((item, index) => (
             <button

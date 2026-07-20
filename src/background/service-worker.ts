@@ -15,6 +15,9 @@ import {
   LAST_SEEN_INCOMING_KEY,
   NOTIF_BALANCE_STORAGE_KEY,
   NOTIF_INCOMING_STORAGE_KEY,
+  NOTIF_REMINDERS_STORAGE_KEY,
+  REMINDER_NOTIFIED_STORAGE_KEY,
+  REMINDERS,
   WALLET_ADDRESS_STORAGE_KEY,
 } from '@/lib/storageKeys'
 import { ARC_RPC_URL, BLOCKSCOUT_BASE, USDC_CONTRACT } from '@/lib/constants'
@@ -336,7 +339,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.notifications.onClicked.addListener((notifId) => {
   chrome.notifications.clear(notifId)
   void (async () => {
-    await chromeStorageSet({ [PENDING_VIEW_STORAGE_KEY]: 'daily-brief' })
+    await chromeStorageSet({ [PENDING_VIEW_STORAGE_KEY]: notifId.startsWith('reminder-') ? 'calendar' : 'daily-brief' })
     try {
       void (chrome.action as any).openPopup()
     } catch {}
@@ -386,7 +389,62 @@ async function runRecurringChecks(): Promise<void> {
   await Promise.allSettled([
     checkWhales(),
     checkBalanceAndIncoming(),
+    checkDueReminders(),
   ])
+}
+
+async function checkDueReminders(): Promise<void> {
+  const storage = await chromeStorageGet([
+    REMINDERS,
+    NOTIF_REMINDERS_STORAGE_KEY,
+    REMINDER_NOTIFIED_STORAGE_KEY,
+  ])
+  if (storage[NOTIF_REMINDERS_STORAGE_KEY] === false) return
+
+  const rawReminders = Array.isArray(storage[REMINDERS]) ? storage[REMINDERS] : []
+  const storedNotified = isRecord(storage[REMINDER_NOTIFIED_STORAGE_KEY])
+    ? storage[REMINDER_NOTIFIED_STORAGE_KEY]
+    : {}
+  const notified: Record<string, string> = {}
+  const validReminderIds = new Set<string>()
+  const dueReminders: Array<{ id: string; text: string; dueAt: string; timestamp: number }> = []
+  const now = Date.now()
+  const oldestAllowed = now - 24 * 60 * 60 * 1000
+
+  for (const raw of rawReminders) {
+    if (!isRecord(raw) || raw.done === true) continue
+    const id = typeof raw.id === 'string' ? raw.id.trim() : ''
+    const text = typeof raw.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim() : ''
+    const dueAt = typeof raw.dueAt === 'string' ? raw.dueAt : ''
+    const timestamp = Date.parse(dueAt)
+    if (!id || !text || !dueAt || !Number.isFinite(timestamp)) continue
+
+    validReminderIds.add(id)
+    if (typeof storedNotified[id] === 'string') {
+      notified[id] = storedNotified[id] as string
+    }
+    if (timestamp <= now && timestamp >= oldestAllowed && notified[id] !== dueAt) {
+      dueReminders.push({ id, text, dueAt, timestamp })
+    }
+  }
+
+  const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
+  for (const reminder of dueReminders.sort((left, right) => left.timestamp - right.timestamp).slice(0, 3)) {
+    chrome.notifications.create(`reminder-${reminder.id}`, {
+      type: 'basic',
+      iconUrl,
+      title: 'ArcCopilot - Reminder',
+      message: reminder.text,
+      priority: 2,
+    })
+    notified[reminder.id] = reminder.dueAt
+  }
+
+  for (const id of Object.keys(notified)) {
+    if (!validReminderIds.has(id)) delete notified[id]
+  }
+
+  await chromeStorageSet({ [REMINDER_NOTIFIED_STORAGE_KEY]: notified })
 }
 
 async function checkWhales(): Promise<void> {

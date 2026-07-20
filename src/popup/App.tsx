@@ -12,6 +12,7 @@ import { Settings } from '@/pages/Settings'
 import { AddressBook } from '@/pages/AddressBook'
 import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
+import { Calendar } from '@/pages/Calendar'
 import { GogoAI } from '@/pages/GogoAI'
 import { useLocale } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
@@ -27,6 +28,7 @@ const VALID_VIEWS: View[] = [
   'address-book',
   'address-detail',
   'daily-brief',
+  'calendar',
   'gogo-ai',
   'activity',
 ]
@@ -86,6 +88,7 @@ export default function App() {
   if (view === 'address-book') return <AddressBook onBack={goBack} />
   if (view === 'address-detail') return <AddressDetail onBack={goBack} />
   if (view === 'daily-brief') return <DailyBrief onBack={goBack} />
+  if (view === 'calendar') return <Calendar onBack={goBack} />
   if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
   if (view === 'activity') return <Activity onBack={goBack} />
 

@@ -427,6 +427,35 @@ export async function completeReminder(id: string): Promise<boolean> {
   return true
 }
 
+export async function snoozeReminder(id: string, durationMs = 24 * 60 * 60 * 1000): Promise<PlannerReminder | null> {
+  const normalizedId = id.trim()
+  if (!normalizedId || !Number.isFinite(durationMs) || durationMs <= 0) return null
+
+  const current = await listReminders()
+  const target = current.find((reminder) => reminder.id === normalizedId)
+  if (!target) return null
+
+  const currentDueAt = target.dueAt ? new Date(target.dueAt).getTime() : Number.NaN
+  const baseTime = Number.isFinite(currentDueAt) && currentDueAt > Date.now()
+    ? currentDueAt
+    : Date.now()
+  const updated: PlannerReminder = {
+    ...target,
+    dueAt: new Date(baseTime + durationMs).toISOString(),
+    done: false,
+  }
+  const next = current.map((reminder) => reminder.id === normalizedId ? updated : reminder)
+
+  await saveReminders(sortReminders(next))
+  console.log('[PLANNER]', {
+    status: 'reminder-snoozed',
+    reminderId: normalizedId,
+    dueAt: updated.dueAt,
+  })
+
+  return updated
+}
+
 export async function deleteReminder(id: string): Promise<boolean> {
   const normalizedId = id.trim()
   if (!normalizedId) return false

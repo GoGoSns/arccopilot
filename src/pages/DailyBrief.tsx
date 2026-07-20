@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, Eye, Hash, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
+import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, CalendarDays, Eye, Hash, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { ErrorState } from '@/components/ErrorState'
@@ -1886,11 +1886,19 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
         </div>
 
         <div className="space-y-4 overflow-hidden rounded-2xl border border-arc-accent/25 bg-gradient-to-br from-arc-accent/10 via-arc-card to-arc-card p-4 shadow-lg shadow-arc-accent/5">
-          <div className="flex items-center gap-2">
-            <Bell size={14} className="text-arc-accent" />
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Bell size={14} className="text-arc-accent" />
               <p className="font-mono text-[10px] uppercase tracking-widest text-arc-accent/85">{t('planner.title')}</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setCurrentView('calendar')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-arc-border/70 bg-arc-bg/60 px-2.5 py-1.5 text-[10px] text-arc-text-dim transition-colors hover:text-arc-text"
+            >
+              <CalendarDays size={13} />
+              {t('calendar.open')}
+            </button>
           </div>
 
           <div className="space-y-4">
