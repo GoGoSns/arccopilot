@@ -8,8 +8,11 @@ import {
   ChevronRight,
   Clock3,
   Coins,
+  Pencil,
   RotateCcw,
+  Save,
   Trash2,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -21,7 +24,10 @@ import {
   getPlannerStorageKey,
   listReminders,
   snoozeReminder,
+  updateReminder,
   type PlannerReminder,
+  type ReminderPriority,
+  type ReminderRepeat,
 } from '@/lib/planner'
 import { getSchedules, isPaired, type UserAgentSchedule } from '@/lib/pairing'
 import { useStore } from '@/lib/store'
@@ -136,6 +142,14 @@ export function Calendar({ onBack }: CalendarProps) {
   const [dueAtInput, setDueAtInput] = useState(() => toLocalDateTimeInput(defaultReminderTime(new Date())))
   const [formError, setFormError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [priority, setPriority] = useState<ReminderPriority>('normal')
+  const [repeat, setRepeat] = useState<ReminderRepeat>('none')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+  const [editDueAt, setEditDueAt] = useState('')
+  const [editPriority, setEditPriority] = useState<ReminderPriority>('normal')
+  const [editRepeat, setEditRepeat] = useState<ReminderRepeat>('none')
+  const [snoozeMenuId, setSnoozeMenuId] = useState<string | null>(null)
 
   const loadReminders = async () => {
     try {
@@ -238,7 +252,7 @@ export function Calendar({ onBack }: CalendarProps) {
     setFormError('')
     setBusyId('create')
     try {
-      await addReminder(text, dueAt.toISOString())
+      await addReminder(text, dueAt.toISOString(), { priority, repeat })
       setReminderText('')
       selectDay(dueAt)
       await loadReminders()
@@ -247,13 +261,55 @@ export function Calendar({ onBack }: CalendarProps) {
     }
   }
 
-  const runReminderAction = async (id: string, action: 'complete' | 'snooze' | 'delete') => {
+  const runReminderAction = async (
+    id: string,
+    action: 'complete' | 'snooze' | 'delete',
+    snoozeDurationMs = DAY_MS,
+  ) => {
     setBusyId(`${action}:${id}`)
     try {
       if (action === 'complete') await completeReminder(id)
-      if (action === 'snooze') await snoozeReminder(id, DAY_MS)
+      if (action === 'snooze') await snoozeReminder(id, snoozeDurationMs)
       if (action === 'delete') await deleteReminder(id)
+      setSnoozeMenuId(null)
       await loadReminders()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const startEditing = (reminder: PlannerReminder) => {
+    setEditingId(reminder.id)
+    setEditText(reminder.text)
+    setEditDueAt(reminder.dueAt
+      ? toLocalDateTimeInput(new Date(reminder.dueAt))
+      : toLocalDateTimeInput(defaultReminderTime(selectedDay)))
+    setEditPriority(reminder.priority ?? 'normal')
+    setEditRepeat(reminder.repeat ?? 'none')
+    setSnoozeMenuId(null)
+  }
+
+  const saveEditing = async (id: string) => {
+    const dueAt = new Date(editDueAt)
+    if (!editText.trim() || !editDueAt || Number.isNaN(dueAt.getTime())) {
+      setFormError(t('calendar.invalidReminder'))
+      return
+    }
+
+    setBusyId(`edit:${id}`)
+    setFormError('')
+    try {
+      const updated = await updateReminder(id, {
+        text: editText,
+        dueAt: dueAt.toISOString(),
+        priority: editPriority,
+        repeat: editRepeat,
+      })
+      if (updated) {
+        setEditingId(null)
+        selectDay(dueAt)
+        await loadReminders()
+      }
     } finally {
       setBusyId(null)
     }
@@ -262,6 +318,62 @@ export function Calendar({ onBack }: CalendarProps) {
   const renderReminder = (reminder: PlannerReminder, compact = false) => {
     const dueAt = reminder.dueAt ? new Date(reminder.dueAt) : null
     const isOverdue = Boolean(dueAt && !reminder.done && dueAt.getTime() < Date.now())
+    const reminderPriority = reminder.priority ?? 'normal'
+    const reminderRepeat = reminder.repeat ?? 'none'
+
+    if (editingId === reminder.id) {
+      return (
+        <div key={reminder.id} className="space-y-3 rounded-xl border border-arc-accent/30 bg-arc-card/80 p-3">
+          <div className="flex items-center gap-2 text-arc-accent">
+            <Pencil size={13} />
+            <p className="font-mono text-[10px] uppercase tracking-widest">{t('calendar.editReminder')}</p>
+          </div>
+          <Input value={editText} onChange={(event) => setEditText(event.target.value)} maxLength={180} />
+          <Input
+            type="datetime-local"
+            value={editDueAt}
+            onChange={(event) => setEditDueAt(event.target.value)}
+            label={t('calendar.dateTime')}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-[10px] uppercase tracking-wider text-arc-text-dim">
+              <span>{t('calendar.priority')}</span>
+              <select
+                value={editPriority}
+                onChange={(event) => setEditPriority(event.target.value as ReminderPriority)}
+                className="w-full rounded-xl border border-arc-border bg-arc-card px-2 py-2 text-xs normal-case tracking-normal text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
+              >
+                <option value="low">{t('calendar.priorityLow')}</option>
+                <option value="normal">{t('calendar.priorityNormal')}</option>
+                <option value="high">{t('calendar.priorityHigh')}</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-[10px] uppercase tracking-wider text-arc-text-dim">
+              <span>{t('calendar.repeat')}</span>
+              <select
+                value={editRepeat}
+                onChange={(event) => setEditRepeat(event.target.value as ReminderRepeat)}
+                className="w-full rounded-xl border border-arc-border bg-arc-card px-2 py-2 text-xs normal-case tracking-normal text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
+              >
+                <option value="none">{t('calendar.repeatNone')}</option>
+                <option value="daily">{t('calendar.repeatDaily')}</option>
+                <option value="weekly">{t('calendar.repeatWeekly')}</option>
+                <option value="monthly">{t('calendar.repeatMonthly')}</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={() => void saveEditing(reminder.id)} disabled={Boolean(busyId)}>
+              <Save size={12} /> {t('common.save')}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(null)} disabled={Boolean(busyId)}>
+              <X size={12} /> {t('common.cancel')}
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div key={reminder.id} className="rounded-xl border border-arc-border/70 bg-arc-card/70 p-3">
         <div className="flex items-start gap-3">
@@ -281,35 +393,80 @@ export function Calendar({ onBack }: CalendarProps) {
             <p className={`mt-1 text-[10px] uppercase tracking-widest ${isOverdue ? 'text-arc-accent' : 'text-arc-text-dim'}`}>
               {dueAt ? `${isOverdue ? `${t('planner.overdue')} · ` : ''}${formatTime(dueAt, locale)}` : t('planner.noDueDate')}
             </p>
+            {(reminderPriority !== 'normal' || reminderRepeat !== 'none') && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {reminderPriority !== 'normal' && (
+                  <span className={`rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wider ${
+                    reminderPriority === 'high'
+                      ? 'border-arc-accent/30 bg-arc-accent/10 text-arc-accent'
+                      : 'border-arc-border bg-arc-elevated text-arc-text-dim'
+                  }`}>
+                    {reminderPriority === 'high' ? t('calendar.priorityHigh') : t('calendar.priorityLow')}
+                  </span>
+                )}
+                {reminderRepeat !== 'none' && (
+                  <span className="rounded-full border border-sky-300/20 bg-sky-300/5 px-2 py-0.5 text-[9px] uppercase tracking-wider text-sky-300">
+                    {reminderRepeat === 'daily'
+                      ? t('calendar.repeatDaily')
+                      : reminderRepeat === 'weekly'
+                        ? t('calendar.repeatWeekly')
+                        : t('calendar.repeatMonthly')}
+                  </span>
+                )}
+              </div>
+            )}
             {!reminder.done && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => void runReminderAction(reminder.id, 'complete')}
-                  disabled={Boolean(busyId)}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-text disabled:opacity-40"
-                >
-                  <Check size={12} /> {t('planner.complete')}
-                </button>
-                {!compact && (
+              <>
+                <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void runReminderAction(reminder.id, 'snooze')}
+                    onClick={() => void runReminderAction(reminder.id, 'complete')}
                     disabled={Boolean(busyId)}
                     className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-text disabled:opacity-40"
                   >
-                    <RotateCcw size={12} /> {t('calendar.snoozeTomorrow')}
+                    <Check size={12} /> {t('planner.complete')}
                   </button>
+                  {!compact && (
+                    <button
+                      type="button"
+                      onClick={() => setSnoozeMenuId((current) => current === reminder.id ? null : reminder.id)}
+                      disabled={Boolean(busyId)}
+                      className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-text disabled:opacity-40"
+                    >
+                      <RotateCcw size={12} /> {t('calendar.snooze')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => startEditing(reminder)}
+                    disabled={Boolean(busyId)}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-text disabled:opacity-40"
+                  >
+                    <Pencil size={12} /> {t('common.edit')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runReminderAction(reminder.id, 'delete')}
+                    disabled={Boolean(busyId)}
+                    className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-danger disabled:opacity-40"
+                  >
+                    <Trash2 size={12} /> {t('planner.delete')}
+                  </button>
+                </div>
+                {snoozeMenuId === reminder.id && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 rounded-xl border border-arc-border/70 bg-arc-bg/60 p-2">
+                    <button type="button" onClick={() => void runReminderAction(reminder.id, 'snooze', 60 * 60 * 1000)} className="rounded-lg px-2 py-1 text-[10px] text-arc-text-dim hover:bg-arc-elevated hover:text-arc-text">
+                      {t('calendar.snoozeHour')}
+                    </button>
+                    <button type="button" onClick={() => void runReminderAction(reminder.id, 'snooze', DAY_MS)} className="rounded-lg px-2 py-1 text-[10px] text-arc-text-dim hover:bg-arc-elevated hover:text-arc-text">
+                      {t('calendar.snoozeTomorrow')}
+                    </button>
+                    <button type="button" onClick={() => void runReminderAction(reminder.id, 'snooze', 7 * DAY_MS)} className="rounded-lg px-2 py-1 text-[10px] text-arc-text-dim hover:bg-arc-elevated hover:text-arc-text">
+                      {t('calendar.snoozeWeek')}
+                    </button>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void runReminderAction(reminder.id, 'delete')}
-                  disabled={Boolean(busyId)}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-arc-border px-2 text-[10px] text-arc-text-dim transition-colors hover:text-arc-danger disabled:opacity-40"
-                >
-                  <Trash2 size={12} /> {t('planner.delete')}
-                </button>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -468,6 +625,33 @@ export function Calendar({ onBack }: CalendarProps) {
             onChange={(event) => setDueAtInput(event.target.value)}
             label={t('calendar.dateTime')}
           />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-[10px] uppercase tracking-wider text-arc-text-dim">
+              <span>{t('calendar.priority')}</span>
+              <select
+                value={priority}
+                onChange={(event) => setPriority(event.target.value as ReminderPriority)}
+                className="w-full rounded-xl border border-arc-border bg-arc-card px-2 py-2.5 text-xs normal-case tracking-normal text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
+              >
+                <option value="low">{t('calendar.priorityLow')}</option>
+                <option value="normal">{t('calendar.priorityNormal')}</option>
+                <option value="high">{t('calendar.priorityHigh')}</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-[10px] uppercase tracking-wider text-arc-text-dim">
+              <span>{t('calendar.repeat')}</span>
+              <select
+                value={repeat}
+                onChange={(event) => setRepeat(event.target.value as ReminderRepeat)}
+                className="w-full rounded-xl border border-arc-border bg-arc-card px-2 py-2.5 text-xs normal-case tracking-normal text-arc-text focus:border-arc-borderEmphasis focus:outline-none"
+              >
+                <option value="none">{t('calendar.repeatNone')}</option>
+                <option value="daily">{t('calendar.repeatDaily')}</option>
+                <option value="weekly">{t('calendar.repeatWeekly')}</option>
+                <option value="monthly">{t('calendar.repeatMonthly')}</option>
+              </select>
+            </label>
+          </div>
           {formError && <p className="text-xs text-arc-danger">{formError}</p>}
           <Button type="submit" size="sm" fullWidth disabled={busyId === 'create'}>
             {busyId === 'create' ? t('common.loading') : t('calendar.addReminder')}

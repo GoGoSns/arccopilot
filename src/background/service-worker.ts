@@ -346,6 +346,13 @@ chrome.notifications.onClicked.addListener((notifId) => {
   })()
 })
 
+chrome.notifications.onButtonClicked.addListener((notifId, buttonIndex) => {
+  if (!notifId.startsWith('reminder-')) return
+  chrome.notifications.clear(notifId)
+  const reminderId = notifId.slice('reminder-'.length)
+  void handleReminderNotificationAction(reminderId, buttonIndex)
+})
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'FETCH_ARC_DISCORD') {
     void (async () => {
@@ -429,13 +436,18 @@ async function checkDueReminders(): Promise<void> {
   }
 
   const iconUrl = chrome.runtime.getURL('icons/icon-128.png')
+  const isTurkish = chrome.i18n.getUILanguage().toLowerCase().startsWith('tr')
   for (const reminder of dueReminders.sort((left, right) => left.timestamp - right.timestamp).slice(0, 3)) {
     chrome.notifications.create(`reminder-${reminder.id}`, {
       type: 'basic',
       iconUrl,
-      title: 'ArcCopilot - Reminder',
+      title: isTurkish ? 'ArcCopilot - Hatırlatıcı' : 'ArcCopilot - Reminder',
       message: reminder.text,
       priority: 2,
+      buttons: [
+        { title: isTurkish ? 'Tamamla' : 'Complete' },
+        { title: isTurkish ? '1 saat ertele' : 'Snooze 1 hour' },
+      ],
     })
     notified[reminder.id] = reminder.dueAt
   }
@@ -445,6 +457,74 @@ async function checkDueReminders(): Promise<void> {
   }
 
   await chromeStorageSet({ [REMINDER_NOTIFIED_STORAGE_KEY]: notified })
+}
+
+function createReminderIdSW(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `reminder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function getNextRepeatDueAtSW(dueAt: string, repeat: unknown, now = Date.now()): string | null {
+  if (repeat !== 'daily' && repeat !== 'weekly' && repeat !== 'monthly') return null
+  const parsed = new Date(dueAt)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  const monthlyDay = parsed.getDate()
+  let attempts = 0
+  do {
+    if (repeat === 'daily') {
+      parsed.setDate(parsed.getDate() + 1)
+    } else if (repeat === 'weekly') {
+      parsed.setDate(parsed.getDate() + 7)
+    } else {
+      parsed.setDate(1)
+      parsed.setMonth(parsed.getMonth() + 1)
+      const lastDay = new Date(parsed.getFullYear(), parsed.getMonth() + 1, 0).getDate()
+      parsed.setDate(Math.min(monthlyDay, lastDay))
+    }
+    attempts += 1
+  } while (parsed.getTime() <= now && attempts < 366)
+
+  return parsed.getTime() > now ? parsed.toISOString() : null
+}
+
+async function handleReminderNotificationAction(reminderId: string, buttonIndex: number): Promise<void> {
+  if (!reminderId || (buttonIndex !== 0 && buttonIndex !== 1)) return
+  const storage = await chromeStorageGet(REMINDERS)
+  const reminders = Array.isArray(storage[REMINDERS]) ? storage[REMINDERS] : []
+  const index = reminders.findIndex((raw) => isRecord(raw) && raw.id === reminderId)
+  if (index < 0 || !isRecord(reminders[index])) return
+
+  const target = reminders[index] as Record<string, unknown>
+  const next = [...reminders]
+  if (buttonIndex === 1) {
+    next[index] = {
+      ...target,
+      dueAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      done: false,
+    }
+  } else {
+    next[index] = { ...target, done: true }
+    const dueAt = typeof target.dueAt === 'string' ? target.dueAt : ''
+    const nextDueAt = getNextRepeatDueAtSW(dueAt, target.repeat)
+    if (nextDueAt) {
+      next.push({
+        ...target,
+        id: createReminderIdSW(),
+        dueAt: nextDueAt,
+        createdAt: new Date().toISOString(),
+        done: false,
+      })
+    }
+  }
+
+  await chromeStorageSet({ [REMINDERS]: next })
+  debugLog('[ArcCopilot SW] reminder notification action', {
+    reminderId,
+    action: buttonIndex === 0 ? 'complete' : 'snooze-hour',
+  })
 }
 
 async function checkWhales(): Promise<void> {

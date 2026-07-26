@@ -111,6 +111,26 @@ export interface UserAgentScheduleInput {
   enabled?: boolean
 }
 
+export type MessagingChannel = 'telegram' | 'whatsapp'
+
+export interface MessagingLink {
+  channel: MessagingChannel
+  displayName: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MessagingIntegrations {
+  links: MessagingLink[]
+  availability: Record<MessagingChannel, boolean>
+}
+
+export interface MessagingLinkCode {
+  code: string
+  channel: MessagingChannel | 'any'
+  expiresAt: string
+}
+
 export class PairingApiError extends Error {
   readonly status: number
   readonly backendMessage: string | null
@@ -1195,6 +1215,74 @@ export async function deleteSchedule(scheduleId: string): Promise<void> {
   if (!response.ok) {
     throw await createUserAgentError(response.status, payload)
   }
+}
+
+export async function getMessagingIntegrations(): Promise<MessagingIntegrations> {
+  const response = await authorizedRequest('/me/integrations')
+  const payload = await readResponsePayload(response)
+  if (!response.ok) throw await createUserAgentError(response.status, payload)
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(t('settings.agentBackendUnexpected'))
+  }
+
+  const candidate = payload as { links?: unknown; availability?: unknown }
+  const links: MessagingLink[] = Array.isArray(candidate.links)
+    ? candidate.links.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+        const row = item as Record<string, unknown>
+        const channel = row.channel === 'telegram' || row.channel === 'whatsapp' ? row.channel : null
+        const createdAt = readString(row.createdAt)
+        const updatedAt = readString(row.updatedAt)
+        if (!channel || !createdAt || !updatedAt) return []
+        return [{
+          channel,
+          displayName: readString(row.displayName),
+          createdAt,
+          updatedAt,
+        }]
+      })
+    : []
+  const availability = candidate.availability && typeof candidate.availability === 'object' && !Array.isArray(candidate.availability)
+    ? candidate.availability as Record<string, unknown>
+    : {}
+
+  return {
+    links,
+    availability: {
+      telegram: availability.telegram === true,
+      whatsapp: availability.whatsapp === true,
+    },
+  }
+}
+
+export async function createMessagingLinkCode(channel: MessagingChannel): Promise<MessagingLinkCode> {
+  const response = await authorizedRequest('/me/integrations/link-code', {
+    method: 'POST',
+    body: JSON.stringify({ channel }),
+  })
+  const payload = await readResponsePayload(response)
+  if (!response.ok) throw await createUserAgentError(response.status, payload)
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error(t('settings.agentBackendUnexpected'))
+  }
+
+  const candidate = payload as Record<string, unknown>
+  const code = readString(candidate.code)
+  const expiresAt = readString(candidate.expiresAt)
+  const responseChannel = candidate.channel === 'telegram' || candidate.channel === 'whatsapp' || candidate.channel === 'any'
+    ? candidate.channel
+    : null
+  if (!code || !expiresAt || !responseChannel) {
+    throw new Error(t('settings.agentBackendUnexpected'))
+  }
+  return { code, expiresAt, channel: responseChannel }
+}
+
+export async function unlinkMessagingChannel(channel: MessagingChannel): Promise<boolean> {
+  const response = await authorizedRequest(`/me/integrations/${channel}`, { method: 'DELETE' })
+  const payload = await readResponsePayload(response)
+  if (!response.ok) throw await createUserAgentError(response.status, payload)
+  return Boolean(payload && typeof payload === 'object' && !Array.isArray(payload) && (payload as { removed?: unknown }).removed === true)
 }
 
 export async function isPaired(): Promise<boolean> {

@@ -14,6 +14,21 @@ export interface PlannerReminder {
   dueAt?: string
   createdAt: string
   done: boolean
+  priority?: ReminderPriority
+  repeat?: ReminderRepeat
+}
+
+export type ReminderPriority = 'low' | 'normal' | 'high'
+export type ReminderRepeat = 'none' | 'daily' | 'weekly' | 'monthly'
+
+export interface ReminderInputOptions {
+  priority?: ReminderPriority
+  repeat?: ReminderRepeat
+}
+
+export interface ReminderUpdates extends ReminderInputOptions {
+  text?: string
+  dueAt?: string | null
 }
 
 export interface TaskSuggestion {
@@ -66,6 +81,8 @@ type StoredPlannerReminder = Partial<{
   dueAt: unknown
   createdAt: unknown
   done: unknown
+  priority: unknown
+  repeat: unknown
 }>
 
 type LegacyReminder = Partial<{
@@ -120,6 +137,14 @@ function normalizeReminderDone(value: unknown): boolean {
   return value === true
 }
 
+function normalizeReminderPriority(value: unknown): ReminderPriority | undefined {
+  return value === 'low' || value === 'normal' || value === 'high' ? value : undefined
+}
+
+function normalizeReminderRepeat(value: unknown): ReminderRepeat | undefined {
+  return value === 'none' || value === 'daily' || value === 'weekly' || value === 'monthly' ? value : undefined
+}
+
 function normalizePlannerReminder(raw: unknown): PlannerReminder | null {
   if (!isRecord(raw)) return null
 
@@ -128,6 +153,8 @@ function normalizePlannerReminder(raw: unknown): PlannerReminder | null {
   const text = normalizeReminderText(raw.text)
   const dueAt = normalizeReminderDate(raw.dueAt)
   const done = normalizeReminderDone(raw.done)
+  const priority = normalizeReminderPriority(raw.priority)
+  const repeat = normalizeReminderRepeat(raw.repeat)
 
   if (text) {
     return {
@@ -136,6 +163,8 @@ function normalizePlannerReminder(raw: unknown): PlannerReminder | null {
       dueAt,
       createdAt,
       done,
+      priority,
+      repeat,
     }
   }
 
@@ -363,13 +392,15 @@ export async function listReminders(): Promise<PlannerReminder[]> {
   return reminders
 }
 
-export async function addReminder(text: string, dueAt?: string): Promise<PlannerReminder> {
+export async function addReminder(text: string, dueAt?: string, options: ReminderInputOptions = {}): Promise<PlannerReminder> {
   const reminder: PlannerReminder = {
     id: createReminderId(),
     text: normalizeReminderText(text) || t('planner.reminderFallback'),
     dueAt: normalizeReminderDate(dueAt),
     createdAt: new Date().toISOString(),
     done: false,
+    priority: normalizeReminderPriority(options.priority),
+    repeat: normalizeReminderRepeat(options.repeat),
   }
 
   const current = await listReminders()
@@ -395,10 +426,25 @@ export async function completeReminder(id: string): Promise<boolean> {
   const current = await listReminders()
   let changed = false
 
-  const next = current.map((reminder) => {
+  let repeatedReminder: PlannerReminder | null = null
+  let nextReminderId: string | undefined
+  const completed = current.map((reminder) => {
     if (reminder.id !== normalizedId) return reminder
     if (reminder.done) return reminder
     changed = true
+
+    const nextDueAt = getNextRepeatDueAt(reminder)
+    if (nextDueAt) {
+      repeatedReminder = {
+        ...reminder,
+        id: createReminderId(),
+        dueAt: nextDueAt,
+        createdAt: new Date().toISOString(),
+        done: false,
+      }
+      nextReminderId = repeatedReminder.id
+    }
+
     return {
       ...reminder,
       done: true,
@@ -414,6 +460,7 @@ export async function completeReminder(id: string): Promise<boolean> {
     return false
   }
 
+  const next = repeatedReminder ? [...completed, repeatedReminder] : completed
   await saveReminders(sortReminders(next))
   const state = countReminderStates(next)
   console.log('[PLANNER]', {
@@ -422,9 +469,80 @@ export async function completeReminder(id: string): Promise<boolean> {
     count: state.total,
     pending: state.pending,
     done: state.done,
+    nextReminderId,
   })
 
   return true
+}
+
+function getNextRepeatDueAt(reminder: PlannerReminder, now = Date.now()): string | null {
+  const repeat = normalizeReminderRepeat(reminder.repeat)
+  if (!reminder.dueAt || !repeat || repeat === 'none') return null
+
+  const parsed = new Date(reminder.dueAt)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  const monthlyDay = parsed.getDate()
+  let attempts = 0
+  do {
+    if (repeat === 'daily') {
+      parsed.setDate(parsed.getDate() + 1)
+    } else if (repeat === 'weekly') {
+      parsed.setDate(parsed.getDate() + 7)
+    } else {
+      parsed.setDate(1)
+      parsed.setMonth(parsed.getMonth() + 1)
+      const lastDay = new Date(parsed.getFullYear(), parsed.getMonth() + 1, 0).getDate()
+      parsed.setDate(Math.min(monthlyDay, lastDay))
+    }
+    attempts += 1
+  } while (parsed.getTime() <= now && attempts < 366)
+
+  return parsed.getTime() > now ? parsed.toISOString() : null
+}
+
+export async function updateReminder(id: string, updates: ReminderUpdates): Promise<PlannerReminder | null> {
+  const normalizedId = id.trim()
+  if (!normalizedId) return null
+
+  const current = await listReminders()
+  const target = current.find((reminder) => reminder.id === normalizedId)
+  if (!target) return null
+
+  const nextText = updates.text === undefined ? target.text : normalizeReminderText(updates.text)
+  if (!nextText) return null
+
+  let nextDueAt = target.dueAt
+  if (updates.dueAt === null) {
+    nextDueAt = undefined
+  } else if (updates.dueAt !== undefined) {
+    nextDueAt = normalizeReminderDate(updates.dueAt)
+    if (!nextDueAt) return null
+  }
+
+  const updated: PlannerReminder = {
+    ...target,
+    text: nextText,
+    dueAt: nextDueAt,
+    priority: updates.priority === undefined
+      ? target.priority
+      : normalizeReminderPriority(updates.priority),
+    repeat: updates.repeat === undefined
+      ? target.repeat
+      : normalizeReminderRepeat(updates.repeat),
+  }
+  const next = current.map((reminder) => reminder.id === normalizedId ? updated : reminder)
+  await saveReminders(sortReminders(next))
+
+  console.log('[PLANNER]', {
+    status: 'reminder-updated',
+    reminderId: normalizedId,
+    dueAt: updated.dueAt,
+    priority: updated.priority,
+    repeat: updated.repeat,
+  })
+
+  return updated
 }
 
 export async function snoozeReminder(id: string, durationMs = 24 * 60 * 60 * 1000): Promise<PlannerReminder | null> {

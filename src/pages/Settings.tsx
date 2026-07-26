@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, AtSign, Bell, Book, Bot, CalendarClock, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, Pause, Play, Rss, Search, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
+import { ArrowLeft, AtSign, Bell, Book, Bot, CalendarClock, Check, ChevronRight, Coins, Copy, ExternalLink, Key, LayoutDashboard, MessageCircle, Pause, Play, Rss, Search, Smartphone, Trash2, Twitter, Unlink, Users, Volume2, Wallet } from 'lucide-react'
 import { useRef } from 'react'
 import { useStore } from '@/lib/store'
 import {
@@ -74,10 +74,12 @@ import { formatRelativeTime, formatAddress, copyToClipboard } from '@/lib/utils'
 import { formatTipBudgetAmount, getBudgetState, setDailyLimit, type TipBudgetState } from '@/lib/tipBudget'
 import {
   addAllowlist,
+  createMessagingLinkCode,
   createSchedule,
   deleteSchedule,
   getLedger,
   getMe,
+  getMessagingIntegrations,
   getPolicy,
   getScheduleRuns,
   getSchedules,
@@ -86,9 +88,13 @@ import {
   preflightSchedule,
   provisionAgent,
   removeAllowlist,
+  unlinkMessagingChannel,
   unpair,
   updatePolicy,
   updateSchedule,
+  type MessagingChannel,
+  type MessagingIntegrations,
+  type MessagingLinkCode,
   type PairingProfile,
   type UserAgentLedgerEntry,
   type UserAgentPolicy,
@@ -217,6 +223,11 @@ export function Settings({ onBack }: SettingsProps) {
   const [isFinishingSetup, setIsFinishingSetup] = useState(false)
   const [pairingError, setPairingError] = useState('')
   const [pairingCopied, setPairingCopied] = useState(false)
+  const [messagingIntegrations, setMessagingIntegrations] = useState<MessagingIntegrations | null>(null)
+  const [messagingLinkCode, setMessagingLinkCode] = useState<MessagingLinkCode | null>(null)
+  const [messagingBusy, setMessagingBusy] = useState<MessagingChannel | null>(null)
+  const [messagingError, setMessagingError] = useState('')
+  const [messagingCopied, setMessagingCopied] = useState(false)
   const [agentWalletBalance, setAgentWalletBalance] = useState<string | null>(null)
   const [agentWalletBalanceLoading, setAgentWalletBalanceLoading] = useState(false)
   const [agentWalletBalanceError, setAgentWalletBalanceError] = useState(false)
@@ -271,6 +282,25 @@ export function Settings({ onBack }: SettingsProps) {
     && userAgentPolicy?.autonomousEnabled
     && userAgentLimitsSet,
   )
+  const messagingChannels: Array<{
+    id: MessagingChannel
+    label: string
+    description: string
+    icon: typeof MessageCircle
+  }> = [
+    {
+      id: 'telegram',
+      label: t('settings.mobileControlTelegram'),
+      description: t('settings.mobileControlTelegramHint'),
+      icon: MessageCircle,
+    },
+    {
+      id: 'whatsapp',
+      label: t('settings.mobileControlWhatsapp'),
+      description: t('settings.mobileControlWhatsappHint'),
+      icon: Smartphone,
+    },
+  ]
   const schedulePreflightItems = schedulePreflight ? [
     { id: 'wallet', ok: schedulePreflight.checks.walletReady, label: t('settings.userAgentScheduleCheckWallet') },
     { id: 'autonomous', ok: schedulePreflight.checks.autonomousEnabled, label: t('settings.userAgentScheduleCheckAutonomous') },
@@ -317,6 +347,19 @@ export function Settings({ onBack }: SettingsProps) {
     } catch (error) {
       setUserAgentSchedules([])
       throw error
+    }
+  }
+
+  const refreshMessagingIntegrations = async (showError = false) => {
+    try {
+      setMessagingIntegrations(await getMessagingIntegrations())
+      setMessagingError('')
+    } catch (error) {
+      debugWarn('[Settings] messaging integrations load failed:', error)
+      setMessagingIntegrations(null)
+      if (showError) {
+        setMessagingError(error instanceof Error ? error.message : t('state.error'))
+      }
     }
   }
 
@@ -622,6 +665,9 @@ export function Settings({ onBack }: SettingsProps) {
             setPairingProfile(null)
             setUserAgentPolicy(null)
             setUserAgentPolicyLoadError('')
+            setMessagingIntegrations(null)
+            setMessagingLinkCode(null)
+            setMessagingError('')
           }
           return
         }
@@ -629,6 +675,19 @@ export function Settings({ onBack }: SettingsProps) {
         const profile = await getMe()
         if (active) {
           setPairingProfile(profile)
+        }
+
+        try {
+          const integrations = await getMessagingIntegrations()
+          if (active) {
+            setMessagingIntegrations(integrations)
+            setMessagingError('')
+          }
+        } catch (error) {
+          debugWarn('[Settings] messaging integrations load failed:', error)
+          if (active) {
+            setMessagingIntegrations(null)
+          }
         }
 
         if (profile.agentWalletReady) {
@@ -681,6 +740,9 @@ export function Settings({ onBack }: SettingsProps) {
           setUserAgentPolicyLoadError('')
           setUserAgentLedger([])
           setUserAgentSchedules([])
+          setMessagingIntegrations(null)
+          setMessagingLinkCode(null)
+          setMessagingError('')
         }
       } finally {
         if (active) {
@@ -742,6 +804,7 @@ export function Settings({ onBack }: SettingsProps) {
       await pairWithSignature()
       const profile = await getMe()
       setPairingProfile(profile)
+      await refreshMessagingIntegrations()
       if (profile.agentWalletReady) {
         await refreshUserAgentData()
       }
@@ -760,6 +823,7 @@ export function Settings({ onBack }: SettingsProps) {
     try {
       const profile = await provisionAgent()
       setPairingProfile(profile)
+      await refreshMessagingIntegrations()
       await refreshUserAgentData()
     } catch (error) {
       const message = error instanceof Error ? error.message : t('state.error')
@@ -777,6 +841,10 @@ export function Settings({ onBack }: SettingsProps) {
     setUserAgentLedger([])
     setUserAgentSchedules([])
     setPairingError('')
+    setMessagingIntegrations(null)
+    setMessagingLinkCode(null)
+    setMessagingError('')
+    setMessagingBusy(null)
   }
 
   const handleCopyAgentAddress = async () => {
@@ -788,6 +856,51 @@ export function Settings({ onBack }: SettingsProps) {
       setTimeout(() => setPairingCopied(false), 2000)
     } catch (error) {
       debugWarn('[Settings] copy agent address failed:', error)
+    }
+  }
+
+  const handleCreateMessagingLinkCode = async (channel: MessagingChannel) => {
+    setMessagingBusy(channel)
+    setMessagingError('')
+    setMessagingCopied(false)
+
+    try {
+      const nextCode = await createMessagingLinkCode(channel)
+      setMessagingLinkCode(nextCode)
+      await refreshMessagingIntegrations()
+    } catch (error) {
+      setMessagingError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setMessagingBusy(null)
+    }
+  }
+
+  const handleCopyMessagingCode = async () => {
+    if (!messagingLinkCode) return
+
+    try {
+      await copyToClipboard(messagingLinkCode.code)
+      setMessagingCopied(true)
+      setTimeout(() => setMessagingCopied(false), 2000)
+    } catch (error) {
+      debugWarn('[Settings] copy messaging code failed:', error)
+    }
+  }
+
+  const handleUnlinkMessagingChannel = async (channel: MessagingChannel) => {
+    setMessagingBusy(channel)
+    setMessagingError('')
+
+    try {
+      await unlinkMessagingChannel(channel)
+      if (messagingLinkCode?.channel === channel) {
+        setMessagingLinkCode(null)
+      }
+      await refreshMessagingIntegrations(true)
+    } catch (error) {
+      setMessagingError(error instanceof Error ? error.message : t('state.error'))
+    } finally {
+      setMessagingBusy(null)
     }
   }
 
@@ -2420,6 +2533,108 @@ export function Settings({ onBack }: SettingsProps) {
                       )}
                     </div>
                   )}
+
+                  <div className="space-y-3 rounded-xl border border-arc-border bg-arc-bg p-3">
+                    <div className="flex items-start gap-2.5">
+                      <span className="mt-0.5 rounded-lg border border-arc-border bg-arc-card p-1.5 text-arc-accent">
+                        <Smartphone size={14} />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-arc-text">{t('settings.mobileControlTitle')}</p>
+                        <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.mobileControlDescription')}</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {messagingChannels.map((channel) => {
+                        const Icon = channel.icon
+                        const link = messagingIntegrations?.links.find((item) => item.channel === channel.id) ?? null
+                        const available = messagingIntegrations?.availability[channel.id] === true
+                        const loading = messagingIntegrations == null && !messagingError
+                        const busy = messagingBusy === channel.id
+
+                        return (
+                          <div key={channel.id} className="rounded-lg border border-arc-border bg-arc-card px-2.5 py-2.5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex min-w-0 items-start gap-2">
+                                <span className="mt-0.5 rounded-lg border border-arc-border bg-arc-bg p-1.5 text-arc-text-dim">
+                                  <Icon size={13} />
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-arc-text">{channel.label}</p>
+                                  <p className="text-[10px] leading-relaxed text-arc-text-dim">{channel.description}</p>
+                                  <p className={`mt-1 text-[9px] font-semibold uppercase tracking-wider ${link ? 'text-arc-success' : available ? 'text-arc-text-dim' : 'text-arc-danger'}`}>
+                                    {loading
+                                      ? t('settings.mobileControlLoading')
+                                      : link
+                                        ? formatText('settings.mobileControlConnectedAs', {
+                                          name: link.displayName || t('settings.mobileControlConnected'),
+                                        })
+                                        : available
+                                          ? t('settings.mobileControlReady')
+                                          : t('settings.mobileControlUnavailable')}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {link ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleUnlinkMessagingChannel(channel.id)}
+                                  disabled={messagingBusy !== null}
+                                  className="shrink-0 rounded-lg p-1.5 text-arc-text-dim hover:text-arc-danger disabled:opacity-40"
+                                  title={t('settings.mobileControlDisconnect')}
+                                >
+                                  <Unlink size={13} />
+                                </button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void handleCreateMessagingLinkCode(channel.id)}
+                                  disabled={!available || messagingBusy !== null || loading}
+                                  className="shrink-0"
+                                >
+                                  {busy ? t('common.loading') : t('settings.mobileControlConnect')}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {messagingLinkCode && (
+                      <div className="space-y-2 rounded-lg border border-arc-accent/30 bg-arc-accent/5 p-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-arc-text">{t('settings.mobileControlCodeTitle')}</p>
+                            <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.mobileControlCodeHint')}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyMessagingCode()}
+                            className="shrink-0 rounded-lg p-1.5 text-arc-text-dim hover:text-arc-text"
+                            title={t('settings.mobileControlCopyCode')}
+                          >
+                            {messagingCopied ? <Check size={13} /> : <Copy size={13} />}
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-arc-border bg-arc-bg px-2.5 py-2">
+                          <span className="font-mono text-sm font-semibold tracking-[0.16em] text-white">{messagingLinkCode.code}</span>
+                          <span className="shrink-0 text-[9px] uppercase tracking-wider text-arc-text-dim">
+                            {messagingCopied ? t('settings.mobileControlCodeCopied') : formatText('settings.mobileControlCodeExpires', {
+                              date: formatScheduleDate(messagingLinkCode.expiresAt),
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {messagingError && <p className="text-xs text-arc-danger">{messagingError}</p>}
+                    <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.mobileControlSecurity')}</p>
+                  </div>
 
                   {pairingError && <p className="text-xs text-arc-danger">{pairingError}</p>}
 
