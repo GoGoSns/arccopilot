@@ -7,6 +7,9 @@ import {
 } from '@/lib/storageKeys'
 
 export const DEFAULT_AGENT_BACKEND_URL = 'https://arccopilot-agent.onrender.com'
+const STALE_AGENT_BACKEND_URLS = new Set([
+  'https://web-production-66fa5.up.railway.app',
+])
 const AGENT_REQUEST_TIMEOUT_MS = 10_000
 
 export interface AgentBackendConfig {
@@ -52,6 +55,11 @@ function normalizeBackendUrl(value: string): string | null {
   }
 
   return trimmed.replace(/\/+$/, '')
+}
+
+function migrateBackendUrl(value: string | null): string | null {
+  if (!value) return value
+  return STALE_AGENT_BACKEND_URLS.has(value) ? DEFAULT_AGENT_BACKEND_URL : value
 }
 
 function joinBackendUrl(baseUrl: string, path: string): string {
@@ -106,10 +114,14 @@ async function readAgentBackendConfig(): Promise<AgentBackendConfig> {
 
   const hasBackendUrl = Object.prototype.hasOwnProperty.call(stored, AGENT_BACKEND_URL)
   const rawBackendUrl = hasBackendUrl ? readString(stored[AGENT_BACKEND_URL]) : null
-  const backendUrl = rawBackendUrl ?? (hasBackendUrl ? null : DEFAULT_AGENT_BACKEND_URL)
+  const normalizedBackendUrl = rawBackendUrl ? normalizeBackendUrl(rawBackendUrl) : null
+  const migratedBackendUrl = migrateBackendUrl(normalizedBackendUrl)
+  const backendUrl = migratedBackendUrl ?? (hasBackendUrl ? null : DEFAULT_AGENT_BACKEND_URL)
 
   if (!hasBackendUrl) {
     await chromeStorageSet({ [AGENT_BACKEND_URL]: DEFAULT_AGENT_BACKEND_URL })
+  } else if (normalizedBackendUrl && migratedBackendUrl !== normalizedBackendUrl) {
+    await chromeStorageSet({ [AGENT_BACKEND_URL]: migratedBackendUrl })
   }
 
   return {
