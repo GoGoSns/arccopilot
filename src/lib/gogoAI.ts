@@ -546,6 +546,18 @@ function getSafeTipAdvisorErrorMessage(error: unknown): string {
   return t('gogo.tipAdvisorNoActivityUnavailable')
 }
 
+function sanitizeTipAdvisorReply(reply: string): string {
+  if (/malformed API key|invalid TwitterAPI key|twitterapi/i.test(reply)) {
+    return t('gogo.tipAdvisorNoActivityInvalidKey')
+  }
+
+  if (/rate limit|429/i.test(reply)) {
+    return t('gogo.tipAdvisorNoActivityRateLimited')
+  }
+
+  return reply
+}
+
 type CreatorTipIntent = {
   handle: string
   amount?: string
@@ -2456,7 +2468,7 @@ export async function askGogo(
       const advisor = await generateTipSuggestions()
       if (!advisor.canExecute || advisor.suggestions.length === 0) {
         return {
-          reply: advisor.explanation,
+          reply: sanitizeTipAdvisorReply(advisor.explanation),
           actions: [],
         }
       }
@@ -2478,7 +2490,7 @@ export async function askGogo(
           )
 
       return {
-        reply: advisor.explanation,
+        reply: sanitizeTipAdvisorReply(advisor.explanation),
         actions: [gatewayAction],
         action: gatewayAction,
       }
