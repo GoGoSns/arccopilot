@@ -1003,7 +1003,8 @@ export async function generateTipSuggestions(): Promise<TipAdvisorResult> {
     }
   } catch (error) {
     console.warn('[TipAdvisor] paired policy unavailable', error)
-    throw new Error(t('gogo.tipAdvisorPolicyUnavailable'))
+    paired = false
+    policy = null
   }
 
   const [creators, budgetState] = await Promise.all([listCreators(), getBudgetState()])
