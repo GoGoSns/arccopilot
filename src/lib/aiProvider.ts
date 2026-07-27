@@ -286,6 +286,10 @@ export async function generateText(prompt: string, opts: GenerateTextOptions = {
     if (provider === 'openai') return await requestOpenAI(prompt, key, opts)
     return await requestAnthropic(prompt, key, opts)
   } catch (error) {
+    if (error instanceof Error && /application not found/i.test(error.message)) {
+      throw new Error(formatText('aiProvider.networkError', { provider: AI_PROVIDER_CONFIG[provider].label }))
+    }
+
     const isNetworkFailure = error instanceof TypeError
       || (error instanceof DOMException && error.name === 'AbortError')
     if (!isNetworkFailure) throw error

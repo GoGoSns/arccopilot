@@ -6,7 +6,7 @@ import {
   AUTONOMOUS_MODE_ENABLED,
 } from '@/lib/storageKeys'
 
-export const DEFAULT_AGENT_BACKEND_URL = 'https://web-production-66fa5.up.railway.app'
+export const DEFAULT_AGENT_BACKEND_URL = 'https://arccopilot-agent.onrender.com'
 const AGENT_REQUEST_TIMEOUT_MS = 10_000
 
 export interface AgentBackendConfig {

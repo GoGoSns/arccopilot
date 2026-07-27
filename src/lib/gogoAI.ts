@@ -502,6 +502,36 @@ function convergeResolvedDirectTips(response: GogoResponse, userMessage: string)
   }
 }
 
+function parseGreetingIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/Ä±/g, 'i')
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!normalized) return null
+
+  if (/^(?:selam|selamlar|merhaba|mrb|gunaydin|iyi sabahlar|iyi aksamlar|iyi geceler|naber|nasilsin|nasilsin gogo)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  if (/^(?:hi|hello|hey|gm|good morning|good afternoon|good evening|good night|how are you|yo)$/.test(normalized)) {
+    return 'en'
+  }
+
+  return null
+}
+
+function buildGreetingReply(locale: 'en' | 'tr'): GogoResponse {
+  const reply = locale === 'tr'
+    ? 'Selam kanka — buradayım. Cüzdanını kontrol edebilir, x402 erişimini hazırlayabilir, hatırlatıcılarını düzenleyebilir veya USDC aksiyonlarını güvenli sınırlar içinde planlayabilirim.'
+    : 'Hey — I’m here. I can check your wallet, prepare x402 access, manage reminders, or help plan USDC actions inside your safety limits.'
+
+  return {
+    reply,
+    actions: [],
+  }
+}
+
 type CreatorTipIntent = {
   handle: string
   amount?: string
@@ -2285,6 +2315,12 @@ export async function askGogo(
         actions: [],
       }
     }
+  }
+
+  const greetingIntent = parseGreetingIntent(userMessage)
+  if (greetingIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildGreetingReply(greetingIntent)
   }
 
   const deterministicTipIntent = parseDeterministicTipIntent(userMessage)
