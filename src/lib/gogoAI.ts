@@ -532,6 +532,20 @@ function buildGreetingReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function getSafeTipAdvisorErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+
+  if (/malformed API key|invalid TwitterAPI key|twitterapi/i.test(message)) {
+    return t('gogo.tipAdvisorNoActivityInvalidKey')
+  }
+
+  if (/rate limit|429/i.test(message)) {
+    return t('gogo.tipAdvisorNoActivityRateLimited')
+  }
+
+  return t('gogo.tipAdvisorNoActivityUnavailable')
+}
+
 type CreatorTipIntent = {
   handle: string
   amount?: string
@@ -2470,7 +2484,7 @@ export async function askGogo(
       }
     } catch (error) {
       return {
-        reply: error instanceof Error ? error.message : t('state.error'),
+        reply: getSafeTipAdvisorErrorMessage(error),
         actions: [],
       }
     }
