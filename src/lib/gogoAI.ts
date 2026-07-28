@@ -932,7 +932,7 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '',
         '6. Arc Token / Meme Radar',
         '   A safe radar for new token, meme, and launch signals around Arc and Circle.',
-        '   Command: token radar',
+        '   Commands: token radar, watch token 0x..., token watchlist',
         '',
         'Rule: the market only discovers and prepares. Anything that spends USDC still uses the existing approval-safe flow.',
       ]
@@ -942,6 +942,9 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
     actions: [],
   }
 }
+
+const ARC_TOKEN_WATCHLIST_STORAGE_KEY = 'arccopilot:arc-token-watchlist'
+const ARC_TOKEN_WATCHLIST_LIMIT = 25
 
 function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
@@ -957,6 +960,69 @@ function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
 
   if (/^(?:token radar|meme radar|arc tokenlari|arc memeleri|token takip|meme takip|yeni tokenler|yeni memeler|pazar radar|radar)$/.test(normalized)) {
     return 'tr'
+  }
+
+  return null
+}
+
+function parseTokenWatchlistIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:token watchlist|watchlist tokens|watched tokens|my tokens|arc token watchlist)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:token izleme|token takip listesi|izlenen tokenler|token listem|arc token izleme)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function parseWatchTokenIntent(message: string): { locale: 'en' | 'tr'; address: string } | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  const address = normalized.match(/0x[a-f0-9]{40}/i)?.[0]
+  if (!address || !isValidAddress(address)) return null
+
+  if (/^(?:watch token|track token|add token|follow token|watch arc token)\b/i.test(normalized)) {
+    return { locale: 'en', address }
+  }
+
+  if (/^(?:token izle|token takip et|izlemeye al|takibe al|arc token izle)\b/i.test(normalized)) {
+    return { locale: 'tr', address }
+  }
+
+  return null
+}
+
+function parseUnwatchTokenIntent(message: string): { locale: 'en' | 'tr'; address: string } | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  const address = normalized.match(/0x[a-f0-9]{40}/i)?.[0]
+  if (!address || !isValidAddress(address)) return null
+
+  if (/^(?:unwatch token|remove token|stop watching token|unfollow token)\b/i.test(normalized)) {
+    return { locale: 'en', address }
+  }
+
+  if (/^(?:token izleme kaldir|token takipten cikar|tokeni kaldir|izlemeden cikar|takipten cikar)\b/i.test(normalized)) {
+    return { locale: 'tr', address }
   }
 
   return null
@@ -982,6 +1048,162 @@ function parseTokenRiskIntent(message: string): { locale: 'en' | 'tr'; address: 
   }
 
   return null
+}
+
+function normalizeTokenWatchlistEntry(entry: unknown): ArcTokenWatchlistEntry | null {
+  if (!entry || typeof entry !== 'object') return null
+  const candidate = entry as Partial<ArcTokenWatchlistEntry>
+  if (!candidate.address || !isValidAddress(candidate.address)) return null
+
+  return {
+    address: candidate.address.toLowerCase(),
+    symbol: typeof candidate.symbol === 'string' ? candidate.symbol : undefined,
+    name: typeof candidate.name === 'string' ? candidate.name : undefined,
+    riskLabel: typeof candidate.riskLabel === 'string' ? candidate.riskLabel : undefined,
+    riskScore: typeof candidate.riskScore === 'number' ? candidate.riskScore : undefined,
+    explorerUrl: typeof candidate.explorerUrl === 'string' ? candidate.explorerUrl : null,
+    addedAt: typeof candidate.addedAt === 'number' ? candidate.addedAt : Date.now(),
+    updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : undefined,
+  }
+}
+
+async function loadArcTokenWatchlist(): Promise<ArcTokenWatchlistEntry[]> {
+  const storage: Record<string, unknown> = await chromeGet(ARC_TOKEN_WATCHLIST_STORAGE_KEY).catch(() => ({}))
+  const raw = storage[ARC_TOKEN_WATCHLIST_STORAGE_KEY]
+  if (!Array.isArray(raw)) return []
+
+  const deduped = new Map<string, ArcTokenWatchlistEntry>()
+  for (const item of raw) {
+    const entry = normalizeTokenWatchlistEntry(item)
+    if (entry) deduped.set(entry.address.toLowerCase(), entry)
+  }
+
+  return Array.from(deduped.values())
+    .sort((a, b) => (b.updatedAt ?? b.addedAt) - (a.updatedAt ?? a.addedAt))
+    .slice(0, ARC_TOKEN_WATCHLIST_LIMIT)
+}
+
+async function saveArcTokenWatchlist(entries: ArcTokenWatchlistEntry[]): Promise<void> {
+  const normalized = entries
+    .map(normalizeTokenWatchlistEntry)
+    .filter((entry): entry is ArcTokenWatchlistEntry => Boolean(entry))
+    .slice(0, ARC_TOKEN_WATCHLIST_LIMIT)
+
+  await chromeSet({ [ARC_TOKEN_WATCHLIST_STORAGE_KEY]: normalized })
+}
+
+function buildTokenWatchlistLine(entry: ArcTokenWatchlistEntry): string {
+  const label = [entry.symbol, entry.name].filter(Boolean).join(' - ') || 'Unknown token'
+  const risk = entry.riskLabel ? ` | risk: ${entry.riskLabel}${typeof entry.riskScore === 'number' ? ` ${entry.riskScore}/100` : ''}` : ''
+  return `- ${label} | ${formatAddress(entry.address, 4)}${risk}`
+}
+
+async function buildWatchTokenReply(locale: 'en' | 'tr', address: string): Promise<GogoResponse> {
+  const normalizedAddress = address.toLowerCase()
+  const [watchlist, detail] = await Promise.all([
+    loadArcTokenWatchlist(),
+    fetchArcTokenDetailSnapshot(normalizedAddress),
+  ])
+
+  const existing = watchlist.find((entry) => entry.address.toLowerCase() === normalizedAddress)
+  const token = detail?.token
+  const risk = detail?.risk
+  const nextEntry: ArcTokenWatchlistEntry = {
+    address: normalizedAddress,
+    symbol: token?.symbol,
+    name: token?.name,
+    riskLabel: risk?.label,
+    riskScore: risk?.score,
+    explorerUrl: token?.explorerUrl ?? detail?.source ?? null,
+    addedAt: existing?.addedAt ?? Date.now(),
+    updatedAt: Date.now(),
+  }
+
+  const next = [
+    nextEntry,
+    ...watchlist.filter((entry) => entry.address.toLowerCase() !== normalizedAddress),
+  ].slice(0, ARC_TOKEN_WATCHLIST_LIMIT)
+  await saveArcTokenWatchlist(next)
+
+  const label = [nextEntry.symbol, nextEntry.name].filter(Boolean).join(' - ') || formatAddress(normalizedAddress, 4)
+  const riskLine = nextEntry.riskLabel
+    ? `Risk: ${nextEntry.riskLabel}${typeof nextEntry.riskScore === 'number' ? ` (${nextEntry.riskScore}/100)` : ''}`
+    : locale === 'tr'
+      ? 'Risk: metadata su an yok; tokeni yine de lokal listeye aldım.'
+      : 'Risk: metadata unavailable right now; I still saved it locally.'
+
+  return {
+    reply: locale === 'tr'
+      ? [
+          `Izlemeye aldim: ${label}`,
+          `Address: ${normalizedAddress}`,
+          riskLine,
+          '',
+          'Komutlar: token watchlist, token risk 0x..., unwatch token 0x...',
+        ].join('\n')
+      : [
+          `Watching: ${label}`,
+          `Address: ${normalizedAddress}`,
+          riskLine,
+          '',
+          'Commands: token watchlist, token risk 0x..., unwatch token 0x...',
+        ].join('\n'),
+    actions: [],
+  }
+}
+
+async function buildUnwatchTokenReply(locale: 'en' | 'tr', address: string): Promise<GogoResponse> {
+  const normalizedAddress = address.toLowerCase()
+  const watchlist = await loadArcTokenWatchlist()
+  const next = watchlist.filter((entry) => entry.address.toLowerCase() !== normalizedAddress)
+  await saveArcTokenWatchlist(next)
+
+  const removed = next.length !== watchlist.length
+  return {
+    reply: locale === 'tr'
+      ? removed
+        ? `Token izleme listesinden kaldirildi: ${formatAddress(normalizedAddress, 4)}`
+        : `Bu token zaten izleme listende yok: ${formatAddress(normalizedAddress, 4)}`
+      : removed
+        ? `Removed from token watchlist: ${formatAddress(normalizedAddress, 4)}`
+        : `That token was not on your watchlist: ${formatAddress(normalizedAddress, 4)}`,
+    actions: [],
+  }
+}
+
+async function buildTokenWatchlistReply(locale: 'en' | 'tr'): Promise<GogoResponse> {
+  const watchlist = await loadArcTokenWatchlist()
+  if (watchlist.length === 0) {
+    return {
+      reply: locale === 'tr'
+        ? 'Token izleme listen bos. Bir contract eklemek icin: watch token 0x...'
+        : 'Your token watchlist is empty. Add a contract with: watch token 0x...',
+      actions: [],
+    }
+  }
+
+  const lines = locale === 'tr'
+    ? [
+        `Arc token izleme listesi (${watchlist.length}/${ARC_TOKEN_WATCHLIST_LIMIT}):`,
+        '',
+        ...watchlist.slice(0, 10).map(buildTokenWatchlistLine),
+        '',
+        'Guvenlik: bu liste sadece lokal takip ekranidir; alim onerisi degildir.',
+        'Komutlar: token risk 0x..., unwatch token 0x...',
+      ]
+    : [
+        `Arc token watchlist (${watchlist.length}/${ARC_TOKEN_WATCHLIST_LIMIT}):`,
+        '',
+        ...watchlist.slice(0, 10).map(buildTokenWatchlistLine),
+        '',
+        'Safety: this is a local tracking list only; not a buy recommendation.',
+        'Commands: token risk 0x..., unwatch token 0x...',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
 }
 
 function formatArcTokenSignal(signal: ArcTokenRadarSignal): string {
@@ -1128,9 +1350,11 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '- news veya brief: canli sosyal/headline sinyalleri cek',
         '- market: Arc Market menusu',
         '- analyze 0x...: adres/contract kontrolu',
+        '- watch token 0x...: tokeni lokal izleme listesine al',
+        '- token watchlist: izleme listesini goster',
         '- x402 demo: ucretli insight akisi',
         '',
-        'Siradaki build: token detay karti + risk puani + izleme listesi.',
+        'Siradaki build: watchlist uyarilari + yeni deploy diff ekrani.',
       ]
     : [
         'Arc Token / Meme Radar:',
@@ -1153,9 +1377,11 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '- news or brief: pull live social/headline signals',
         '- market: Arc Market menu',
         '- analyze 0x...: address/contract check',
+        '- watch token 0x...: save a token to the local watchlist',
+        '- token watchlist: show watched tokens',
         '- x402 demo: paid insight flow',
         '',
-        'Next build: token detail cards + risk score + watchlist.',
+        'Next build: watchlist alerts + new deploy diff view.',
       ]
 
   return {
@@ -1236,6 +1462,17 @@ type ArcTokenDetailSnapshot = {
     note?: string
   }
   source?: string
+}
+
+type ArcTokenWatchlistEntry = {
+  address: string
+  symbol?: string
+  name?: string
+  riskLabel?: string
+  riskScore?: number
+  explorerUrl?: string | null
+  addedAt: number
+  updatedAt?: number
 }
 
 function parseCreatorTipIntent(message: string): CreatorTipIntent | null {
@@ -3053,6 +3290,24 @@ export async function askGogo(
   if (marketplaceIntent) {
     logResolvedIntent('deterministic', null)
     return buildMarketplaceReply(marketplaceIntent)
+  }
+
+  const watchTokenIntent = parseWatchTokenIntent(userMessage)
+  if (watchTokenIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildWatchTokenReply(watchTokenIntent.locale, watchTokenIntent.address)
+  }
+
+  const unwatchTokenIntent = parseUnwatchTokenIntent(userMessage)
+  if (unwatchTokenIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildUnwatchTokenReply(unwatchTokenIntent.locale, unwatchTokenIntent.address)
+  }
+
+  const tokenWatchlistIntent = parseTokenWatchlistIntent(userMessage)
+  if (tokenWatchlistIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildTokenWatchlistReply(tokenWatchlistIntent)
   }
 
   const tokenRiskIntent = parseTokenRiskIntent(userMessage)
