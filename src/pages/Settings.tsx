@@ -2634,6 +2634,20 @@ export function Settings({ onBack }: SettingsProps) {
 
                     {messagingError && <p className="text-xs text-arc-danger">{messagingError}</p>}
                     <p className="text-[10px] leading-relaxed text-arc-text-dim">{t('settings.mobileControlSecurity')}</p>
+
+                    <div className="space-y-2 rounded-lg border border-arc-border bg-arc-card px-2.5 py-2.5">
+                      <div>
+                        <p className="text-xs font-semibold text-arc-text">{t('settings.mobileControlCommandsTitle')}</p>
+                        <p className="mt-0.5 text-[10px] leading-relaxed text-arc-text-dim">{t('settings.mobileControlCommandsHint')}</p>
+                      </div>
+                      <div className="space-y-1 font-mono text-[10px] leading-relaxed text-arc-text-dim">
+                        <p>{t('settings.mobileControlCommandHelp')}</p>
+                        <p>{t('settings.mobileControlCommandBalance')}</p>
+                        <p>{t('settings.mobileControlCommandStatus')}</p>
+                        <p>{t('settings.mobileControlCommandSchedules')}</p>
+                        <p>{t('settings.mobileControlCommandPauseResume')}</p>
+                      </div>
+                    </div>
                   </div>
 
                   {pairingError && <p className="text-xs text-arc-danger">{pairingError}</p>}
