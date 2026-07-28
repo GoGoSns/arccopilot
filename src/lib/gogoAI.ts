@@ -807,6 +807,56 @@ function buildDemoChecklistReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function parseDemoModeIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:demo mode|demo menu|demo help|demo commands|show demo commands|demo)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:demo modu|demo menusu|demo yardim|demo komutlari|demo komutlar|demo)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDemoModeReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'ArcCopilot demo mode:',
+        '',
+        '- demo status: proof summary',
+        '- demo links: repos + tx proof',
+        '- demo script: short narration',
+        '- demo checklist: pre-recording checks',
+        '',
+        'Suggested flow:',
+        'demo checklist -> demo status -> portfolio -> who should I tip -> x402 demo -> history',
+      ]
+    : [
+        'ArcCopilot demo mode:',
+        '',
+        '- demo status: proof summary',
+        '- demo links: repos + tx proof',
+        '- demo script: short narration',
+        '- demo checklist: pre-recording checks',
+        '',
+        'Suggested flow:',
+        'demo checklist -> demo status -> portfolio -> who should I tip -> x402 demo -> history',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2622,6 +2672,12 @@ export async function askGogo(
   if (greetingIntent) {
     logResolvedIntent('deterministic', null)
     return buildGreetingReply(greetingIntent)
+  }
+
+  const demoModeIntent = parseDemoModeIntent(userMessage)
+  if (demoModeIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDemoModeReply(demoModeIntent)
   }
 
   const demoProofIntent = parseDemoProofIntent(userMessage)
