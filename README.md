@@ -135,7 +135,7 @@ Use this short path for judging or a screen recording:
 
 1. Open the wallet and show Arc Testnet USDC plus Circle Gateway balance.
 2. Open Gogo and type `demo status` to show the local proof card: Render + Neon + cron, x402 payment id, and scheduled-payment transaction hash.
-3. Type `demo script` if you want Gogo to show a 60-90 second judging/screen-recording narration.
+3. Type `demo script` if you want Gogo to show a compact judging/screen-recording narration.
 4. Type `portfolio` to show real wallet intelligence.
 5. Type `who should I tip` to show the paired-agent policy, weekly budget, per-tip cap, and advisor reasoning.
 6. Type `x402 demo`, review the 0.001 USDC quote, then tap **Pay & access** to unlock the protected resource.
