@@ -16,7 +16,7 @@ import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 
 const LEGACY_TWITTERAPI_KEY = 'arccopilot:twitterapi-io-key'
-export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet"'
+export const DEFAULT_TWITTER_SEARCH_QUERY = '"Arc Network" OR "ArcStablecoin" OR "Arc testnet" OR "Arc meme" OR "Arc token" OR "Circle Arc"'
 export const DEFAULT_TWITTER_OFFICIAL_ACCOUNTS = 'arc, circle'
 export type TweetCategory = 'news' | 'opportunity' | 'discussion'
 type TwitterFeedKind = 'community' | 'official'

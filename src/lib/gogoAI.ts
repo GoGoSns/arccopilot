@@ -901,6 +901,10 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Repo, Render, x402 ve ArcScan kanit linklerini tek yerde gosterir.',
         '   Komut: demo links',
         '',
+        '6. Arc Token / Meme Radar',
+        '   Arc ve Circle etrafindaki yeni token, meme ve launch sinyallerini takip etmek icin guvenli radar.',
+        '   Komut: token radar',
+        '',
         'Kural: market sadece kesif ve hazirlik yapar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
       ]
     : [
@@ -926,7 +930,87 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Shows repo, Render, x402, and ArcScan proof links in one place.',
         '   Command: demo links',
         '',
+        '6. Arc Token / Meme Radar',
+        '   A safe radar for new token, meme, and launch signals around Arc and Circle.',
+        '   Command: token radar',
+        '',
         'Rule: the market only discovers and prepares. Anything that spends USDC still uses the existing approval-safe flow.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:token radar|meme radar|arc token radar|arc meme radar|arc tokens|arc memes|token watch|meme watch|new tokens|new memes)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:token radar|meme radar|arc tokenlari|arc memeleri|token takip|meme takip|yeni tokenler|yeni memeler|pazar radar|radar)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildTokenRadarReply(locale: 'en' | 'tr'): GogoResponse {
+  const communityTweets = readLocalCache<RecentTweetSummary[]>(TWITTER_TWEETS_CACHE_KEY) ?? []
+  const officialTweets = readLocalCache<RecentTweetSummary[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY) ?? []
+  const cachedSignals = communityTweets.length + officialTweets.length
+
+  const lines = locale === 'tr'
+    ? [
+        'Arc Token / Meme Radar:',
+        '',
+        `- Cached social signals: ${cachedSignals}`,
+        '- Network: Arc Testnet, chain id 5042002',
+        '- Native gas: USDC; token math icin ERC-20 USDC her zaman 6 decimal.',
+        '- Takip ettigim sinyaller: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
+        '',
+        'Guvenlik filtresi:',
+        '- Contract address yoksa “tradable” gibi davranmam.',
+        '- ArcScan/verified contract kaniti yoksa riskli sayarim.',
+        '- Likidite, holder dagilimi ve mint/owner yetkisi bilinmiyorsa satin alma onermem.',
+        '- Mainnet varsaymam; Arc su an testnet odakli.',
+        '',
+        'Komutlar:',
+        '- news veya brief: canli sosyal/headline sinyalleri cek',
+        '- market: Arc Market menusu',
+        '- analyze 0x...: adres/contract kontrolu',
+        '- x402 demo: ucretli insight akisi',
+        '',
+        'Siradaki build: bu radari backend endpointine baglayip yeni ArcScan ERC-20 deploy/loglarini dakikalik taratabiliriz.',
+      ]
+    : [
+        'Arc Token / Meme Radar:',
+        '',
+        `- Cached social signals: ${cachedSignals}`,
+        '- Network: Arc Testnet, chain id 5042002',
+        '- Native gas: USDC; ERC-20 USDC token math must stay at 6 decimals.',
+        '- Signals watched: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
+        '',
+        'Safety filter:',
+        '- I do not treat anything as tradable without a contract address.',
+        '- I mark it risky without ArcScan / verified-contract proof.',
+        '- I avoid buy recommendations when liquidity, holder distribution, or owner/mint controls are unknown.',
+        '- I do not assume mainnet; Arc is testnet-focused here.',
+        '',
+        'Commands:',
+        '- news or brief: pull live social/headline signals',
+        '- market: Arc Market menu',
+        '- analyze 0x...: address/contract check',
+        '- x402 demo: paid insight flow',
+        '',
+        'Next build: connect this radar to a backend endpoint that scans new ArcScan ERC-20 deploy/log signals every minute.',
       ]
 
   return {
@@ -2786,6 +2870,12 @@ export async function askGogo(
   if (marketplaceIntent) {
     logResolvedIntent('deterministic', null)
     return buildMarketplaceReply(marketplaceIntent)
+  }
+
+  const tokenRadarIntent = parseTokenRadarIntent(userMessage)
+  if (tokenRadarIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildTokenRadarReply(tokenRadarIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
