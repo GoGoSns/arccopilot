@@ -2550,6 +2550,9 @@ export function Settings({ onBack }: SettingsProps) {
                         const Icon = channel.icon
                         const link = messagingIntegrations?.links.find((item) => item.channel === channel.id) ?? null
                         const available = messagingIntegrations?.availability[channel.id] === true
+                        const telegramBotUsername = channel.id === 'telegram'
+                          ? messagingIntegrations?.publicConfig.telegramBotUsername?.replace(/^@/, '') ?? null
+                          : null
                         const loading = messagingIntegrations == null && !messagingError
                         const busy = messagingBusy === channel.id
 
@@ -2574,6 +2577,17 @@ export function Settings({ onBack }: SettingsProps) {
                                           ? t('settings.mobileControlReady')
                                           : t('settings.mobileControlUnavailable')}
                                   </p>
+                                  {telegramBotUsername && (
+                                    <a
+                                      href={`https://t.me/${telegramBotUsername}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-arc-accent hover:underline"
+                                    >
+                                      {t('settings.mobileControlOpenTelegram')}
+                                      <ExternalLink size={10} />
+                                    </a>
+                                  )}
                                 </div>
                               </div>
 

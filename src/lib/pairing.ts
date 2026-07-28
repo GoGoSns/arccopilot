@@ -123,6 +123,9 @@ export interface MessagingLink {
 export interface MessagingIntegrations {
   links: MessagingLink[]
   availability: Record<MessagingChannel, boolean>
+  publicConfig: {
+    telegramBotUsername: string | null
+  }
 }
 
 export interface MessagingLinkCode {
@@ -1225,7 +1228,7 @@ export async function getMessagingIntegrations(): Promise<MessagingIntegrations>
     throw new Error(t('settings.agentBackendUnexpected'))
   }
 
-  const candidate = payload as { links?: unknown; availability?: unknown }
+  const candidate = payload as { links?: unknown; availability?: unknown; publicConfig?: unknown }
   const links: MessagingLink[] = Array.isArray(candidate.links)
     ? candidate.links.flatMap((item) => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) return []
@@ -1245,12 +1248,18 @@ export async function getMessagingIntegrations(): Promise<MessagingIntegrations>
   const availability = candidate.availability && typeof candidate.availability === 'object' && !Array.isArray(candidate.availability)
     ? candidate.availability as Record<string, unknown>
     : {}
+  const publicConfig = candidate.publicConfig && typeof candidate.publicConfig === 'object' && !Array.isArray(candidate.publicConfig)
+    ? candidate.publicConfig as Record<string, unknown>
+    : {}
 
   return {
     links,
     availability: {
       telegram: availability.telegram === true,
       whatsapp: availability.whatsapp === true,
+    },
+    publicConfig: {
+      telegramBotUsername: readString(publicConfig.telegramBotUsername),
     },
   }
 }
