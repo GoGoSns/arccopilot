@@ -41,6 +41,7 @@ import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
 import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
 import { buildDailyBriefing } from '@/lib/dailyBriefing'
+import { createSchedule } from '@/lib/pairing'
 
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
@@ -377,11 +378,18 @@ export type DeterministicTipIntent = {
   amount: string
 }
 
+type DeterministicScheduleIntent = {
+  recipient: string
+  amount: string
+  intervalHours: number
+}
+
 const DIRECT_TIP_ADDRESS_PATTERN = /\b0x[a-fA-F0-9]{40}\b/g
 const DIRECT_TIP_AMOUNT_PATTERN = /\b\d+(?:[.,]\d{1,6})?\b/g
-const DIRECT_TIP_VERB_PATTERN = /(?:^|[^a-z])(?:ti+p+|send+|sned|snd|gond+er+|gndr|yolla|bahsis|transfer)(?=[^a-z]|$)/
+const DIRECT_TIP_VERB_PATTERN = /(?:^|[^a-z])(?:ti+p+|send+|sned|snd|pay|paid|payment|gond+er+|gndr|yolla|bahsis|odeme|transfer)(?=[^a-z]|$)/
 const DIRECT_TIP_CURRENCY_PATTERN = /(?:usdc|uscd|usd\s*c)/
-const DIRECT_TIP_VERBS = ['tip', 'send', 'gonder', 'yolla', 'bahsis', 'transfer'] as const
+const DIRECT_TIP_VERBS = ['tip', 'send', 'pay', 'payment', 'gonder', 'yolla', 'bahsis', 'odeme', 'transfer'] as const
+const SCHEDULE_PAYMENT_PATTERN = /(?:\bevery\b|\bper\b|\bher\b)/
 
 function isSingleEditOrTransposition(value: string, target: string): boolean {
   if (value === target) return true
@@ -469,6 +477,51 @@ export function parseDeterministicTipIntent(message: string): DeterministicTipIn
   if (!amount || !Number.isFinite(amountValue) || amountValue <= 0) return null
 
   return { recipient, amount }
+}
+
+function parseScheduleIntervalHours(message: string): number | null {
+  const normalized = normalizeIntentText(message).replace(/Ä±/g, 'i')
+  if (!SCHEDULE_PAYMENT_PATTERN.test(normalized)) return null
+
+  const explicitMatch = normalized.match(/\b(?:every|per|her)\s+(\d+)\s*(hour|hours|hr|hrs|saat|day|days|gun|week|weeks|hafta)\b/)
+  if (explicitMatch) {
+    const value = Number(explicitMatch[1])
+    if (!Number.isInteger(value) || value < 1) return null
+
+    const unit = explicitMatch[2]
+    if (/^(hour|hours|hr|hrs|saat)$/.test(unit)) return value
+    if (/^(day|days|gun)$/.test(unit)) return value * 24
+    if (/^(week|weeks|hafta)$/.test(unit)) return value * 24 * 7
+  }
+
+  if (/\b(?:hourly|her saat)\b/.test(normalized)) return 1
+  if (/\b(?:daily|her gun)\b/.test(normalized)) return 24
+  if (/\b(?:weekly|her hafta)\b/.test(normalized)) return 24 * 7
+
+  return null
+}
+
+function parseDeterministicScheduleIntent(message: string): DeterministicScheduleIntent | null {
+  const intervalHours = parseScheduleIntervalHours(message)
+  if (!intervalHours) return null
+
+  const tipIntent = parseDeterministicTipIntent(message)
+  if (!tipIntent) return null
+
+  return {
+    ...tipIntent,
+    intervalHours,
+  }
+}
+
+function buildScheduleCreatedReply(intent: DeterministicScheduleIntent, nextRunAt: string): string {
+  const locale = getLocaleSync()
+  const nextRun = new Date(nextRunAt)
+  const nextRunText = Number.isFinite(nextRun.getTime()) ? nextRun.toLocaleString() : nextRunAt
+
+  return locale === 'tr'
+    ? `Planlı ödeme kuruldu: ${intent.amount} USDC, ${shortAddr(intent.recipient)} adresine her ${intent.intervalHours} saatte bir. İlk kontrol: ${nextRunText}.`
+    : `Scheduled payment created: ${intent.amount} USDC to ${shortAddr(intent.recipient)} every ${intent.intervalHours} hour(s). First check: ${nextRunText}.`
 }
 
 function logResolvedIntent(parser: 'deterministic' | 'ai', action?: GogoAction | null): void {
@@ -2347,6 +2400,37 @@ export async function askGogo(
   if (greetingIntent) {
     logResolvedIntent('deterministic', null)
     return buildGreetingReply(greetingIntent)
+  }
+
+  const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
+  if (deterministicScheduleIntent) {
+    try {
+      const firstRunAt = new Date(Date.now() + 60_000).toISOString()
+      const schedule = await createSchedule({
+        recipient: deterministicScheduleIntent.recipient,
+        amount: deterministicScheduleIntent.amount,
+        intervalHours: deterministicScheduleIntent.intervalHours,
+        firstRunAt,
+        label: 'Gogo scheduled payment',
+        enabled: true,
+      })
+
+      logResolvedIntent('deterministic', {
+        type: 'none',
+        params: {},
+        completed: true,
+      })
+
+      return {
+        reply: buildScheduleCreatedReply(deterministicScheduleIntent, schedule.nextRunAt),
+        actions: [],
+      }
+    } catch (error) {
+      return {
+        reply: error instanceof Error ? error.message : t('settings.agentBackendUnreachable'),
+        actions: [],
+      }
+    }
   }
 
   const deterministicTipIntent = parseDeterministicTipIntent(userMessage)
