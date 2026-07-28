@@ -631,6 +631,60 @@ function buildDemoProofReply(locale: 'en' | 'tr', context: GogoContext): GogoRes
   }
 }
 
+function parseDemoScriptIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:demo script|pitch script|judge script|recording script|demo flow|presentation script|what should i say)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:demo metni|sunum metni|juri metni|konusma metni|ne diyeyim|nasil anlatayim|demo akisi)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDemoScriptReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        '60-90 saniyelik ArcCopilot demo metni:',
+        '',
+        '1. "ArcCopilot, Arc uzerinde USDC-first bir agent control layer. Kullanici cüzdani goruyor, ama kararlar policy ile sinirli."',
+        '2. "Portfolio ile gerçek cüzdan + Gateway bakiyesini okuyoruz; uydurma veri yok."',
+        '3. "who should I tip komutu, haftalik butce, per-tip cap ve allowlist icinde creator onerisi hazirliyor."',
+        '4. "x402 demo ile agent bir HTTP kaynagi icin 0.001 USDC quote aliyor; kullanici Pay & access demeden imza yok."',
+        '5. "Scheduled payments ile kullanici recurring USDC aksiyonu kuruyor. Backend uyusa bile cron-job.org her dakika Render endpointini uyandiriyor."',
+        '6. "History ekraninda tamamlanan ArcScan transaction kanitini gosteriyoruz."',
+        '7. "Ana fikir: otonomi var, ama bypass yok. Kullanici limitleri, server policy ve explicit approval sistemi koruyor."',
+        '',
+        'Hizli komut sirasi: demo status -> portfolio -> who should I tip -> x402 demo -> scheduled payment history.',
+      ]
+    : [
+        '60-90 second ArcCopilot demo script:',
+        '',
+        '1. "ArcCopilot is a USDC-first agent control layer on Arc. The user sees the wallet, but every action is constrained by policy."',
+        '2. "Portfolio reads real wallet and Gateway balances; no invented data."',
+        '3. "`who should I tip` prepares a creator suggestion inside the weekly budget, per-tip cap, and allowlist."',
+        '4. "`x402 demo` discovers a 0.001 USDC paid HTTP resource. No signature happens until the user taps Pay & access."',
+        '5. "Scheduled payments let the user create recurring USDC actions. Even on Render Free, cron-job.org wakes the endpoint every minute."',
+        '6. "The schedule history shows the completed ArcScan transaction as proof."',
+        '7. "The thesis is autonomy without bypass: user limits, server policy, and explicit approvals stay in control."',
+        '',
+        'Fast command path: demo status -> portfolio -> who should I tip -> x402 demo -> scheduled payment history.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2452,6 +2506,12 @@ export async function askGogo(
   if (demoProofIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoProofReply(demoProofIntent, context)
+  }
+
+  const demoScriptIntent = parseDemoScriptIntent(userMessage)
+  if (demoScriptIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDemoScriptReply(demoScriptIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)

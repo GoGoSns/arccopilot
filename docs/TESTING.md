@@ -11,11 +11,12 @@ Run this checklist before shipping a release build.
 | 5. Open Gogo AI and interact with it. | The proactive greeting appears, balance questions are answered, memory persists, multi-step actions are returned, tweet drafts are generated, address risk analysis works, and spending summaries are produced. |
 | 6. Create a reminder and return to Morning Brief. | The reminder is saved and later appears in the Morning Brief or Daily Brief reminder area. |
 | 7. Run `demo status` in Gogo. | A local proof summary appears without requiring Gemini or a backend call, including Render + Neon + cron, the x402 payment id, and the scheduled-payment transaction hash. |
-| 8. Run `x402 demo` in Gogo. | The quote displays 0.001 USDC on Arc Testnet, no signature is requested before the user taps **Pay & access**, and the paid response opens after approval. |
-| 9. Run `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour`. | Gogo creates a scheduled autonomous payment without requiring an AI provider response. The schedule appears in Settings with status Active. |
-| 10. Check scheduled payment history after the first due time. | The schedule run is recorded as `complete` and links to an ArcScan transaction. |
-| 11. Open Settings. | The AI provider switches without erasing saved provider keys, API keys are masked, key links are correct, language switching works, custom search and official account fields save correctly, and notification toggles persist. |
-| 12. Test failure cases. | Missing keys degrade gracefully, invalid addresses are rejected, stale Railway backend URLs migrate to the Render backend, and the UI shows a clear error or empty state instead of breaking. |
+| 8. Run `demo script` in Gogo. | A local 60-90 second judging/screen-recording narration appears without requiring Gemini or a backend call. |
+| 9. Run `x402 demo` in Gogo. | The quote displays 0.001 USDC on Arc Testnet, no signature is requested before the user taps **Pay & access**, and the paid response opens after approval. |
+| 10. Run `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour`. | Gogo creates a scheduled autonomous payment without requiring an AI provider response. The schedule appears in Settings with status Active. |
+| 11. Check scheduled payment history after the first due time. | The schedule run is recorded as `complete` and links to an ArcScan transaction. |
+| 12. Open Settings. | The AI provider switches without erasing saved provider keys, API keys are masked, key links are correct, language switching works, custom search and official account fields save correctly, and notification toggles persist. |
+| 13. Test failure cases. | Missing keys degrade gracefully, invalid addresses are rejected, stale Railway backend URLs migrate to the Render backend, and the UI shows a clear error or empty state instead of breaking. |
 
 Pass criteria:
 
