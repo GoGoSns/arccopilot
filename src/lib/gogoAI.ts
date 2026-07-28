@@ -687,6 +687,56 @@ function buildDemoScriptReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function parseDemoLinksIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:demo links|proof links|project links|submission links|hackathon links|links)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:demo linkleri|kanit linkleri|proje linkleri|basvuru linkleri|hackathon linkleri|linkler)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDemoLinksReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'ArcCopilot demo linkleri:',
+        '',
+        '- Frontend: https://github.com/GoGoSns/arccopilot',
+        '- Backend: https://github.com/GoGoSns/arccopilot-agent',
+        '- Render backend: https://arccopilot-agent.onrender.com',
+        '- x402 payment id: 13c83515-65d9-4906-bf80-b7ead6762c9d',
+        '- Scheduled tx: https://testnet.arcscan.app/tx/0x5485dd06c2fd25de8e72157f8081fc6af0de776ec85d66fc748a3fed543f1364',
+        '',
+        'Not: Render root route not_found donebilir; bu normal. App endpointleri kullanilir.',
+      ]
+    : [
+        'ArcCopilot demo links:',
+        '',
+        '- Frontend: https://github.com/GoGoSns/arccopilot',
+        '- Backend: https://github.com/GoGoSns/arccopilot-agent',
+        '- Render backend: https://arccopilot-agent.onrender.com',
+        '- x402 payment id: 13c83515-65d9-4906-bf80-b7ead6762c9d',
+        '- Scheduled tx: https://testnet.arcscan.app/tx/0x5485dd06c2fd25de8e72157f8081fc6af0de776ec85d66fc748a3fed543f1364',
+        '',
+        'Note: the Render root route may return not_found; that is expected. Use app endpoints.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2514,6 +2564,12 @@ export async function askGogo(
   if (demoScriptIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoScriptReply(demoScriptIntent)
+  }
+
+  const demoLinksIntent = parseDemoLinksIntent(userMessage)
+  if (demoLinksIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDemoLinksReply(demoLinksIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
