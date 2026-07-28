@@ -283,8 +283,25 @@ function sanitizeBriefingText(value: string): string | null {
   return normalizeWhitespace(sentences.slice(0, 5).join(' '))
 }
 
+function enforceCurrentGreeting(value: string, data: CollectedDailyBriefingData): string {
+  const expectedGreeting = getGreeting(data.locale)
+  const name = data.displayName?.trim() || null
+  const expectedOpening = `${expectedGreeting}${name ? `, ${name}` : ''}`
+
+  const greetingPattern = data.locale === 'tr'
+    ? /^(?:GÃ¼naydÄ±n|TÃ¼naydÄ±n|Ä°yi akÅŸamlar)(?:,\s*[^.!?]+)?/i
+    : /^(?:Good morning|Good afternoon|Good evening)(?:,\s*[^.!?]+)?/i
+
+  if (greetingPattern.test(value)) {
+    return normalizeWhitespace(value.replace(greetingPattern, expectedOpening))
+  }
+
+  return value
+}
+
 function buildPrompt(data: CollectedDailyBriefingData): string {
   const language = getLocalePromptLanguage(data.locale)
+  const greeting = getGreeting(data.locale)
   return [
     'You are ArcCopilot acting as the user\'s chief-of-staff.',
     'Write a warm, concise daily briefing in plain text only.',
@@ -292,6 +309,7 @@ function buildPrompt(data: CollectedDailyBriefingData): string {
     'Do not invent facts, numbers, news, or suggestions.',
     'Omit any missing data gracefully.',
     'Address the user directly and include at most one practical next step.',
+    `If you start with a greeting, use exactly this current greeting: ${greeting}.`,
     `Write in ${language}.`,
     '',
     `User: ${data.displayName ?? 'unknown'}`,
@@ -443,7 +461,7 @@ async function callAIBriefing(data: CollectedDailyBriefingData): Promise<string 
       return null
     }
 
-    return sanitized
+    return enforceCurrentGreeting(sanitized, data)
   } catch (error) {
     console.log('[BRIEF]', {
       status: 'ai-failed',
@@ -553,7 +571,7 @@ export async function buildDailyBriefing(input: DailyBriefingInputs = {}): Promi
         })
 
         return {
-          text: cached.text,
+          text: enforceCurrentGreeting(cached.text, data),
           mode: cached.mode,
           fetchedAt: cached.ts,
           source: 'cache',

@@ -453,6 +453,7 @@ async function fetchTweetsByQueryWithCache(
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) throw new Error('Invalid TwitterAPI key. Update in Settings.')
+    if (res.status === 402) throw new Error('TwitterAPI plan or credits required. Update the key or billing in Settings.')
     throw new Error(`TwitterAPI error ${res.status}`)
   }
 

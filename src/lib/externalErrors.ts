@@ -9,5 +9,9 @@ export function getExternalErrorMessage(error: unknown, fallbackKey: string): st
     return t('common.requestTimedOut')
   }
 
+  if (error instanceof Error && /(?:\b402\b|payment required|twitterapi error 402)/i.test(error.message)) {
+    return t('common.externalPaymentRequired')
+  }
+
   return t(fallbackKey)
 }
