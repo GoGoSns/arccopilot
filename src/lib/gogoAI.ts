@@ -962,19 +962,65 @@ function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
-function buildTokenRadarReply(locale: 'en' | 'tr'): GogoResponse {
+function formatArcTokenSignal(signal: ArcTokenRadarSignal): string {
+  const symbol = signal.symbol?.trim() || 'UNKNOWN'
+  const name = signal.name?.trim() || 'Unknown token'
+  const address = signal.address && isValidAddress(signal.address) ? formatAddress(signal.address, 4) : 'no address'
+  const holders = signal.holders ? `, holders: ${signal.holders}` : ''
+  const verified = signal.verified ? ', explorer metadata' : ''
+  return `- ${symbol} (${name}) — ${address}${holders}${verified}`
+}
+
+async function fetchArcTokenRadarSnapshot(): Promise<ArcTokenRadarSnapshot | null> {
+  try {
+    const backend = await getAgentBackendConfig().catch(() => null)
+    const backendUrl = (backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL).replace(/\/+$/, '')
+    const response = await fetchWithTimeout(`${backendUrl}/market/token-radar`, {
+      headers: { accept: 'application/json' },
+    }, 12_000)
+
+    if (!response.ok) return null
+    const payload = await response.json() as ArcTokenRadarSnapshot
+    return payload && typeof payload === 'object' ? payload : null
+  } catch (error) {
+    console.info('[TokenRadar] backend snapshot unavailable:', error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
+async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> {
   const communityTweets = readLocalCache<RecentTweetSummary[]>(TWITTER_TWEETS_CACHE_KEY) ?? []
   const officialTweets = readLocalCache<RecentTweetSummary[]>(TWITTER_OFFICIAL_TWEETS_CACHE_KEY) ?? []
   const cachedSignals = communityTweets.length + officialTweets.length
+  const liveSnapshot = await fetchArcTokenRadarSnapshot()
+  const tokenSignals = liveSnapshot?.tokenSignals?.slice(0, 5) ?? []
+  const memeSignals = liveSnapshot?.memeSignals?.slice(0, 3) ?? []
+  const liveLines = [
+    ...(tokenSignals.length > 0
+      ? [
+          locale === 'tr' ? 'ArcScan token snapshot:' : 'ArcScan token snapshot:',
+          ...tokenSignals.map(formatArcTokenSignal),
+        ]
+      : []),
+    ...(memeSignals.length > 0
+      ? [
+          locale === 'tr' ? 'Meme-like signals:' : 'Meme-like signals:',
+          ...memeSignals.map(formatArcTokenSignal),
+        ]
+      : []),
+  ]
 
   const lines = locale === 'tr'
     ? [
         'Arc Token / Meme Radar:',
         '',
         `- Cached social signals: ${cachedSignals}`,
+        `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; token math icin ERC-20 USDC her zaman 6 decimal.',
         '- Takip ettigim sinyaller: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
+        ...(liveLines.length > 0 ? ['', ...liveLines] : []),
         '',
         'Guvenlik filtresi:',
         '- Contract address yoksa “tradable” gibi davranmam.',
@@ -988,15 +1034,18 @@ function buildTokenRadarReply(locale: 'en' | 'tr'): GogoResponse {
         '- analyze 0x...: adres/contract kontrolu',
         '- x402 demo: ucretli insight akisi',
         '',
-        'Siradaki build: bu radari backend endpointine baglayip yeni ArcScan ERC-20 deploy/loglarini dakikalik taratabiliriz.',
+        'Siradaki build: token detay karti + risk puani + izleme listesi.',
       ]
     : [
         'Arc Token / Meme Radar:',
         '',
         `- Cached social signals: ${cachedSignals}`,
+        `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; ERC-20 USDC token math must stay at 6 decimals.',
         '- Signals watched: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
+        ...(liveLines.length > 0 ? ['', ...liveLines] : []),
         '',
         'Safety filter:',
         '- I do not treat anything as tradable without a contract address.',
@@ -1010,7 +1059,7 @@ function buildTokenRadarReply(locale: 'en' | 'tr'): GogoResponse {
         '- analyze 0x...: address/contract check',
         '- x402 demo: paid insight flow',
         '',
-        'Next build: connect this radar to a backend endpoint that scans new ArcScan ERC-20 deploy/log signals every minute.',
+        'Next build: token detail cards + risk score + watchlist.',
       ]
 
   return {
@@ -1053,6 +1102,25 @@ type CreatorTipIntent = {
 type BatchCreatorTipIntent = {
   amount?: string
   requestedCount?: number | null
+}
+
+type ArcTokenRadarSignal = {
+  name?: string
+  symbol?: string
+  address?: string
+  category?: string
+  holders?: string | null
+  verified?: boolean
+  explorerUrl?: string | null
+}
+
+type ArcTokenRadarSnapshot = {
+  observedCount?: number
+  cacheStatus?: string
+  fetchedAt?: string
+  memeSignals?: ArcTokenRadarSignal[]
+  tokenSignals?: ArcTokenRadarSignal[]
+  coreTokens?: ArcTokenRadarSignal[]
 }
 
 function parseCreatorTipIntent(message: string): CreatorTipIntent | null {
@@ -2875,7 +2943,7 @@ export async function askGogo(
   const tokenRadarIntent = parseTokenRadarIntent(userMessage)
   if (tokenRadarIntent) {
     logResolvedIntent('deterministic', null)
-    return buildTokenRadarReply(tokenRadarIntent)
+    return await buildTokenRadarReply(tokenRadarIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
