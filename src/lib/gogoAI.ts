@@ -585,6 +585,52 @@ function buildGreetingReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function parseDemoProofIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:demo status|status demo|proof|proof status|what works|demo proof|show proof|final demo|hackathon proof)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:demo durumu|kanit|kanitlar|calisanlar|neler calisiyor|final demo|hackathon kanit)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDemoProofReply(locale: 'en' | 'tr', context: GogoContext): GogoResponse {
+  const wallet = context.walletAddress ? formatAddress(context.walletAddress, 5) : 'not paired'
+  const balance = context.balance ? `${context.balance} USDC` : 'balance unavailable'
+
+  const lines = [
+    'ArcCopilot demo status:',
+    '',
+    `- Wallet: ${wallet}`,
+    `- Balance: ${balance}`,
+    '- Backend: Render Free + Neon Postgres',
+    '- Scheduler: cron-job.org triggers /cron/schedules/run every 1 minute',
+    '- x402 proof: paid 0.001 USDC and opened the protected Arc insight',
+    '- x402 transaction id: 13c83515-65d9-4906-bf80-b7ead6762c9d',
+    '- Scheduled payment proof: completed on Arc Testnet',
+    '- Scheduled tx: 0x5485dd06c2fd25de8e72157f8081fc6af0de776ec85d66fc748a3fed543f1364',
+    '',
+    locale === 'tr'
+      ? 'Dene: portfolio, who should I tip, x402 demo, veya create a reminder to pay 0.001 USDC to an address every 1 hour.'
+      : 'Try: portfolio, who should I tip, x402 demo, or create a reminder to pay 0.001 USDC to an address every 1 hour.',
+  ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2400,6 +2446,12 @@ export async function askGogo(
   if (greetingIntent) {
     logResolvedIntent('deterministic', null)
     return buildGreetingReply(greetingIntent)
+  }
+
+  const demoProofIntent = parseDemoProofIntent(userMessage)
+  if (demoProofIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDemoProofReply(demoProofIntent, context)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)

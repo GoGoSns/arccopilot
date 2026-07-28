@@ -134,11 +134,12 @@ Optionally, choose Gemini, OpenAI, or Anthropic in Settings and add your own pro
 Use this short path for judging or a screen recording:
 
 1. Open the wallet and show Arc Testnet USDC plus Circle Gateway balance.
-2. Open Gogo and type `portfolio` to show real wallet intelligence.
-3. Type `who should I tip` to show the paired-agent policy, weekly budget, per-tip cap, and advisor reasoning.
-4. Type `x402 demo`, review the 0.001 USDC quote, then tap **Pay & access** to unlock the protected resource.
-5. Type `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour` to create a recurring autonomous payment without relying on an AI provider.
-6. Open Settings -> Your agent (paired) -> Scheduled autonomous payments -> History and show the completed ArcScan transaction.
+2. Open Gogo and type `demo status` to show the local proof card: Render + Neon + cron, x402 payment id, and scheduled-payment transaction hash.
+3. Type `portfolio` to show real wallet intelligence.
+4. Type `who should I tip` to show the paired-agent policy, weekly budget, per-tip cap, and advisor reasoning.
+5. Type `x402 demo`, review the 0.001 USDC quote, then tap **Pay & access** to unlock the protected resource.
+6. Type `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour` to create a recurring autonomous payment without relying on an AI provider.
+7. Open Settings -> Your agent (paired) -> Scheduled autonomous payments -> History and show the completed ArcScan transaction.
 
 ---
 
