@@ -301,6 +301,12 @@ export function Settings({ onBack }: SettingsProps) {
       icon: Smartphone,
     },
   ]
+  const mobileTelegramBotUsername = messagingIntegrations?.publicConfig.telegramBotUsername?.replace(/^@/, '') ?? null
+  const messagingTelegramPairUrl = messagingLinkCode
+    && mobileTelegramBotUsername
+    && messagingLinkCode.channel !== 'whatsapp'
+    ? `https://t.me/${mobileTelegramBotUsername}?start=${encodeURIComponent(messagingLinkCode.code)}`
+    : null
   const schedulePreflightItems = schedulePreflight ? [
     { id: 'wallet', ok: schedulePreflight.checks.walletReady, label: t('settings.userAgentScheduleCheckWallet') },
     { id: 'autonomous', ok: schedulePreflight.checks.autonomousEnabled, label: t('settings.userAgentScheduleCheckAutonomous') },
@@ -2550,9 +2556,7 @@ export function Settings({ onBack }: SettingsProps) {
                         const Icon = channel.icon
                         const link = messagingIntegrations?.links.find((item) => item.channel === channel.id) ?? null
                         const available = messagingIntegrations?.availability[channel.id] === true
-                        const telegramBotUsername = channel.id === 'telegram'
-                          ? messagingIntegrations?.publicConfig.telegramBotUsername?.replace(/^@/, '') ?? null
-                          : null
+                        const telegramBotUsername = channel.id === 'telegram' ? mobileTelegramBotUsername : null
                         const loading = messagingIntegrations == null && !messagingError
                         const busy = messagingBusy === channel.id
 
@@ -2643,6 +2647,17 @@ export function Settings({ onBack }: SettingsProps) {
                             })}
                           </span>
                         </div>
+                        {messagingTelegramPairUrl && (
+                          <a
+                            href={messagingTelegramPairUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-arc-accent hover:underline"
+                          >
+                            {t('settings.mobileControlOpenTelegramWithCode')}
+                            <ExternalLink size={10} />
+                          </a>
+                        )}
                       </div>
                     )}
 

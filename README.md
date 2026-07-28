@@ -38,7 +38,7 @@ One cohesive, chief-of-staff style briefing that synthesizes the above into a sh
 Reminders you set, plus smart task suggestions the agent proposes from real state ("top up your Gateway balance", "you have budget left this week", "add an address for a discovered creator"). Only surfaced when the real precondition is met.
 
 ### Phone control
-Users can pair Telegram or WhatsApp from Settings with a one-time code. Phone commands are intentionally narrow and safe: `help`, `balance`, `status`, `schedules`, `pause 1`, and `resume 1`. Direct message-based transfers are disabled; new payments and x402 access still stay inside the normal approved app flow.
+Users can pair Telegram or WhatsApp from Settings with a one-time code. If the backend exposes a public Telegram bot username, Settings can open the bot directly and can include the pairing code in the Telegram `/start` payload. Phone commands are intentionally narrow and safe: `help`, `balance`, `status`, `schedules`, `pause 1`, and `resume 1`. Direct message-based transfers are disabled; new payments and x402 access still stay inside the normal approved app flow.
 
 ### x402 paid access
 Gogo can inspect an x402 URL without paying, verify that it is an Arc Testnet USDC + Circle Gateway offer, and show the exact price, network, and seller. The user must then tap **Pay & access** before MetaMask is asked for an EIP-712 authorization. ArcCopilot re-fetches and compares the quote immediately before signing, rejects changed terms, and caps this initial flow at 1 USDC. Type `x402 demo` in Gogo to use the companion backend's protected test resource.
