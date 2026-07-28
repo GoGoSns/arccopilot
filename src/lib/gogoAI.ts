@@ -737,6 +737,76 @@ function buildDemoLinksReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function parseDemoChecklistIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:demo checklist|checklist|demo check|pre demo check|recording checklist|judge checklist)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:demo kontrol|demo checklist|kontrol listesi|cekmeden once|kaydettmeden once|juri kontrol)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDemoChecklistReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'ArcCopilot demo checklist:',
+        '',
+        'Before recording:',
+        '- Reload the extension.',
+        '- Open Wallet and confirm USDC balance.',
+        '- Keep MetaMask unlocked on Arc Testnet.',
+        '- Confirm Render backend is live.',
+        '- Confirm cron-job.org job is enabled.',
+        '- Open scheduled payment History and show one complete run.',
+        '- Keep these commands ready:',
+        '  demo status',
+        '  portfolio',
+        '  who should I tip',
+        '  x402 demo',
+        '  demo links',
+        '',
+        'If something fails:',
+        '- Use demo status for local proof.',
+        '- Use demo links for GitHub + ArcScan proof.',
+      ]
+    : [
+        'ArcCopilot demo checklist:',
+        '',
+        'Before recording:',
+        '- Reload the extension.',
+        '- Open Wallet and confirm USDC balance.',
+        '- Keep MetaMask unlocked on Arc Testnet.',
+        '- Confirm Render backend is live.',
+        '- Confirm cron-job.org job is enabled.',
+        '- Open scheduled payment History and show one complete run.',
+        '- Keep these commands ready:',
+        '  demo status',
+        '  portfolio',
+        '  who should I tip',
+        '  x402 demo',
+        '  demo links',
+        '',
+        'If something fails:',
+        '- Use demo status for local proof.',
+        '- Use demo links for GitHub + ArcScan proof.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2570,6 +2640,12 @@ export async function askGogo(
   if (demoLinksIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoLinksReply(demoLinksIntent)
+  }
+
+  const demoChecklistIntent = parseDemoChecklistIntent(userMessage)
+  if (demoChecklistIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDemoChecklistReply(demoChecklistIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
