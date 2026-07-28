@@ -857,6 +857,84 @@ function buildDemoModeReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+function parseMarketplaceIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:market|marketplace|arc market|arc marketplace|circle market|circle marketplace|services|service market)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:pazar|market|marketplace|arc pazari|arc market|circle pazari|servis pazari|servisler)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'Arc Market — asistan icinde USDC-first servis pazari:',
+        '',
+        '1. Paid Arc Insight',
+        '   0.001 USDC x402 kaynak. Kesin fiyat gosterilir; Pay & access olmadan imza yok.',
+        '   Komut: x402 demo',
+        '',
+        '2. Creator Tip Advisor',
+        '   Butce, per-tip cap ve allowlist icinde creator onerisi hazirlar.',
+        '   Komut: who should I tip',
+        '',
+        '3. Scheduled USDC Automations',
+        '   Arc Testnet uzerinde periyodik USDC aksiyonlari; cron uyandirir, policy sinirlar.',
+        '   Komut: create a reminder to pay 0.001 USDC to 0x... every 1 hour',
+        '',
+        '4. Phone Control',
+        '   Telegram/telefon kontrolu icin pairing ve komut kilavuzu.',
+        '   Yol: Settings -> Phone control',
+        '',
+        '5. Proof Pack',
+        '   Repo, Render, x402 ve ArcScan kanit linklerini tek yerde gosterir.',
+        '   Komut: demo links',
+        '',
+        'Kural: market sadece kesif ve hazirlik yapar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
+      ]
+    : [
+        'Arc Market — a USDC-first service marketplace inside the assistant:',
+        '',
+        '1. Paid Arc Insight',
+        '   A 0.001 USDC x402 resource. Exact terms are shown; no signature before Pay & access.',
+        '   Command: x402 demo',
+        '',
+        '2. Creator Tip Advisor',
+        '   Prepares creator suggestions inside your budget, per-tip cap, and allowlist.',
+        '   Command: who should I tip',
+        '',
+        '3. Scheduled USDC Automations',
+        '   Recurring Arc Testnet USDC actions; cron wakes the endpoint and policy limits execution.',
+        '   Command: create a reminder to pay 0.001 USDC to 0x... every 1 hour',
+        '',
+        '4. Phone Control',
+        '   Pairing and command guide for Telegram / phone control.',
+        '   Path: Settings -> Phone control',
+        '',
+        '5. Proof Pack',
+        '   Shows repo, Render, x402, and ArcScan proof links in one place.',
+        '   Command: demo links',
+        '',
+        'Rule: the market only discovers and prepares. Anything that spends USDC still uses the existing approval-safe flow.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function getSafeTipAdvisorErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
 
@@ -2702,6 +2780,12 @@ export async function askGogo(
   if (demoChecklistIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoChecklistReply(demoChecklistIntent)
+  }
+
+  const marketplaceIntent = parseMarketplaceIntent(userMessage)
+  if (marketplaceIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildMarketplaceReply(marketplaceIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)
