@@ -962,6 +962,28 @@ function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
+function parseTokenRiskIntent(message: string): { locale: 'en' | 'tr'; address: string } | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  const address = normalized.match(/0x[a-f0-9]{40}/i)?.[0]
+  if (!address || !isValidAddress(address)) return null
+
+  if (/^(?:token risk|token detail|token details|analyze token|analyse token|check token|risk token|arc token risk)\b/i.test(normalized)) {
+    return { locale: 'en', address }
+  }
+
+  if (/^(?:token risk|token detay|token analizi|token kontrol|risk bak|arc token risk)\b/i.test(normalized)) {
+    return { locale: 'tr', address }
+  }
+
+  return null
+}
+
 function formatArcTokenSignal(signal: ArcTokenRadarSignal): string {
   const symbol = signal.symbol?.trim() || 'UNKNOWN'
   const name = signal.name?.trim() || 'Unknown token'
@@ -985,6 +1007,80 @@ async function fetchArcTokenRadarSnapshot(): Promise<ArcTokenRadarSnapshot | nul
   } catch (error) {
     console.info('[TokenRadar] backend snapshot unavailable:', error instanceof Error ? error.message : String(error))
     return null
+  }
+}
+
+async function fetchArcTokenDetailSnapshot(address: string): Promise<ArcTokenDetailSnapshot | null> {
+  try {
+    const backend = await getAgentBackendConfig().catch(() => null)
+    const backendUrl = (backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL).replace(/\/+$/, '')
+    const response = await fetchWithTimeout(`${backendUrl}/market/token-radar/${encodeURIComponent(address)}`, {
+      headers: { accept: 'application/json' },
+    }, 12_000)
+
+    if (!response.ok) return null
+    const payload = await response.json() as ArcTokenDetailSnapshot
+    return payload && typeof payload === 'object' ? payload : null
+  } catch (error) {
+    console.info('[TokenRadar] token detail unavailable:', error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
+async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promise<GogoResponse> {
+  const detail = await fetchArcTokenDetailSnapshot(address)
+  const token = detail?.token
+  const risk = detail?.risk
+
+  if (!token || !risk) {
+    return {
+      reply: locale === 'tr'
+        ? 'Token risk kartini su an yukleyemedim. ArcScan veya backend gecici olarak cevap vermiyor olabilir.'
+        : 'I could not load the token risk card right now. ArcScan or the backend may be temporarily unavailable.',
+      actions: [],
+    }
+  }
+
+  const checks = (risk.checks ?? [])
+    .slice(0, 6)
+    .map((check) => `- ${check.status === 'pass' ? 'OK' : 'Watch'}: ${check.label ?? 'check'}`)
+    .join('\n')
+
+  const lines = locale === 'tr'
+    ? [
+        'Arc token risk karti:',
+        '',
+        `${token.symbol ?? 'UNKNOWN'} — ${token.name ?? 'Unknown token'}`,
+        `Address: ${token.address ?? address}`,
+        `Decimals: ${token.decimals ?? 'unknown'}`,
+        `Holders: ${token.holders ?? 'unknown'}`,
+        `Supply: ${token.totalSupply ?? 'unknown'}`,
+        `Explorer: ${token.explorerUrl ?? detail.source ?? 'unavailable'}`,
+        '',
+        `Risk label: ${risk.label ?? 'unknown'} (${risk.score ?? '?'} / 100)`,
+        checks,
+        '',
+        risk.note ?? 'Read-only risk screen. Not investment advice.',
+      ]
+    : [
+        'Arc token risk card:',
+        '',
+        `${token.symbol ?? 'UNKNOWN'} — ${token.name ?? 'Unknown token'}`,
+        `Address: ${token.address ?? address}`,
+        `Decimals: ${token.decimals ?? 'unknown'}`,
+        `Holders: ${token.holders ?? 'unknown'}`,
+        `Supply: ${token.totalSupply ?? 'unknown'}`,
+        `Explorer: ${token.explorerUrl ?? detail.source ?? 'unavailable'}`,
+        '',
+        `Risk label: ${risk.label ?? 'unknown'} (${risk.score ?? '?'} / 100)`,
+        checks,
+        '',
+        risk.note ?? 'Read-only risk screen. Not investment advice.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
   }
 }
 
@@ -1121,6 +1217,25 @@ type ArcTokenRadarSnapshot = {
   memeSignals?: ArcTokenRadarSignal[]
   tokenSignals?: ArcTokenRadarSignal[]
   coreTokens?: ArcTokenRadarSignal[]
+}
+
+type ArcTokenRiskCheck = {
+  label?: string
+  status?: 'pass' | 'warn' | string
+}
+
+type ArcTokenDetailSnapshot = {
+  token?: ArcTokenRadarSignal & {
+    decimals?: string | null
+    totalSupply?: string | null
+  }
+  risk?: {
+    score?: number
+    label?: string
+    checks?: ArcTokenRiskCheck[]
+    note?: string
+  }
+  source?: string
 }
 
 function parseCreatorTipIntent(message: string): CreatorTipIntent | null {
@@ -2938,6 +3053,12 @@ export async function askGogo(
   if (marketplaceIntent) {
     logResolvedIntent('deterministic', null)
     return buildMarketplaceReply(marketplaceIntent)
+  }
+
+  const tokenRiskIntent = parseTokenRiskIntent(userMessage)
+  if (tokenRiskIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildTokenRiskReply(tokenRiskIntent.locale, tokenRiskIntent.address)
   }
 
   const tokenRadarIntent = parseTokenRadarIntent(userMessage)
