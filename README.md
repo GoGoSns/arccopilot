@@ -2,9 +2,9 @@
 
 **An onchain chief of staff for Arc.**
 
-ArcCopilot is a multi-user Chrome extension AI agent that does more than execute commands. Any user can pair with MetaMask, receive their own Circle W3S agent wallet, fund it, and set their own weekly budget, per-tip cap, and allowlist. ArcCopilot watches the Arc ecosystem on each user's behalf, decides who to support and how much, and can execute signatureless USDC nanopayments autonomously from that user's agent wallet.
+ArcCopilot is a multi-user Chrome extension AI agent that does more than execute commands. Any user can pair with MetaMask, receive their own Circle W3S agent wallet, fund it, and set their own weekly budget, per-tip cap, and allowlist. ArcCopilot watches the Arc ecosystem on each user's behalf, decides who to support and how much, can execute signatureless USDC nanopayments autonomously from that user's agent wallet, and can unlock paid HTTP resources through x402 after explicit user approval.
 
-Built by GoGo for the Lepton hackathon (Circle x Canteen), on Arc Testnet.
+Built by GoGo for the Encode Programmable Money Hackathon, Build on Arc.
 
 ---
 
@@ -40,6 +40,9 @@ Reminders you set, plus smart task suggestions the agent proposes from real stat
 ### x402 paid access
 Gogo can inspect an x402 URL without paying, verify that it is an Arc Testnet USDC + Circle Gateway offer, and show the exact price, network, and seller. The user must then tap **Pay & access** before MetaMask is asked for an EIP-712 authorization. ArcCopilot re-fetches and compares the quote immediately before signing, rejects changed terms, and caps this initial flow at 1 USDC. Type `x402 demo` in Gogo to use the companion backend's protected test resource.
 
+### Free always-on scheduling via external cron
+The backend can run on a free sleeping host while preserving scheduled-payment reliability. A secured external cron endpoint wakes the worker every minute, reuses the same due-payment processor as the in-process scheduler, and requires `X-Cron-Secret` before doing any work. The current demo deployment uses Render Free + Neon + cron-job.org, so the web service may sleep but scheduled payments are still externally triggered.
+
 ---
 
 ## Circle stack
@@ -68,6 +71,12 @@ Every capability below was executed on Arc Testnet and is verifiable on ArcScan.
 - `0xda76f0f55120f58495b5bb9fa1bffa11b710edd9832248f0e35a57fa57d27f97`
 - `0xafdc1f7fb76dcd55fe90404ea4d03c93e0c5417dca6a5c2456b0a9392c292176`
 
+**x402 paid resource unlock (0.001 USDC, Arc Testnet):**
+`13c83515-65d9-4906-bf80-b7ead6762c9d`
+
+**Scheduled autonomous payment via external cron (0.001 USDC):**
+`0x5485dd06c2fd25de8e72157f8081fc6af0de776ec85d66fc748a3fed543f1364`
+
 Explorer: https://testnet.arcscan.app
 
 ---
@@ -77,6 +86,7 @@ Explorer: https://testnet.arcscan.app
 - **Extension (Chrome MV3):** React + TypeScript + wagmi/viem. Runs the agent logic, advisor, discovery, news, briefing, portfolio, planner, pairing UI, and the Gogo AI chat surface. Pairing uses a SIWE-style MetaMask signature. No private key is stored in the client.
 - **Agent backend (separate service):** a Node service that authenticates paired users, provisions one Circle W3S agent wallet per user, and routes autonomous tips from the correct wallet. Per-user weekly budget, per-tip cap, and allowlist policy are enforced server-side before every transfer.
 - **Neon Postgres:** stores users, sessions, agent wallet records, policies, allowlists, recurring payment rules, occurrence records, and the per-user tip ledger. Session tokens are stored only as hashes.
+- **Render + external cron:** the live demo backend runs on Render Free and is woken by cron-job.org every minute through a secret-protected schedule endpoint. The same schedule processor also runs in-process whenever the host is awake.
 - **Key custody:** Circle W3S holds the wallet keys. Private keys are never returned to or stored by the extension.
 - **Fallback paths preserved:** with per-user autonomous mode off, the extension uses the existing signed MetaMask / Circle Gateway flow. The legacy single-operator autonomous mode remains available as a fallback.
 - **x402 isolation:** paid-resource discovery and signing live in their own client module and backend routes. Existing wallet, transfer, tipping, and scheduled-payment endpoints are unchanged.
@@ -116,6 +126,19 @@ To use your own autonomous agent:
 Your agent now pays from your own agent wallet without a signature for each transaction, while the backend enforces your policy.
 
 Optionally, choose Gemini, OpenAI, or Anthropic in Settings and add your own provider key for AI wording. Without a key, briefing, portfolio, and news features degrade honestly to summaries built from real available data.
+
+---
+
+## Demo script
+
+Use this short path for judging or a screen recording:
+
+1. Open the wallet and show Arc Testnet USDC plus Circle Gateway balance.
+2. Open Gogo and type `portfolio` to show real wallet intelligence.
+3. Type `who should I tip` to show the paired-agent policy, weekly budget, per-tip cap, and advisor reasoning.
+4. Type `x402 demo`, review the 0.001 USDC quote, then tap **Pay & access** to unlock the protected resource.
+5. Type `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour` to create a recurring autonomous payment without relying on an AI provider.
+6. Open Settings -> Your agent (paired) -> Scheduled autonomous payments -> History and show the completed ArcScan transaction.
 
 ---
 
