@@ -1,5 +1,6 @@
 export const PENDING_SEND_STORAGE_KEY = 'arccopilot:pending-send'
 export const PENDING_VIEW_STORAGE_KEY = 'arccopilot:pending_view'
+export const PENDING_GOGO_PROMPT_STORAGE_KEY = 'arccopilot:pending-gogo-prompt'
 export const ONBOARDING_SEEN = 'arccopilot:onboarding-seen'
 export const ADDRESS_BOOK_STORAGE_KEY = 'arccopilot:address_book'
 export const CREATORS = 'arccopilot:creators'

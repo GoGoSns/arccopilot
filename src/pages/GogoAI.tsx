@@ -38,7 +38,7 @@ import { findCreatorHandleByAddress, getCreatorWallet, normalizeCreatorHandle } 
 import { readAddressFromImage } from '@/lib/imageReader'
 import type { ReadAddressFromImageResult } from '@/lib/imageReader'
 import { debugWarn } from '@/lib/debug'
-import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
+import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 import { gatewayBatchTip, gatewayWithdraw } from '@/lib/gatewayMetamask'
 import {
   logAutoTipError,
@@ -67,6 +67,7 @@ import {
   ANTHROPIC_API_KEY_STORAGE_KEY,
   GEMINI_API_KEY_STORAGE_KEY,
   OPENAI_API_KEY_STORAGE_KEY,
+  PENDING_GOGO_PROMPT_STORAGE_KEY,
   PENDING_SEND_STORAGE_KEY,
   PENDING_VIEW_STORAGE_KEY,
   VOICE_RESPONSES_STORAGE_KEY,
@@ -1151,6 +1152,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
   const messagesRef = useRef<Message[]>([])
   const proactiveGreetingQueuedRef = useRef(false)
   const proactiveGreetingStartedRef = useRef(false)
+  const pendingPromptStartedRef = useRef(false)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const imagePreviewUrlRef = useRef<string | null>(null)
   const imageReadRequestRef = useRef(0)
@@ -2188,8 +2190,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
     }
   }
 
-  const handleSend = async () => {
-    const trimmed = userInput.trim()
+  const handleSend = async (overrideMessage?: string) => {
+    const trimmed = (overrideMessage ?? userInput).trim()
     if (!trimmed || isComposerLocked || !address) return
 
     if (isListening) {
@@ -2207,7 +2209,7 @@ export function GogoAI({ onBack }: GogoAIProps) {
     const optimisticMessages = [...history, userMessage]
     messagesRef.current = optimisticMessages
     setMessages(optimisticMessages)
-    setUserInput('')
+    if (!overrideMessage) setUserInput('')
     setIsLoading(true)
     void saveGogoHistory(optimisticMessages)
 
@@ -2336,6 +2338,39 @@ export function GogoAI({ onBack }: GogoAIProps) {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!historyLoaded || isInitializing || isComposerLocked || pendingPromptStartedRef.current || !address) return
+
+    let active = true
+    pendingPromptStartedRef.current = true
+
+    void (async () => {
+      try {
+        const result = await chromeStorageGet(PENDING_GOGO_PROMPT_STORAGE_KEY)
+        if (!active) return
+
+        const raw = result[PENDING_GOGO_PROMPT_STORAGE_KEY]
+        const pending = raw && typeof raw === 'object'
+          ? raw as { prompt?: unknown; ts?: unknown }
+          : null
+        const prompt = typeof pending?.prompt === 'string' ? pending.prompt.trim() : ''
+        const ts = typeof pending?.ts === 'number' ? pending.ts : 0
+        const isFresh = prompt && ts > 0 && Date.now() - ts < 60_000
+
+        await chromeStorageRemove(PENDING_GOGO_PROMPT_STORAGE_KEY)
+        if (!active || !isFresh) return
+
+        await handleSend(prompt)
+      } catch (error) {
+        debugWarn('[GogoAI] pending prompt failed:', error)
+      }
+    })()
+
+    return () => {
+      active = false
+    }
+  }, [historyLoaded, isInitializing, isComposerLocked, address]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateMessageAction = (
     messageIndex: number,

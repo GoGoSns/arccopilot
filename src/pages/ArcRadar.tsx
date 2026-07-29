@@ -3,8 +3,9 @@ import { ArrowLeft, Bell, Bot, ExternalLink, Loader2, Radar, RefreshCw, ShieldAl
 import { BLOCKSCOUT_BASE } from '@/lib/constants'
 import { MONOCHROME_DARK } from '@/lib/designTokens'
 import { DEFAULT_AGENT_BACKEND_URL, getAgentBackendConfig } from '@/lib/agentBackend'
-import { fetchWithTimeout } from '@/lib/external'
+import { chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { formatAddress } from '@/lib/utils'
+import { PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
 
 interface ArcRadarProps {
   onBack: () => void
@@ -151,6 +152,17 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
     void loadSnapshot()
   }, [])
 
+  const askGogo = async (prompt: string) => {
+    await chromeStorageSet({
+      [PENDING_GOGO_PROMPT_STORAGE_KEY]: {
+        prompt,
+        ts: Date.now(),
+      },
+      [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai',
+    })
+    onOpenGogo?.()
+  }
+
   return (
     <div
       className="flex h-full flex-col overflow-hidden"
@@ -267,11 +279,9 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                 {tokens.slice(0, 12).map((token) => {
                   const explorerUrl = token.explorerUrl || (token.address ? `${BLOCKSCOUT_BASE}/token/${token.address}` : BLOCKSCOUT_BASE)
                   return (
-                    <button
+                    <div
                       key={token.address ?? `${token.symbol}-${token.name}`}
-                      type="button"
-                      onClick={() => openExternal(explorerUrl)}
-                      className="group w-full rounded-[18px] border border-white/10 bg-black/20 px-3 py-3 text-left transition-colors hover:border-sky-200/35"
+                      className="w-full rounded-[18px] border border-white/10 bg-black/20 px-3 py-3 text-left"
                     >
                       <div className="flex items-start gap-3">
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-xs font-semibold ${
@@ -298,10 +308,41 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                             <span>holders {formatTokenAmount(token.holders)}</span>
                             <span>{getRiskNote(token)}</span>
                           </div>
+                          {token.address ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void askGogo(`token risk ${token.address}`)
+                                }}
+                                className="rounded-full border border-sky-200/25 bg-sky-200/10 px-2.5 py-1 text-[10px] font-medium text-sky-100 transition-colors hover:border-sky-100/50"
+                              >
+                                Ask Gogo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void askGogo(`watch token ${token.address}`)
+                                }}
+                                className="rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2.5 py-1 text-[10px] font-medium text-emerald-100 transition-colors hover:border-emerald-100/50"
+                              >
+                                Watch
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
-                        <ExternalLink size={14} className="mt-1 shrink-0 text-arc-hint transition-colors group-hover:text-sky-100" />
+                        <button
+                          type="button"
+                          onClick={() => openExternal(explorerUrl)}
+                          className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-arc-hint transition-colors hover:border-sky-200/35 hover:text-sky-100"
+                          aria-label={`Open ${getTokenTitle(token)} on ArcScan`}
+                        >
+                          <ExternalLink size={14} />
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -333,11 +374,17 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
           <section className="border px-4 py-4" style={cardStyle('rgba(110, 231, 183, 0.16)', 'rgba(255,255,255,0.035)')}>
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Try in Gogo</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {['token radar', 'analyze 0x...', 'watch token 0x...', 'arc circle bilgi'].map((command) => (
+              {[
+                'token radar',
+                tokens.find((token) => token.address)?.address ? `token risk ${tokens.find((token) => token.address)?.address}` : 'token risk 0x...',
+                tokens.find((token) => token.address)?.address ? `watch token ${tokens.find((token) => token.address)?.address}` : 'watch token 0x...',
+                'arc circle bilgi',
+              ].map((command) => (
                 <button
                   key={command}
                   type="button"
-                  onClick={onOpenGogo}
+                  onClick={() => void askGogo(command)}
+                  disabled={command.includes('0x...')}
                   className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-left font-mono text-[10px] text-white transition-colors hover:border-emerald-200/35"
                 >
                   {command}
