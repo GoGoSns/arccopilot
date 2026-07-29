@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Bell, Bot, ExternalLink, Loader2, Radar, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Bell, Bot, ExternalLink, Loader2, Radar, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { BLOCKSCOUT_BASE } from '@/lib/constants'
-import { MONOCHROME_DARK } from '@/lib/designTokens'
 import { DEFAULT_AGENT_BACKEND_URL, getAgentBackendConfig } from '@/lib/agentBackend'
 import { chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 import { formatAddress } from '@/lib/utils'
@@ -11,23 +10,6 @@ interface ArcRadarProps {
   onBack: () => void
   onOpenGogo?: () => void
   onOpenCalendar?: () => void
-}
-
-function cardStyle(border = 'rgba(110, 231, 183, 0.16)', background = 'rgba(7, 13, 11, 0.96)') {
-  return {
-    borderColor: border,
-    backgroundColor: background,
-    borderRadius: MONOCHROME_DARK.radius.card,
-  }
-}
-
-function openExternal(url: string) {
-  if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
-    chrome.tabs.create({ url })
-    return
-  }
-
-  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 type ArcRadarToken = {
@@ -83,13 +65,42 @@ type ArcRadarSnapshot = {
   }
 }
 
+const paper = '#efe8d8'
+const ink = '#12110f'
+const muted = '#686154'
+const line = 'rgba(18, 17, 15, 0.14)'
+const green = '#24d66f'
+
 const safetyRules = [
   'No contract address, no tradable label.',
-  'No buy recommendation when liquidity or holder distribution is unknown.',
-  'Flag risky owner, mint, pause, blacklist, proxy, or unverifiable controls.',
-  'Use ArcScan proof links before trusting a token claim.',
-  'Default to Arc Testnet until official mainnet details are confirmed.',
+  'No buy recommendation without liquidity, holder, and control proof.',
+  'Risk stays visible until ArcScan proof is strong.',
+  'Arc is treated as testnet-focused unless official mainnet data is confirmed.',
 ]
+
+const nodePositions = [
+  ['18%', '54%'],
+  ['26%', '35%'],
+  ['34%', '68%'],
+  ['44%', '42%'],
+  ['52%', '58%'],
+  ['62%', '31%'],
+  ['70%', '66%'],
+  ['79%', '45%'],
+  ['38%', '22%'],
+  ['57%', '78%'],
+  ['84%', '62%'],
+  ['23%', '76%'],
+] as const
+
+function openExternal(url: string) {
+  if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+    chrome.tabs.create({ url })
+    return
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 function formatDateTime(value?: string): string {
   if (!value) return '—'
@@ -102,17 +113,24 @@ function formatTokenAmount(value?: string | number | null): string {
   return String(value)
 }
 
-function getRiskNote(token: ArcRadarToken): string {
-  if (token.verified) return 'Explorer metadata verified'
-  const decimals = Number(token.decimals)
-  if (Number.isFinite(decimals) && decimals !== 6) return `Watch decimals: ${token.decimals}`
-  return 'Unverified metadata'
-}
-
 function getTokenTitle(token: ArcRadarToken): string {
   const symbol = token.symbol?.trim() || 'UNKNOWN'
   const name = token.name?.trim()
   return name && name !== symbol ? `${symbol} · ${name}` : symbol
+}
+
+function getTokenStatus(token: ArcRadarToken): string {
+  if (token.verified) return 'verified'
+  if ((token.attention?.score ?? 0) >= 70) return 'high attention'
+  if ((token.risk?.score ?? 0) >= 66) return 'high risk'
+  return 'watch'
+}
+
+function getRiskTone(token: ArcRadarToken): string {
+  const score = token.risk?.score ?? 50
+  if (score >= 66) return 'text-[#b9402b]'
+  if (score <= 30) return 'text-[#0c8c47]'
+  return 'text-[#9b6a13]'
 }
 
 async function fetchArcRadarSnapshot(): Promise<ArcRadarSnapshot> {
@@ -154,9 +172,10 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
     return Array.from(deduped.values())
   }, [snapshot])
 
-  const verifiedCount = tokens.filter((token) => token.verified).length
-  const unverifiedCount = tokens.length - verifiedCount
   const newTokens = snapshot?.newSignals ?? []
+  const verifiedCount = tokens.filter((token) => token.verified).length
+  const watchCount = Math.max(0, tokens.length - verifiedCount)
+  const radarNodes = tokens.slice(0, nodePositions.length)
 
   const loadSnapshot = async () => {
     setIsLoading(true)
@@ -186,79 +205,120 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
     onOpenGogo?.()
   }
 
+  const firstTokenAddress = tokens.find((token) => token.address)?.address
+
   return (
     <div
       className="flex h-full flex-col overflow-hidden"
       style={{
-        backgroundColor: MONOCHROME_DARK.colors.background,
-        color: MONOCHROME_DARK.colors.text,
+        color: ink,
+        backgroundColor: paper,
+        backgroundImage:
+          'linear-gradient(rgba(18,17,15,0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(18,17,15,0.055) 1px, transparent 1px), radial-gradient(circle at 78% 20%, rgba(36,214,111,0.14), transparent 32%)',
+        backgroundSize: '22px 22px, 22px 22px, auto',
       }}
     >
-      <header className="shrink-0 border-b px-4 py-3" style={{ borderBottomColor: MONOCHROME_DARK.colors.border }}>
-        <div className="flex items-center gap-3">
+      <header className="shrink-0 border-b px-4 py-3" style={{ borderBottomColor: line }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-10 w-10 items-center justify-center rounded-full border bg-white/45"
+              style={{ borderColor: line }}
+              aria-label="Back"
+            >
+              <ArrowLeft size={17} strokeWidth={1.9} />
+            </button>
+            <div className="min-w-0">
+              <p className="text-base font-semibold leading-tight">Arc Network Radar</p>
+              <p className="text-[11px]" style={{ color: muted }}>Real token signals, risk, proof, and Gogo analysis</p>
+            </div>
+          </div>
           <button
             type="button"
-            onClick={onBack}
-            className="flex h-10 w-10 items-center justify-center rounded-full border text-white"
-            style={{ borderColor: MONOCHROME_DARK.colors.border }}
-            aria-label="Back"
+            onClick={() => void loadSnapshot()}
+            disabled={isLoading}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-white/45 disabled:opacity-50"
+            style={{ borderColor: line }}
+            aria-label="Refresh Arc Radar"
           >
-            <ArrowLeft size={17} strokeWidth={1.9} />
+            {isLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           </button>
-          <div className="min-w-0">
-            <p className="text-base font-semibold leading-tight text-white">Arc Radar</p>
-            <p className="text-[11px] text-arc-text-dim">Token safety, meme signals, and proof-first monitoring</p>
-          </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-4">
         <div className="space-y-3">
-          <section
-            className="relative overflow-hidden border px-4 py-4"
-            style={{
-              ...cardStyle('rgba(110, 231, 183, 0.22)', 'rgba(5, 10, 8, 0.98)'),
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px), radial-gradient(circle at 82% 15%, rgba(52, 211, 153, 0.18), transparent 35%)',
-              backgroundSize: '24px 24px, 24px 24px, auto',
-            }}
-          >
-            <div className="absolute right-4 top-4 rounded-full border border-emerald-200/20 bg-emerald-200/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
-              {snapshot?.network ?? 'Arc Testnet'}
+          <section className="overflow-hidden rounded-[28px] border bg-[#f7f1e5]/80 p-4 shadow-[0_18px_50px_rgba(31,28,20,0.08)]" style={{ borderColor: line }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: '#118744' }}>
+                  — Network
+                </p>
+                <h1 className="mt-3 text-[30px] font-semibold leading-[0.98] tracking-[-0.06em]">
+                  Early radar for <span className="font-serif italic font-normal" style={{ color: green }}>Arc token waves</span>
+                </h1>
+                <p className="mt-3 max-w-[260px] text-xs leading-relaxed" style={{ color: muted }}>
+                  ArcScan-backed ERC-20 monitoring. Gogo can analyze each contract, but ArcCopilot never invents tokens or gives buy calls.
+                </p>
+              </div>
+              <div className="rounded-full border bg-white/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ borderColor: line, color: '#166534' }}>
+                {snapshot?.network ?? 'Arc Testnet'}
+              </div>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-emerald-200/25 bg-emerald-200/10 text-emerald-100">
-              <Radar size={22} strokeWidth={1.8} />
+
+            <div className="relative mx-auto mt-5 h-[220px] w-[220px] rounded-full border bg-[#ded7c8]/55" style={{ borderColor: 'rgba(18,17,15,0.65)' }}>
+              <div className="absolute inset-7 rounded-full border" style={{ borderColor: 'rgba(18,17,15,0.14)' }} />
+              <div className="absolute inset-14 rounded-full border" style={{ borderColor: 'rgba(18,17,15,0.12)' }} />
+              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-black/10" />
+              <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-black/10" />
+              <div className="absolute left-[18%] top-[33%] h-[72px] w-[138px] rotate-[-18deg] rounded-[50%] border border-black/15" />
+              <div className="absolute left-[33%] top-[18%] h-[128px] w-[72px] rotate-[24deg] rounded-[50%] border border-black/10" />
+
+              {radarNodes.map((token, index) => {
+                const [left, top] = nodePositions[index]
+                return (
+                  <button
+                    key={token.address ?? `${token.symbol}-${index}`}
+                    type="button"
+                    onClick={() => token.address && void askGogo(`token risk ${token.address}`)}
+                    className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white shadow-[0_0_0_5px_rgba(36,214,111,0.13)]"
+                    style={{
+                      left,
+                      top,
+                      backgroundColor: token.verified ? '#0ca653' : green,
+                    }}
+                    aria-label={`Ask Gogo about ${getTokenTitle(token)}`}
+                  />
+                )
+              })}
+
+              <div className="absolute right-[-18px] top-[74px] w-[122px] overflow-hidden rounded-[10px] border bg-[#10100f] text-white shadow-[0_18px_32px_rgba(0,0,0,0.22)]" style={{ borderColor: green }}>
+                <div className="h-16 bg-[linear-gradient(135deg,#22c55e,#f7e66f,#24a9ff,#ff5b2e)]" />
+                <div className="px-2 py-2">
+                  <p className="font-mono text-[8px] uppercase tracking-[0.16em]" style={{ color: green }}>Live</p>
+                  <p className="truncate text-[11px] font-semibold">{snapshot?.scan?.mode ?? 'scan'} · {snapshot?.scan?.persistence ?? 'proof'}</p>
+                </div>
+              </div>
             </div>
-            <div className="mt-5 max-w-[260px]">
-              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-100/80">Signal → Risk → Policy → Proof</p>
-              <h1 className="mt-2 text-[26px] font-semibold leading-[1.02] tracking-[-0.05em] text-white">
-                A safer radar for Arc meme/token waves.
-              </h1>
-              <p className="mt-3 text-xs leading-relaxed text-arc-text-dim">
-                Live ArcScan-backed ERC-20 watch surface. If the endpoint cannot prove data, this page shows unavailable instead of inventing tokens.
-              </p>
+
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {[
+                ['Observed', isLoading ? '—' : String(snapshot?.observedCount ?? tokens.length), 'ArcScan ERC-20'],
+                ['New', isLoading ? '—' : String(snapshot?.newSignalCount ?? newTokens.length), 'Since last scan'],
+                ['Watch', isLoading ? '—' : String(watchCount), 'Needs proof'],
+              ].map(([label, value, caption]) => (
+                <div key={label} className="rounded-[16px] border bg-white/45 px-3 py-3" style={{ borderColor: line }}>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: muted }}>{label}</p>
+                  <p className="mt-1 text-lg font-semibold">{value}</p>
+                  <p className="mt-1 text-[10px]" style={{ color: muted }}>{caption}</p>
+                </div>
+              ))}
             </div>
           </section>
 
-          <section className="grid grid-cols-3 gap-2">
-            <div className="border px-2.5 py-3" style={cardStyle('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.035)')}>
-              <p className="text-[9px] uppercase tracking-[0.16em] text-arc-hint">Observed</p>
-              <p className="mt-1 text-xs font-semibold text-white">{isLoading ? '—' : snapshot?.observedCount ?? tokens.length}</p>
-              <p className="mt-2 text-[10px] leading-relaxed text-arc-text-dim">ERC-20 contracts from ArcScan token index.</p>
-            </div>
-            <div className="border px-2.5 py-3" style={cardStyle('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.035)')}>
-              <p className="text-[9px] uppercase tracking-[0.16em] text-arc-hint">Verified</p>
-              <p className="mt-1 text-xs font-semibold text-white">{isLoading ? '—' : verifiedCount}</p>
-              <p className="mt-2 text-[10px] leading-relaxed text-arc-text-dim">Explorer metadata marked verified.</p>
-            </div>
-            <div className="border px-2.5 py-3" style={cardStyle('rgba(255,255,255,0.08)', 'rgba(255,255,255,0.035)')}>
-              <p className="text-[9px] uppercase tracking-[0.16em] text-arc-hint">Watch</p>
-              <p className="mt-1 text-xs font-semibold text-white">{isLoading ? '—' : unverifiedCount}</p>
-              <p className="mt-2 text-[10px] leading-relaxed text-arc-text-dim">Needs proof before trust.</p>
-            </div>
-          </section>
-
-          <section className="border px-4 py-4" style={cardStyle('rgba(52, 211, 153, 0.24)', 'rgba(16, 185, 129, 0.07)')}>
+          <section className="rounded-[24px] border bg-[#11110f] p-4 text-white shadow-[0_14px_36px_rgba(0,0,0,0.16)]" style={{ borderColor: 'rgba(18,17,15,0.25)' }}>
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-emerald-200/25 bg-emerald-200/10 text-emerald-100">
                 <Bell size={17} strokeWidth={1.9} />
@@ -267,70 +327,40 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">New since last scan</p>
-                    <p className="mt-1 text-sm font-semibold text-white">
+                    <p className="mt-1 text-sm font-semibold">
                       {isLoading ? 'Scanning ArcScan...' : `${snapshot?.newSignalCount ?? newTokens.length} fresh token signal${(snapshot?.newSignalCount ?? newTokens.length) === 1 ? '' : 's'}`}
                     </p>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-arc-text-dim">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65">
                     {snapshot?.scan?.mode ?? 'scan'}
                   </span>
                 </div>
-                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Cron can wake this detector every minute. First run creates a baseline; later runs only surface newly observed contracts.
+                <p className="mt-2 text-xs leading-relaxed text-white/58">
+                  First run creates a baseline; every later cron scan only surfaces newly observed contracts.
                 </p>
               </div>
             </div>
 
             {!isLoading && !error && newTokens.length === 0 ? (
-              <div className="mt-3 rounded-[16px] border border-white/10 bg-black/20 px-3 py-3 text-xs leading-relaxed text-arc-text-dim">
-                No new ArcScan ERC-20 contracts since the last scan. Gogo will still watch the live feed without inventing signals.
+              <div className="mt-3 rounded-[16px] border border-white/10 bg-white/[0.04] px-3 py-3 text-xs leading-relaxed text-white/60">
+                No new ArcScan ERC-20 contracts since the last scan. Gogo will keep watching without inventing signals.
               </div>
             ) : null}
 
             {newTokens.length > 0 ? (
               <div className="mt-3 space-y-2">
                 {newTokens.slice(0, 4).map((token) => (
-                  <div key={token.address ?? `${token.symbol}-${token.name}`} className="rounded-[16px] border border-emerald-200/15 bg-black/20 px-3 py-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">{getTokenTitle(token)}</p>
-                        <p className="mt-1 truncate font-mono text-[10px] text-arc-text-dim">{token.address ? formatAddress(token.address, 5) : 'address unavailable'}</p>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
-                        attention {token.attention?.score ?? '—'}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {token.address ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void askGogo(`token risk ${token.address}`)}
-                            className="rounded-full border border-sky-200/25 bg-sky-200/10 px-2.5 py-1 text-[10px] font-medium text-sky-100 transition-colors hover:border-sky-100/50"
-                          >
-                            Ask Gogo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void askGogo(`watch token ${token.address}`)}
-                            className="rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2.5 py-1 text-[10px] font-medium text-emerald-100 transition-colors hover:border-emerald-100/50"
-                          >
-                            Watch
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
+                  <TokenRow key={token.address ?? `${token.symbol}-${token.name}`} token={token} askGogo={askGogo} dark />
                 ))}
               </div>
             ) : null}
           </section>
 
-          <section className="border px-4 py-4" style={cardStyle('rgba(125, 211, 252, 0.18)', 'rgba(255,255,255,0.035)')}>
+          <section className="rounded-[24px] border bg-[#f7f1e5]/75 p-4" style={{ borderColor: line }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-sky-100/80">Live ArcScan feed</p>
-                <p className="mt-1 text-xs text-arc-text-dim">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: '#118744' }}>Live ArcScan feed</p>
+                <p className="mt-1 text-xs" style={{ color: muted }}>
                   Last fetched: {formatDateTime(snapshot?.fetchedAt)} · cache: {snapshot?.cacheStatus ?? '—'}
                 </p>
               </div>
@@ -338,7 +368,8 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                 type="button"
                 onClick={() => void loadSnapshot()}
                 disabled={isLoading}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white disabled:opacity-50"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white/50 disabled:opacity-50"
+                style={{ borderColor: line }}
                 aria-label="Refresh Arc Radar"
               >
                 {isLoading ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
@@ -346,7 +377,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
             </div>
 
             {error ? (
-              <div className="mt-3 rounded-[16px] border border-amber-200/20 bg-amber-200/10 px-3 py-3 text-xs leading-relaxed text-amber-50/85">
+              <div className="mt-3 rounded-[16px] border border-amber-700/20 bg-amber-100/45 px-3 py-3 text-xs leading-relaxed text-amber-950">
                 Could not load live radar: {error}. No token list is shown because ArcCopilot does not use fake radar data.
               </div>
             ) : null}
@@ -354,121 +385,55 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
             {!error && isLoading && tokens.length === 0 ? (
               <div className="mt-3 space-y-2">
                 {[0, 1, 2].map((item) => (
-                  <div key={item} className="h-16 animate-pulse rounded-[18px] bg-white/[0.05]" />
+                  <div key={item} className="h-16 animate-pulse rounded-[18px] bg-black/[0.06]" />
                 ))}
               </div>
             ) : null}
 
             {!error && !isLoading && tokens.length === 0 ? (
-              <div className="mt-3 rounded-[16px] border border-white/10 bg-white/[0.035] px-3 py-3 text-xs leading-relaxed text-arc-text-dim">
+              <div className="mt-3 rounded-[16px] border bg-white/45 px-3 py-3 text-xs leading-relaxed" style={{ borderColor: line, color: muted }}>
                 ArcScan returned zero token candidates. Nothing is displayed until real contracts appear.
               </div>
             ) : null}
 
             {tokens.length > 0 ? (
               <div className="mt-3 space-y-2">
-                {tokens.slice(0, 12).map((token) => {
-                  const explorerUrl = token.explorerUrl || (token.address ? `${BLOCKSCOUT_BASE}/token/${token.address}` : BLOCKSCOUT_BASE)
-                  return (
-                    <div
-                      key={token.address ?? `${token.symbol}-${token.name}`}
-                      className="w-full rounded-[18px] border border-white/10 bg-black/20 px-3 py-3 text-left"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-xs font-semibold ${
-                          token.verified
-                            ? 'border-emerald-200/25 bg-emerald-200/10 text-emerald-100'
-                            : 'border-amber-200/25 bg-amber-200/10 text-amber-100'
-                        }`}>
-                          {token.symbol?.slice(0, 3).toUpperCase() || 'TKN'}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="truncate text-sm font-semibold text-white">{getTokenTitle(token)}</p>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${
-                              token.verified ? 'bg-emerald-200/10 text-emerald-100' : 'bg-amber-200/10 text-amber-100'
-                            }`}>
-                              {token.verified ? 'verified' : 'watch'}
-                            </span>
-                          </div>
-                          <p className="mt-1 truncate font-mono text-[10px] text-arc-text-dim">
-                            {token.address ? formatAddress(token.address, 5) : 'address unavailable'}
-                          </p>
-                          <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-arc-text-dim">
-                            <span>dec {formatTokenAmount(token.decimals)}</span>
-                            <span>holders {formatTokenAmount(token.holders)}</span>
-                            <span>{getRiskNote(token)}</span>
-                          </div>
-                          {token.address ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void askGogo(`token risk ${token.address}`)
-                                }}
-                                className="rounded-full border border-sky-200/25 bg-sky-200/10 px-2.5 py-1 text-[10px] font-medium text-sky-100 transition-colors hover:border-sky-100/50"
-                              >
-                                Ask Gogo
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void askGogo(`watch token ${token.address}`)
-                                }}
-                                className="rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2.5 py-1 text-[10px] font-medium text-emerald-100 transition-colors hover:border-emerald-100/50"
-                              >
-                                Watch
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openExternal(explorerUrl)}
-                          className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-arc-hint transition-colors hover:border-sky-200/35 hover:text-sky-100"
-                          aria-label={`Open ${getTokenTitle(token)} on ArcScan`}
-                        >
-                          <ExternalLink size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
+                {tokens.slice(0, 10).map((token) => (
+                  <TokenRow key={token.address ?? `${token.symbol}-${token.name}`} token={token} askGogo={askGogo} />
+                ))}
               </div>
             ) : null}
           </section>
 
-          <section className="border px-4 py-4" style={cardStyle('rgba(251, 191, 36, 0.22)', 'rgba(251, 191, 36, 0.055)')}>
+          <section className="rounded-[24px] border bg-white/40 p-4" style={{ borderColor: line }}>
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-amber-200/25 bg-amber-200/10 text-amber-100">
-                <ShieldAlert size={18} strokeWidth={1.8} />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border bg-[#e8f8ec]" style={{ borderColor: 'rgba(17,135,68,0.18)', color: '#118744' }}>
+                <ShieldCheck size={18} strokeWidth={1.8} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-white">Safety filter</p>
-                <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
-                  Arc Radar helps reduce rug-pull risk; it does not promise profit or call unknown assets safe.
+                <p className="text-sm font-semibold">Safety filter</p>
+                <p className="mt-1 text-xs leading-relaxed" style={{ color: muted }}>
+                  Arc Radar reduces rug-pull risk; it does not promise profit or mark unknown assets safe.
                 </p>
               </div>
             </div>
             <div className="mt-3 space-y-2">
               {safetyRules.map((rule) => (
-                <div key={rule} className="flex items-start gap-2 text-xs leading-relaxed text-arc-text-dim">
-                  <ShieldCheck size={13} className="mt-0.5 shrink-0 text-amber-100/80" strokeWidth={1.9} />
+                <div key={rule} className="flex items-start gap-2 text-xs leading-relaxed" style={{ color: muted }}>
+                  <ShieldCheck size={13} className="mt-0.5 shrink-0" color="#118744" strokeWidth={1.9} />
                   <span>{rule}</span>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="border px-4 py-4" style={cardStyle('rgba(110, 231, 183, 0.16)', 'rgba(255,255,255,0.035)')}>
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Try in Gogo</p>
+          <section className="rounded-[24px] border bg-[#11110f] p-4 text-white" style={{ borderColor: 'rgba(18,17,15,0.25)' }}>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Ask Gogo</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {[
                 'token radar',
-                tokens.find((token) => token.address)?.address ? `token risk ${tokens.find((token) => token.address)?.address}` : 'token risk 0x...',
-                tokens.find((token) => token.address)?.address ? `watch token ${tokens.find((token) => token.address)?.address}` : 'watch token 0x...',
+                firstTokenAddress ? `token risk ${firstTokenAddress}` : 'token risk 0x...',
+                firstTokenAddress ? `watch token ${firstTokenAddress}` : 'watch token 0x...',
                 'arc circle bilgi',
               ].map((command) => (
                 <button
@@ -476,7 +441,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                   type="button"
                   onClick={() => void askGogo(command)}
                   disabled={command.includes('0x...')}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-left font-mono text-[10px] text-white transition-colors hover:border-emerald-200/35"
+                  className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2 text-left font-mono text-[10px] text-white transition-colors hover:border-emerald-200/35 disabled:opacity-45"
                 >
                   {command}
                 </button>
@@ -488,7 +453,8 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
             <button
               type="button"
               onClick={onOpenCalendar}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-white text-sm font-medium text-black"
+              className="flex min-h-12 items-center justify-center gap-2 rounded-full border bg-[#11110f] text-sm font-medium text-white"
+              style={{ borderColor: 'rgba(18,17,15,0.25)' }}
             >
               <Bell size={15} />
               Add alert
@@ -496,21 +462,110 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
             <button
               type="button"
               onClick={() => openExternal(BLOCKSCOUT_BASE)}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] text-sm font-medium text-white"
+              className="flex min-h-12 items-center justify-center gap-2 rounded-full border bg-white/55 text-sm font-medium"
+              style={{ borderColor: line, color: ink }}
             >
               <ExternalLink size={15} />
               ArcScan
             </button>
           </div>
 
-          <div className="flex items-start gap-2 rounded-[18px] border border-white/10 bg-white/[0.025] px-3 py-3 text-[11px] leading-relaxed text-arc-text-dim">
-            <Bot size={14} className="mt-0.5 shrink-0 text-emerald-100/70" />
+          <div className="mb-2 flex items-start gap-2 rounded-[18px] border bg-white/35 px-3 py-3 text-[11px] leading-relaxed" style={{ borderColor: line, color: muted }}>
+            <Bot size={14} className="mt-0.5 shrink-0" color="#118744" />
             <p>
-              Product stance: ArcCopilot should learn every available signal, but only act when the user’s policy, proof, and approval line up.
+              Product stance: Gogo learns every available signal, but only acts when user policy, proof, and approval line up.
             </p>
           </div>
         </div>
       </main>
+    </div>
+  )
+}
+
+function TokenRow({ token, askGogo, dark = false }: { token: ArcRadarToken; askGogo: (prompt: string) => Promise<void>; dark?: boolean }) {
+  const explorerUrl = token.explorerUrl || (token.address ? `${BLOCKSCOUT_BASE}/token/${token.address}` : BLOCKSCOUT_BASE)
+  const text = dark ? 'text-white' : ''
+  const subText = dark ? 'text-white/55' : ''
+
+  return (
+    <div
+      className={`rounded-[18px] border px-3 py-3 ${dark ? 'border-white/10 bg-white/[0.04]' : 'bg-white/55'}`}
+      style={dark ? undefined : { borderColor: line }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border text-xs font-semibold ${
+            dark ? 'border-emerald-200/20 bg-emerald-200/10 text-emerald-100' : ''
+          }`}
+          style={dark ? undefined : { borderColor: 'rgba(17,135,68,0.18)', backgroundColor: '#e8f8ec', color: '#118744' }}
+        >
+          {token.symbol?.slice(0, 3).toUpperCase() || 'TKN'}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className={`truncate text-sm font-semibold ${text}`}>{getTokenTitle(token)}</p>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${
+                dark ? 'bg-emerald-200/10 text-emerald-100' : 'bg-[#e8f8ec]'
+              }`}
+              style={dark ? undefined : { color: '#118744' }}
+            >
+              {getTokenStatus(token)}
+            </span>
+          </div>
+          <p className={`mt-1 truncate font-mono text-[10px] ${subText}`} style={dark ? undefined : { color: muted }}>
+            {token.address ? formatAddress(token.address, 5) : 'address unavailable'}
+          </p>
+          <div className={`mt-2 grid grid-cols-3 gap-2 text-[10px] ${subText}`} style={dark ? undefined : { color: muted }}>
+            <span>dec {formatTokenAmount(token.decimals)}</span>
+            <span>holders {formatTokenAmount(token.holders)}</span>
+            <span className={dark ? undefined : getRiskTone(token)}>risk {token.risk?.score ?? '—'}</span>
+          </div>
+          {token.address ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void askGogo(`token risk ${token.address}`)}
+                className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  dark
+                    ? 'border-sky-200/25 bg-sky-200/10 text-sky-100 hover:border-sky-100/50'
+                    : 'border-black/10 bg-white/45 hover:border-black/25'
+                }`}
+              >
+                Ask Gogo
+              </button>
+              <button
+                type="button"
+                onClick={() => void askGogo(`watch token ${token.address}`)}
+                className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  dark
+                    ? 'border-emerald-200/25 bg-emerald-200/10 text-emerald-100 hover:border-emerald-100/50'
+                    : 'border-black/10 bg-white/45 hover:border-black/25'
+                }`}
+              >
+                Watch
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => openExternal(explorerUrl)}
+          className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors ${
+            dark ? 'border-white/10 bg-white/[0.04] text-white/70 hover:border-sky-200/35' : 'bg-white/45 hover:border-black/25'
+          }`}
+          style={dark ? undefined : { borderColor: line, color: ink }}
+          aria-label={`Open ${getTokenTitle(token)} on ArcScan`}
+        >
+          <ExternalLink size={14} />
+        </button>
+      </div>
+      {(token.attention?.score != null || token.risk?.label) ? (
+        <div className={`mt-3 flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] ${dark ? 'border-white/10 bg-white/[0.03] text-white/58' : 'bg-[#f7f1e5]/80'}`} style={dark ? undefined : { borderColor: line, color: muted }}>
+          <Sparkles size={12} color={dark ? '#86efac' : '#118744'} />
+          <span>attention {token.attention?.score ?? '—'} · risk {token.risk?.label ?? 'unknown'}</span>
+        </div>
+      ) : null}
     </div>
   )
 }
