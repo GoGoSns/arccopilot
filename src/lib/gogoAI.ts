@@ -903,7 +903,7 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '',
         '6. Arc Token / Meme Radar',
         '   Arc ve Circle etrafindaki yeni token, meme ve launch sinyallerini takip etmek icin guvenli radar.',
-        '   Komut: token radar',
+        '   Komutlar: token radar, watch token 0x..., token watchlist',
         '',
         'Kural: market sadece kesif ve hazirlik yapar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
       ]
