@@ -1640,6 +1640,23 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
     : null
   const arcDiscordCountsLabel = [arcDiscordMemberLabel, arcDiscordOnlineLabel].filter(Boolean).join(' · ')
   const arcDiscordDisplayError = arcDiscordError ?? (!arcDiscordLoading && !arcDiscordCountsLabel ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
+  const arcDiscordOnlineRatio = arcDiscord?.memberCount && arcDiscord.onlineCount != null && arcDiscord.memberCount > 0
+    ? Math.round((arcDiscord.onlineCount / arcDiscord.memberCount) * 100)
+    : null
+  const arcDiscordPulseLabel = arcDiscordOnlineRatio == null
+    ? t('dailyBrief.arcDiscordPulseUnknown')
+    : arcDiscordOnlineRatio >= 8
+      ? t('dailyBrief.arcDiscordPulseLive')
+      : arcDiscordOnlineRatio >= 4
+        ? t('dailyBrief.arcDiscordPulseActive')
+        : t('dailyBrief.arcDiscordPulseQuiet')
+  const arcDiscordPulseTone = arcDiscordOnlineRatio == null
+    ? 'border-white/15 bg-white/[0.04] text-arc-text-dim'
+    : arcDiscordOnlineRatio >= 8
+      ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+      : arcDiscordOnlineRatio >= 4
+        ? 'border-sky-300/25 bg-sky-300/10 text-sky-100'
+        : 'border-amber-300/25 bg-amber-300/10 text-amber-100'
 
   const handleArcDiscordJoin = () => {
     if (!openSafeUrl(arcDiscord?.inviteUrl ?? 'https://discord.gg/buildonarc')) {
@@ -2736,63 +2753,94 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           )}
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-arc-border bg-arc-card p-4">
-          <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-white">
-                <Users size={14} />
-              </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcDiscord')}</p>
-                <span className="rounded-full border border-white/25 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
-                  {t('dailyBrief.arcDiscordServerName')}
-                </span>
-              </div>
-
-              {arcDiscordLoading ? (
-                <div className="space-y-2 pt-0.5">
-                  <div className="h-3.5 w-40 animate-pulse rounded bg-arc-border/70" />
-                  <div className="h-3 w-28 animate-pulse rounded bg-arc-border/70" />
+        <div
+          className="relative overflow-hidden rounded-2xl border border-emerald-200/15 bg-arc-card p-4"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 85% 8%, rgba(52, 211, 153, 0.14), transparent 34%), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
+            backgroundSize: 'auto, 22px 22px, 22px 22px',
+          }}
+        >
+          <div className="relative space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-200/20 bg-emerald-200/10 text-emerald-100">
+                  <Users size={15} />
                 </div>
-              ) : arcDiscordDisplayError ? (
-                <div className="flex items-start justify-between gap-3 rounded-xl border border-arc-borderEmphasis bg-arc-card px-3 py-2">
-                  <p className="text-xs leading-relaxed text-arc-text-dim">{arcDiscordDisplayError}</p>
-                  <Button variant="outline" size="sm" onClick={retryBrief} className="shrink-0">
-                    {t('state.retry')}
-                  </Button>
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-100/70">{t('dailyBrief.arcDiscord')}</p>
+                  <p className="mt-1 text-sm font-semibold text-white">{t('dailyBrief.arcDiscordServerName')}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-arc-text-dim">{t('dailyBrief.arcDiscordSubtitle')}</p>
                 </div>
-              ) : arcDiscordCountsLabel ? (
-                <p className="text-xs leading-relaxed text-arc-text-dim">{arcDiscordCountsLabel}</p>
-              ) : null}
+              </div>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] ${arcDiscordPulseTone}`}>
+                {arcDiscordPulseLabel}
+              </span>
             </div>
-          </div>
 
-          <div className="space-y-2">
+            {arcDiscordLoading ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="h-14 animate-pulse rounded-xl bg-white/[0.05]" />
+                <div className="h-14 animate-pulse rounded-xl bg-white/[0.05]" />
+              </div>
+            ) : arcDiscordDisplayError ? (
+              <div className="flex items-start justify-between gap-3 rounded-xl border border-arc-borderEmphasis bg-black/20 px-3 py-2">
+                <p className="text-xs leading-relaxed text-arc-text-dim">{arcDiscordDisplayError}</p>
+                <Button variant="outline" size="sm" onClick={retryBrief} className="shrink-0">
+                  {t('state.retry')}
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordMembersLabel')}</p>
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    {arcDiscord?.memberCount != null ? formatLocalizedCount(arcDiscord.memberCount) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordOnlineLabel')}</p>
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    {arcDiscord?.onlineCount != null ? formatLocalizedCount(arcDiscord.onlineCount) : '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordPulseLabel')}</p>
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    {arcDiscordOnlineRatio != null ? `${arcDiscordOnlineRatio}%` : '—'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <Button type="button" fullWidth onClick={handleArcDiscordJoin}>
               <ArrowUpRight size={14} />
               {t('dailyBrief.arcDiscordJoin')}
             </Button>
+
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                fullWidth
-                size="sm"
                 onClick={() => handleArcDiscordChannelOpen('https://discord.com/channels/1423729540160815207/1430952602606112788')}
+                className="group rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition-colors hover:border-emerald-200/25 hover:bg-emerald-200/10"
               >
-                <Hash size={12} />
-                {t('dailyBrief.arcDiscordTechnicalSupport')}
-              </Button>
-              <Button
+                <span className="flex items-center gap-2 text-[11px] font-semibold text-white">
+                  <Hash size={12} />
+                  {t('dailyBrief.arcDiscordTechnicalSupport')}
+                </span>
+                <span className="mt-1 block text-[10px] text-arc-text-dim">{t('dailyBrief.arcDiscordSupportHint')}</span>
+              </button>
+              <button
                 type="button"
-                variant="ghost"
-                fullWidth
-                size="sm"
                 onClick={() => handleArcDiscordChannelOpen('https://discord.com/channels/1423729540160815207/1423729542148788252')}
+                className="group rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left transition-colors hover:border-emerald-200/25 hover:bg-emerald-200/10"
               >
-                <Hash size={12} />
-                {t('dailyBrief.arcDiscordEngagement')}
-              </Button>
+                <span className="flex items-center gap-2 text-[11px] font-semibold text-white">
+                  <Hash size={12} />
+                  {t('dailyBrief.arcDiscordEngagement')}
+                </span>
+                <span className="mt-1 block text-[10px] text-arc-text-dim">{t('dailyBrief.arcDiscordEngagementHint')}</span>
+              </button>
             </div>
           </div>
         </div>
