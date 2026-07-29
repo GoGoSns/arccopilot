@@ -41,6 +41,18 @@ type ArcRadarToken = {
   totalSupply?: string | number | null
   verified?: boolean
   explorerUrl?: string | null
+  firstSeenAt?: string | null
+  lastSeenAt?: string | null
+  risk?: {
+    score?: number
+    label?: string
+    note?: string
+  }
+  attention?: {
+    score?: number
+    label?: string
+    note?: string
+  }
 }
 
 type ArcRadarSnapshot = {
@@ -50,9 +62,19 @@ type ArcRadarSnapshot = {
   fetchedAt?: string
   cacheStatus?: string
   observedCount?: number
+  newSignalCount?: number
+  newSignals?: ArcRadarToken[]
   memeSignals?: ArcRadarToken[]
   tokenSignals?: ArcRadarToken[]
   coreTokens?: ArcRadarToken[]
+  scan?: {
+    mode?: string
+    persistence?: string
+    previousSeenCount?: number
+    currentSeenCount?: number
+    baselineCreated?: boolean
+    scannedAt?: string
+  }
   safety?: {
     readOnly?: boolean
     tradeRecommendations?: boolean
@@ -134,6 +156,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
 
   const verifiedCount = tokens.filter((token) => token.verified).length
   const unverifiedCount = tokens.length - verifiedCount
+  const newTokens = snapshot?.newSignals ?? []
 
   const loadSnapshot = async () => {
     setIsLoading(true)
@@ -233,6 +256,74 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
               <p className="mt-1 text-xs font-semibold text-white">{isLoading ? '—' : unverifiedCount}</p>
               <p className="mt-2 text-[10px] leading-relaxed text-arc-text-dim">Needs proof before trust.</p>
             </div>
+          </section>
+
+          <section className="border px-4 py-4" style={cardStyle('rgba(52, 211, 153, 0.24)', 'rgba(16, 185, 129, 0.07)')}>
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border border-emerald-200/25 bg-emerald-200/10 text-emerald-100">
+                <Bell size={17} strokeWidth={1.9} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">New since last scan</p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {isLoading ? 'Scanning ArcScan...' : `${snapshot?.newSignalCount ?? newTokens.length} fresh token signal${(snapshot?.newSignalCount ?? newTokens.length) === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-arc-text-dim">
+                    {snapshot?.scan?.mode ?? 'scan'}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
+                  Cron can wake this detector every minute. First run creates a baseline; later runs only surface newly observed contracts.
+                </p>
+              </div>
+            </div>
+
+            {!isLoading && !error && newTokens.length === 0 ? (
+              <div className="mt-3 rounded-[16px] border border-white/10 bg-black/20 px-3 py-3 text-xs leading-relaxed text-arc-text-dim">
+                No new ArcScan ERC-20 contracts since the last scan. Gogo will still watch the live feed without inventing signals.
+              </div>
+            ) : null}
+
+            {newTokens.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {newTokens.slice(0, 4).map((token) => (
+                  <div key={token.address ?? `${token.symbol}-${token.name}`} className="rounded-[16px] border border-emerald-200/15 bg-black/20 px-3 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">{getTokenTitle(token)}</p>
+                        <p className="mt-1 truncate font-mono text-[10px] text-arc-text-dim">{token.address ? formatAddress(token.address, 5) : 'address unavailable'}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                        attention {token.attention?.score ?? '—'}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {token.address ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void askGogo(`token risk ${token.address}`)}
+                            className="rounded-full border border-sky-200/25 bg-sky-200/10 px-2.5 py-1 text-[10px] font-medium text-sky-100 transition-colors hover:border-sky-100/50"
+                          >
+                            Ask Gogo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void askGogo(`watch token ${token.address}`)}
+                            className="rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2.5 py-1 text-[10px] font-medium text-emerald-100 transition-colors hover:border-emerald-100/50"
+                          >
+                            Watch
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <section className="border px-4 py-4" style={cardStyle('rgba(125, 211, 252, 0.18)', 'rgba(255,255,255,0.035)')}>

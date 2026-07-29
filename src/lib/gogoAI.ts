@@ -1220,7 +1220,9 @@ function formatArcTokenSignal(signal: ArcTokenRadarSignal): string {
   const address = signal.address && isValidAddress(signal.address) ? formatAddress(signal.address, 4) : 'no address'
   const holders = signal.holders ? `, holders: ${signal.holders}` : ''
   const verified = signal.verified ? ', explorer metadata' : ''
-  return `- ${symbol} (${name}) — ${address}${holders}${verified}`
+  const attention = signal.attention?.score != null ? `, attention: ${signal.attention.score}/100` : ''
+  const risk = signal.risk?.score != null ? `, risk: ${signal.risk.score}/100` : ''
+  return `- ${symbol} (${name}) — ${address}${holders}${verified}${attention}${risk}`
 }
 
 async function fetchArcTokenRadarSnapshot(): Promise<ArcTokenRadarSnapshot | null> {
@@ -1321,7 +1323,18 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
   const liveSnapshot = await fetchArcTokenRadarSnapshot()
   const tokenSignals = liveSnapshot?.tokenSignals?.slice(0, 5) ?? []
   const memeSignals = liveSnapshot?.memeSignals?.slice(0, 3) ?? []
+  const newSignals = liveSnapshot?.newSignals?.slice(0, 5) ?? []
   const liveLines = [
+    ...(newSignals.length > 0
+      ? [
+          locale === 'tr' ? 'Yeni yakalanan tokenlar:' : 'New since last scan:',
+          ...newSignals.map(formatArcTokenSignal),
+        ]
+      : [
+          locale === 'tr'
+            ? 'Yeni yakalanan tokenlar: 0 (son taramadan beri yeni ArcScan ERC-20 yok)'
+            : 'New since last scan: 0 (no new ArcScan ERC-20 contracts since the last scan)',
+        ]),
     ...(tokenSignals.length > 0
       ? [
           locale === 'tr' ? 'ArcScan token snapshot:' : 'ArcScan token snapshot:',
@@ -1342,6 +1355,8 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '',
         `- Cached social signals: ${cachedSignals}`,
         `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- New since last scan: ${liveSnapshot?.newSignalCount ?? 'unavailable'}`,
+        `- Scan mode: ${liveSnapshot?.scan?.mode ?? 'unavailable'} / ${liveSnapshot?.scan?.persistence ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; token math icin ERC-20 USDC her zaman 6 decimal.',
@@ -1362,13 +1377,15 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '- token watchlist: izleme listesini goster',
         '- x402 demo: ucretli insight akisi',
         '',
-        'Siradaki build: watchlist uyarilari + yeni deploy diff ekrani.',
+        'Siradaki build: token watchlist alarmlarini bildirim sistemine baglamak.',
       ]
     : [
         'Arc Token / Meme Radar:',
         '',
         `- Cached social signals: ${cachedSignals}`,
         `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- New since last scan: ${liveSnapshot?.newSignalCount ?? 'unavailable'}`,
+        `- Scan mode: ${liveSnapshot?.scan?.mode ?? 'unavailable'} / ${liveSnapshot?.scan?.persistence ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; ERC-20 USDC token math must stay at 6 decimals.',
@@ -1389,7 +1406,7 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '- token watchlist: show watched tokens',
         '- x402 demo: paid insight flow',
         '',
-        'Next build: watchlist alerts + new deploy diff view.',
+        'Next build: connect token watchlist alerts to notifications.',
       ]
 
   return {
@@ -1442,15 +1459,35 @@ type ArcTokenRadarSignal = {
   holders?: string | null
   verified?: boolean
   explorerUrl?: string | null
+  risk?: {
+    score?: number
+    label?: string
+    note?: string
+  }
+  attention?: {
+    score?: number
+    label?: string
+    note?: string
+  }
 }
 
 type ArcTokenRadarSnapshot = {
   observedCount?: number
+  newSignalCount?: number
   cacheStatus?: string
   fetchedAt?: string
+  newSignals?: ArcTokenRadarSignal[]
   memeSignals?: ArcTokenRadarSignal[]
   tokenSignals?: ArcTokenRadarSignal[]
   coreTokens?: ArcTokenRadarSignal[]
+  scan?: {
+    mode?: string
+    persistence?: string
+    previousSeenCount?: number
+    currentSeenCount?: number
+    baselineCreated?: boolean
+    scannedAt?: string
+  }
 }
 
 type ArcTokenRiskCheck = {
