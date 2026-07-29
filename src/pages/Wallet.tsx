@@ -4,6 +4,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bell,
+  CalendarDays,
   ChevronRight,
   Copy,
   Droplet,
@@ -254,6 +255,7 @@ interface WalletProps {
   onOpenBrief: () => void
   onOpenActivity: () => void
   onMenu: () => void
+  onOpenCalendar?: () => void
   onOpenGogo?: () => void
 }
 
@@ -263,6 +265,7 @@ export function Wallet({
   onOpenBrief,
   onOpenActivity,
   onMenu,
+  onOpenCalendar,
   onOpenGogo,
 }: WalletProps) {
   const [copied, setCopied] = useState(false)
@@ -356,6 +359,12 @@ export function Wallet({
     level,
   })
   const openGogo = onOpenGogo ?? (() => {})
+  const openCalendar = onOpenCalendar ?? onOpenBrief
+  const todayLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date())
 
   const dismissOnboarding = () => {
     onboardingDismissedRef.current = true
@@ -662,6 +671,40 @@ export function Wallet({
           </div>
 
           {actionError ? <p className="px-0.5 text-[11px] text-arc-text-dim">{actionError}</p> : null}
+
+          <button
+            type="button"
+            onClick={openCalendar}
+            className="group w-full overflow-hidden border px-4 py-3 text-left transition-colors hover:border-white/25"
+            style={{
+              ...makeCardStyle('rgba(255, 255, 255, 0.035)', 'rgba(255, 255, 255, 0.09)', MONOCHROME_DARK.radius.card),
+              backgroundImage:
+                'linear-gradient(90deg, rgba(110,231,183,0.10), transparent 36%), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
+              backgroundSize: 'auto, 24px 24px, 24px 24px',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center border border-emerald-200/20 bg-emerald-200/10 text-emerald-100"
+                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
+              >
+                <CalendarDays size={17} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Calendar</p>
+                  <span className="shrink-0 text-[10px] text-arc-text-dim">{todayLabel}</span>
+                </div>
+                <p className="mt-1 truncate text-sm font-medium text-white">
+                  {dueReminders.length > 0
+                    ? `${dueReminders.length} due · ${dueReminders[0]?.text ?? ''}`
+                    : 'No due reminders'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-arc-text-dim">Reminders and scheduled USDC actions in one view.</p>
+              </div>
+              <ChevronRight size={15} className="shrink-0 text-arc-hint transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </button>
 
           {scanPanelOpen ? (
             <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}>

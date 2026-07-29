@@ -99,6 +99,7 @@ export default function App() {
       onOpenBrief={() => go('daily-brief')}
       onOpenActivity={() => go('activity')}
       onMenu={() => go('settings')}
+      onOpenCalendar={() => go('calendar')}
       onOpenGogo={() => go('gogo-ai')}
     />
   )
