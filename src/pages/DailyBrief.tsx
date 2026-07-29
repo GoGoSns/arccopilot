@@ -79,6 +79,11 @@ const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const ARC_TOKEN_WATCHLIST_STORAGE_KEY = 'arccopilot:arc-token-watchlist'
 
+function isTwitterApiPlanMessage(message: string | null): boolean {
+  if (!message) return false
+  return /api plan|credits|payment required|external data source|harici veri kayna/i.test(message)
+}
+
 // --- types -------------------------------------------------------------------
 interface RawTransfer {
   timestamp: string
@@ -1278,6 +1283,13 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const safeTweets = Array.isArray(tweets) ? tweets : []
   const safeActivity = Array.isArray(activity) ? activity : []
   const hasOfficialTweets = safeOfficialTweets.length > 0
+  const officialTweetsPlanBlocked = isTwitterApiPlanMessage(officialTweetsError)
+  const communityTweetsPlanBlocked = isTwitterApiPlanMessage(tweetsError)
+  const showOfficialTweetsError = Boolean(officialTweetsError) && !officialTweetsPlanBlocked
+  const showTwitterPlanNotice = !tweetsLoading
+    && !hasOfficialTweets
+    && safeTweets.length === 0
+    && (officialTweetsPlanBlocked || communityTweetsPlanBlocked)
   const portfolioTopRecipients = portfolioIntel?.topRecipients.slice(0, 3) ?? []
   const portfolioLocale = locale === 'tr' ? 'tr' : 'en'
 
@@ -2791,10 +2803,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
             <p className="font-mono text-[10px] uppercase tracking-widest text-arc-text-dim">{t('dailyBrief.arcOnX')}</p>
           </div>
 
-          {officialTweetsError ? (
+          {showOfficialTweetsError ? (
             <ErrorState
               title={t('activity.couldNotLoad')}
-              description={officialTweetsError}
+              description={officialTweetsError ?? t('activity.couldNotLoad')}
               actionLabel={t('state.retry')}
               onAction={retryBrief}
             />
@@ -2847,6 +2859,26 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : showTwitterPlanNotice ? (
+            <div className="space-y-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3 text-left">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-arc-border bg-arc-card text-arc-text-dim">
+                  <Twitter size={13} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-arc-text">{t('dailyBrief.xFeedPausedTitle')}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                    {t('dailyBrief.xFeedPausedDescription')}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCurrentView('settings')}
+                className="w-full rounded-full border border-arc-border bg-arc-card px-3 py-2 text-[11px] font-semibold text-arc-text transition-colors hover:border-arc-accent/50"
+              >
+                {t('dailyBrief.updateKeyInSettings')}
+              </button>
             </div>
           ) : tweetsError ? (
             <div className="space-y-2 py-1 text-center">
