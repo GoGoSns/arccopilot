@@ -877,15 +877,17 @@ function parseMarketplaceIntent(message: string): 'en' | 'tr' | null {
 }
 
 function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
-  const lines = locale === 'tr'
+  const guardLines = locale === 'tr'
     ? [
-        'Arc Market — asistan icinde USDC-first servis pazari:',
+        'ArcCopilot Guard — Arc icin risk-aware USDC kontrol katmani:',
+        '',
+        'Tez: Sadece risk tespit etmek degil; risk sinyallerini policy-bound, kanitli aksiyonlara cevirmek.',
         '',
         '1. Paid Arc Insight',
         '   0.001 USDC x402 kaynak. Kesin fiyat gosterilir; Pay & access olmadan imza yok.',
         '   Komut: x402 demo',
         '',
-        '2. Creator Tip Advisor',
+        '2. Creator Economy',
         '   Butce, per-tip cap ve allowlist icinde creator onerisi hazirlar.',
         '   Komut: who should I tip',
         '',
@@ -893,28 +895,30 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Arc Testnet uzerinde periyodik USDC aksiyonlari; cron uyandirir, policy sinirlar.',
         '   Komut: create a reminder to pay 0.001 USDC to 0x... every 1 hour',
         '',
-        '4. Phone Control',
+        '4. Signal & Safety',
+        '   Token/meme radar, risk karti, watchlist ve explorer kanitlari. Alim onerisi degil; rug-risk azaltma katmani.',
+        '   Komutlar: token radar, token risk 0x..., watch token 0x..., token watchlist',
+        '',
+        '5. Phone Control',
         '   Telegram/telefon kontrolu icin pairing ve komut kilavuzu.',
         '   Yol: Settings -> Phone control',
         '',
-        '5. Proof Pack',
+        '6. Proof Pack',
         '   Repo, Render, x402 ve ArcScan kanit linklerini tek yerde gosterir.',
         '   Komut: demo links',
         '',
-        '6. Arc Token / Meme Radar',
-        '   Arc ve Circle etrafindaki yeni token, meme ve launch sinyallerini takip etmek icin guvenli radar.',
-        '   Komutlar: token radar, watch token 0x..., token watchlist',
-        '',
-        'Kural: market sadece kesif ve hazirlik yapar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
+        'Kural: Guard uyarir, hazirlar ve kanitlar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
       ]
     : [
-        'Arc Market — a USDC-first service marketplace inside the assistant:',
+        'ArcCopilot Guard — a risk-aware USDC control layer for Arc:',
+        '',
+        'Thesis: not just detecting risk, but turning risk signals into policy-bound, proof-backed actions.',
         '',
         '1. Paid Arc Insight',
         '   A 0.001 USDC x402 resource. Exact terms are shown; no signature before Pay & access.',
         '   Command: x402 demo',
         '',
-        '2. Creator Tip Advisor',
+        '2. Creator Economy',
         '   Prepares creator suggestions inside your budget, per-tip cap, and allowlist.',
         '   Command: who should I tip',
         '',
@@ -922,25 +926,26 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Recurring Arc Testnet USDC actions; cron wakes the endpoint and policy limits execution.',
         '   Command: create a reminder to pay 0.001 USDC to 0x... every 1 hour',
         '',
-        '4. Phone Control',
+        '4. Signal & Safety',
+        '   Token/meme radar, risk cards, watchlists, and explorer proof. Not a buy recommendation; a rug-risk reduction layer.',
+        '   Commands: token radar, token risk 0x..., watch token 0x..., token watchlist',
+        '',
+        '5. Phone Control',
         '   Pairing and command guide for Telegram / phone control.',
         '   Path: Settings -> Phone control',
         '',
-        '5. Proof Pack',
+        '6. Proof Pack',
         '   Shows repo, Render, x402, and ArcScan proof links in one place.',
         '   Command: demo links',
         '',
-        '6. Arc Token / Meme Radar',
-        '   A safe radar for new token, meme, and launch signals around Arc and Circle.',
-        '   Commands: token radar, watch token 0x..., token watchlist',
-        '',
-        'Rule: the market only discovers and prepares. Anything that spends USDC still uses the existing approval-safe flow.',
+        'Rule: Guard warns, prepares, and proves. Anything that spends USDC still uses the existing approval-safe flow.',
       ]
 
   return {
-    reply: lines.join('\n'),
+    reply: guardLines.join('\n'),
     actions: [],
   }
+
 }
 
 const ARC_TOKEN_WATCHLIST_STORAGE_KEY = 'arccopilot:arc-token-watchlist'
