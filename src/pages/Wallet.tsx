@@ -3,7 +3,6 @@ import {
   Activity as ActivityIcon,
   ArrowDownLeft,
   ArrowUpRight,
-  Bell,
   CalendarDays,
   ChevronRight,
   Copy,
@@ -365,6 +364,10 @@ export function Wallet({
     month: 'short',
     day: 'numeric',
   }).format(new Date())
+  const firstDueReminder = dueReminders[0]
+  const dueReminderSummary =
+    dueReminders.length === 1 ? '1 reminder overdue' : `${dueReminders.length} reminders due`
+  const dueReminderPreview = firstDueReminder?.text?.trim() ?? ''
 
   const dismissOnboarding = () => {
     onboardingDismissedRef.current = true
@@ -551,36 +554,6 @@ export function Wallet({
             </div>
           ) : null}
 
-          {dueReminders.length > 0 ? (
-            <div
-              className="border px-4 py-3"
-              style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.card)}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center border text-white"
-                  style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.borderEmphasis, MONOCHROME_DARK.radius.iconTile)}
-                >
-                  <Bell size={16} strokeWidth={1.8} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-arc-hint">
-                    {t('planner.noticeTitle')}
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-white">
-                    {formatText('planner.noticeBody', { count: dueReminders.length })}
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
-                    {dueReminders[0]?.text ?? ''}
-                  </p>
-                  <p className="mt-1 text-[10px] uppercase tracking-widest text-arc-text-dim">
-                    {dueReminders[0] ? getReminderDueLabel(dueReminders[0]) : ''}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
           {onboardingReady && showOnboarding ? (
             <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.elevated, MONOCHROME_DARK.colors.elevatedBorder, MONOCHROME_DARK.radius.card)}>
               <div className="flex items-start gap-3">
@@ -672,6 +645,30 @@ export function Wallet({
 
           {actionError ? <p className="px-0.5 text-[11px] text-arc-text-dim">{actionError}</p> : null}
 
+          {dueReminders.length > 0 ? (
+            <button
+              type="button"
+              onClick={openCalendar}
+              className="group flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors hover:border-amber-200/35"
+              style={makeCardStyle('rgba(245, 158, 11, 0.075)', 'rgba(245, 158, 11, 0.22)', MONOCHROME_DARK.radius.pill)}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-300/12 text-[14px]" aria-hidden="true">
+                ⚠
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium text-white">
+                  {dueReminderSummary}{dueReminderPreview ? ` · ${dueReminderPreview}` : ''}
+                </span>
+                {firstDueReminder ? (
+                  <span className="mt-0.5 block text-[10px] uppercase tracking-[0.16em] text-amber-100/70">
+                    {getReminderDueLabel(firstDueReminder)}
+                  </span>
+                ) : null}
+              </span>
+              <ChevronRight size={14} className="shrink-0 text-amber-100/55 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          ) : null}
+
           <button
             type="button"
             onClick={openCalendar}
@@ -696,11 +693,11 @@ export function Wallet({
                   <span className="shrink-0 text-[10px] text-arc-text-dim">{todayLabel}</span>
                 </div>
                 <p className="mt-1 truncate text-sm font-medium text-white">
-                  {dueReminders.length > 0
-                    ? `${dueReminders.length} due · ${dueReminders[0]?.text ?? ''}`
-                    : 'No due reminders'}
+                  {dueReminders.length > 0 ? dueReminderSummary : 'No due reminders'}
                 </p>
-                <p className="mt-0.5 text-[11px] text-arc-text-dim">Reminders and scheduled USDC actions in one view.</p>
+                <p className="mt-0.5 truncate text-[11px] text-arc-text-dim">
+                  {dueReminderPreview || 'Scheduled USDC actions and reminders'}
+                </p>
               </div>
               <ChevronRight size={15} className="shrink-0 text-arc-hint transition-transform group-hover:translate-x-0.5" />
             </div>
