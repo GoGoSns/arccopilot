@@ -1927,22 +1927,35 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-sky-400/25 bg-gradient-to-br from-sky-400/10 via-arc-card to-arc-card p-4 shadow-lg shadow-sky-400/5">
+        <div className="overflow-hidden rounded-2xl border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),linear-gradient(135deg,rgba(14,165,233,0.10),rgba(18,18,18,0.98)_42%,rgba(8,13,18,1))] p-4 shadow-lg shadow-cyan-400/5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <Eye size={14} className="text-sky-300" />
-                <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/90">
+                <Eye size={14} className="text-cyan-200" />
+                <p className="font-mono text-[10px] uppercase tracking-widest text-cyan-200/90">
                   ArcCopilot Guard
                 </p>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
-                Signal & Safety turns token and wallet risk signals into policy-bound, proof-backed actions.
+                A signal-to-action lab for Arc: detect risk, check policy, require approval, then preserve proof.
               </p>
             </div>
-            <span className="shrink-0 rounded-full border border-sky-300/25 bg-sky-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-200">
-              Signal
+            <span className="shrink-0 rounded-full border border-cyan-200/25 bg-cyan-200/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+              Lab
             </span>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-cyan-200/15 bg-black/25 p-3">
+            <div className="grid grid-cols-5 gap-1.5">
+              {['Signal', 'Risk', 'Policy', 'Action', 'Proof'].map((stage, index) => (
+                <div key={stage} className="relative rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+                  <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-100/85">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <span className="mt-1 block text-[10px] font-medium text-white/85">{stage}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2">
