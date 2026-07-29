@@ -77,6 +77,7 @@ import { UserAgentErrorActions } from '@/components/UserAgentErrorActions'
 const USDC_DECIMALS = 6
 const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const ARC_TOKEN_WATCHLIST_STORAGE_KEY = 'arccopilot:arc-token-watchlist'
 
 // --- types -------------------------------------------------------------------
 interface RawTransfer {
@@ -108,6 +109,10 @@ interface WhaleEntry {
   direction: 'in' | 'out'
   timestamp: string
   hasRecent: boolean
+}
+
+type StoredArcTokenWatchlistEntry = {
+  address?: string
 }
 
 type RecommendationKind = 'pattern' | 'whale' | 'balance'
@@ -498,6 +503,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const [portfolioIntel, setPortfolioIntel] = useState<PortfolioIntelResult | null>(null)
   const [portfolioIntelLoading, setPortfolioIntelLoading] = useState(true)
   const [portfolioIntelError, setPortfolioIntelError] = useState<string | null>(null)
+  const [guardWatchlistCount, setGuardWatchlistCount] = useState(0)
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
   const [newsBrief, setNewsBrief] = useState('')
   const [newsLoading, setNewsLoading] = useState(true)
@@ -782,6 +788,42 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
       cancelled = true
     }
   }, [tipAdvisor, tipAdvisorLoading, portfolioIntel, portfolioIntelLoading, newsItems, newsFetchedAt, newsLoading])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadGuardWatchlist = async () => {
+      try {
+        const stored = await chromeStorageGet(ARC_TOKEN_WATCHLIST_STORAGE_KEY)
+        const raw = stored[ARC_TOKEN_WATCHLIST_STORAGE_KEY]
+        const count = Array.isArray(raw)
+          ? raw.filter((item: StoredArcTokenWatchlistEntry) => typeof item?.address === 'string' && /^0x[a-fA-F0-9]{40}$/.test(item.address)).length
+          : 0
+        if (!cancelled) setGuardWatchlistCount(count)
+      } catch (error) {
+        debugWarn('[DailyBrief] guard watchlist load failed:', error)
+        if (!cancelled) setGuardWatchlistCount(0)
+      }
+    }
+
+    const handleStorageChange = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+      if (areaName === 'local' && changes[ARC_TOKEN_WATCHLIST_STORAGE_KEY]) {
+        void loadGuardWatchlist()
+      }
+    }
+
+    void loadGuardWatchlist()
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(handleStorageChange)
+    }
+
+    return () => {
+      cancelled = true
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(handleStorageChange)
+      }
+    }
+  }, [])
 
   // -- effect: twitter feed --------------------------------------------------
   useEffect(() => {
@@ -1882,6 +1924,67 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 {t('portfolio.intelNoData')}
               </p>
             )}
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-sky-400/25 bg-gradient-to-br from-sky-400/10 via-arc-card to-arc-card p-4 shadow-lg shadow-sky-400/5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Eye size={14} className="text-sky-300" />
+                <p className="font-mono text-[10px] uppercase tracking-widest text-sky-300/90">
+                  ArcCopilot Guard
+                </p>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
+                Signal & Safety turns token and wallet risk signals into policy-bound, proof-backed actions.
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-sky-300/25 bg-sky-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-200">
+              Signal
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Watchlist</p>
+              <p className="mt-1 text-lg font-semibold text-white">{guardWatchlistCount}</p>
+              <p className="mt-1 text-[10px] text-arc-text-dim">local tokens</p>
+            </div>
+            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Network</p>
+              <p className="mt-1 text-sm font-semibold text-white">Arc</p>
+              <p className="mt-1 text-[10px] text-arc-text-dim">testnet-first</p>
+            </div>
+            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Safety</p>
+              <p className="mt-1 text-sm font-semibold text-white">No buys</p>
+              <p className="mt-1 text-[10px] text-arc-text-dim">proof only</p>
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
+            <p className="text-xs leading-relaxed text-arc-text-dim">
+              Use Gogo commands to inspect risk without treating unknown contracts as tradable.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {['token radar', 'token risk 0x...', 'watch token 0x...', 'token watchlist'].map((command) => (
+                <span key={command} className="rounded-full border border-arc-border bg-arc-card px-2.5 py-1 font-mono text-[10px] text-arc-text-dim">
+                  {command}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 px-3 text-[10px]"
+                onClick={() => setCurrentView('gogo-ai')}
+              >
+                Open Gogo
+              </Button>
+            </div>
           </div>
         </div>
 
