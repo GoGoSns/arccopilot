@@ -1927,67 +1927,52 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_32%),linear-gradient(135deg,rgba(14,165,233,0.10),rgba(18,18,18,0.98)_42%,rgba(8,13,18,1))] p-4 shadow-lg shadow-cyan-400/5">
+        <div className="overflow-hidden rounded-2xl border border-emerald-300/25 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),radial-gradient(circle_at_top_right,rgba(52,211,153,0.16),transparent_34%),linear-gradient(135deg,rgba(12,18,15,1),rgba(18,18,18,0.98))] bg-[length:28px_28px,28px_28px,auto,auto] p-4 shadow-lg shadow-emerald-400/5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <Eye size={14} className="text-cyan-200" />
-                <p className="font-mono text-[10px] uppercase tracking-widest text-cyan-200/90">
+                <Eye size={14} className="text-emerald-200" />
+                <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-200/90">
                   ArcCopilot Guard
                 </p>
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">
-                A signal-to-action lab for Arc: detect risk, check policy, require approval, then preserve proof.
+              <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">
+                Signal-to-action lab
               </p>
+              <p className="mt-1 text-xs leading-relaxed text-arc-text-dim">Risk signals become policy-bound, proof-backed actions.</p>
             </div>
-            <span className="shrink-0 rounded-full border border-cyan-200/25 bg-cyan-200/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+            <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
               Lab
             </span>
           </div>
 
-          <div className="mt-4 rounded-xl border border-cyan-200/15 bg-black/25 p-3">
-            <div className="grid grid-cols-5 gap-1.5">
+          <div className="mt-4 rounded-xl border border-emerald-200/15 bg-black/20 p-3">
+            <div className="flex items-center gap-1.5 overflow-hidden">
               {['Signal', 'Risk', 'Policy', 'Action', 'Proof'].map((stage, index) => (
-                <div key={stage} className="relative rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
-                  <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-100/85">
+                <div key={stage} className="min-w-0 flex-1">
+                  <span className="block font-mono text-[8px] uppercase tracking-[0.14em] text-emerald-100/80">
                     {String(index + 1).padStart(2, '0')}
                   </span>
-                  <span className="mt-1 block text-[10px] font-medium text-white/85">{stage}</span>
+                  <span className="mt-1 block truncate text-[10px] font-medium text-white/85">{stage}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Watchlist</p>
-              <p className="mt-1 text-lg font-semibold text-white">{guardWatchlistCount}</p>
-              <p className="mt-1 text-[10px] text-arc-text-dim">local tokens</p>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">Watchlist</p>
+              <p className="mt-0.5 text-sm font-semibold text-white">{guardWatchlistCount} local tokens</p>
             </div>
-            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Network</p>
-              <p className="mt-1 text-sm font-semibold text-white">Arc</p>
-              <p className="mt-1 text-[10px] text-arc-text-dim">testnet-first</p>
-            </div>
-            <div className="rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-              <p className="text-[9px] uppercase tracking-widest text-arc-text-dim">Safety</p>
-              <p className="mt-1 text-sm font-semibold text-white">No buys</p>
-              <p className="mt-1 text-[10px] text-arc-text-dim">proof only</p>
+            <div className="text-right">
+              <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">Mode</p>
+              <p className="mt-0.5 text-sm font-semibold text-white">Proof only</p>
             </div>
           </div>
 
-          <div className="mt-3 rounded-xl border border-arc-border/70 bg-arc-bg/70 p-3">
-            <p className="text-xs leading-relaxed text-arc-text-dim">
-              Use Gogo commands to inspect risk without treating unknown contracts as tradable.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {['token radar', 'token risk 0x...', 'watch token 0x...', 'token watchlist'].map((command) => (
-                <span key={command} className="rounded-full border border-arc-border bg-arc-card px-2.5 py-1 font-mono text-[10px] text-arc-text-dim">
-                  {command}
-                </span>
-              ))}
-            </div>
-            <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="font-mono text-[10px] text-arc-text-dim">token radar · token risk · watchlist</p>
+            <div className="shrink-0">
               <Button
                 type="button"
                 variant="outline"

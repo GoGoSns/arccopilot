@@ -718,43 +718,44 @@ export function Wallet({
           <button
             type="button"
             onClick={openGogo}
-            className="group relative w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-cyan-200/50"
+            className="group relative w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-emerald-300/50"
             style={{
-              ...makeCardStyle('rgba(5, 14, 18, 0.96)', 'rgba(103, 232, 249, 0.24)', MONOCHROME_DARK.radius.card),
+              ...makeCardStyle('rgba(7, 13, 11, 0.96)', 'rgba(110, 231, 183, 0.22)', MONOCHROME_DARK.radius.card),
               backgroundImage:
-                'radial-gradient(circle at 12% 0%, rgba(34, 211, 238, 0.18), transparent 34%), linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01))',
+                'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px), radial-gradient(circle at 85% 18%, rgba(52, 211, 153, 0.16), transparent 34%)',
+              backgroundSize: '28px 28px, 28px 28px, auto',
             }}
           >
-            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/70 to-transparent opacity-70" />
+            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/70 to-transparent opacity-70" />
             <div className="flex items-start gap-3">
               <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center border border-cyan-200/30 bg-cyan-200/10 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.12)]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center border border-emerald-200/30 bg-emerald-200/10 text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.12)]"
                 style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
               >
                 <Sparkles size={18} strokeWidth={1.8} />
               </div>
-              <div className="min-w-0 flex-1 space-y-2">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-200/90">Guard Lab</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Guard Lab</p>
                     <p className="mt-1 text-sm font-medium text-white">{t('wallet.gogoCardTitle')}</p>
                   </div>
-                  <span className="shrink-0 rounded-full border border-cyan-200/25 bg-cyan-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-100">
+                  <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
                     Arc
                   </span>
                 </div>
-                <p className="text-xs leading-relaxed text-arc-text-dim">
-                  Signal → Risk → Policy → Action → Proof. Ask Gogo to inspect tokens, paid resources, and scheduled USDC actions.
+                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
+                  Signal → Risk → Policy → Action → Proof.
                 </p>
-                <div className="grid grid-cols-5 gap-1">
-                  {['Signal', 'Risk', 'Policy', 'Action', 'Proof'].map((stage) => (
-                    <span key={stage} className="truncate rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-1 text-center text-[8px] font-medium text-white/75">
-                      {stage}
-                    </span>
-                  ))}
+                <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-emerald-100/70">
+                  <span>Tokens</span>
+                  <span className="h-px flex-1 bg-emerald-200/20" />
+                  <span>x402</span>
+                  <span className="h-px flex-1 bg-emerald-200/20" />
+                  <span>Schedules</span>
                 </div>
               </div>
-              <ChevronRight size={16} className="mt-3 shrink-0 text-cyan-100/60 transition-transform group-hover:translate-x-0.5" />
+              <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
             </div>
           </button>
 
