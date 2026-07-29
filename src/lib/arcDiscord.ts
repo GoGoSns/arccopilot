@@ -1,4 +1,5 @@
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet } from '@/lib/external'
+import { DEFAULT_AGENT_BACKEND_URL, getAgentBackendConfig } from '@/lib/agentBackend'
 import { ARC_DISCORD_CACHE_KEY } from '@/lib/storageKeys'
 
 export const ARC_DISCORD_INVITE_URL = 'https://discord.gg/buildonarc'
@@ -21,6 +22,13 @@ export interface ArcDiscordResult extends ArcDiscordCacheEntry {
 interface ArcDiscordWorkerResponse {
   memberCount: number | null
   onlineCount: number | null
+  error?: string
+}
+
+interface ArcDiscordBackendResponse {
+  memberCount: number | null
+  onlineCount: number | null
+  inviteUrl?: string
   error?: string
 }
 
@@ -95,6 +103,44 @@ function isArcDiscordWorkerResponse(value: unknown): value is ArcDiscordWorkerRe
     && (typeof response.error === 'string' || typeof response.error === 'undefined')
 }
 
+function isArcDiscordBackendResponse(value: unknown): value is ArcDiscordBackendResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+
+  const response = value as Partial<ArcDiscordBackendResponse>
+  return (typeof response.memberCount === 'number' || response.memberCount === null)
+    && (typeof response.onlineCount === 'number' || response.onlineCount === null)
+    && (typeof response.inviteUrl === 'string' || typeof response.inviteUrl === 'undefined')
+    && (typeof response.error === 'string' || typeof response.error === 'undefined')
+}
+
+async function fetchArcDiscordFromBackend(): Promise<ArcDiscordNetworkResult> {
+  const config = await getAgentBackendConfig()
+  const backendUrl = (config.backendUrl ?? DEFAULT_AGENT_BACKEND_URL).replace(/\/+$/, '')
+  const response = await fetch(`${backendUrl}/arc/discord`, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+  })
+
+  const payload = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    throw new Error(`ARC_DISCORD_BACKEND_HTTP_${response.status}`)
+  }
+
+  if (!isArcDiscordBackendResponse(payload)) {
+    throw new Error('ARC_DISCORD_BACKEND_INVALID')
+  }
+
+  return {
+    memberCount: typeof payload.memberCount === 'number' ? payload.memberCount : null,
+    onlineCount: typeof payload.onlineCount === 'number' ? payload.onlineCount : null,
+    inviteUrl: typeof payload.inviteUrl === 'string' && payload.inviteUrl.trim() ? payload.inviteUrl.trim() : ARC_DISCORD_INVITE_URL,
+    fetchedAt: Date.now(),
+    error: payload.error,
+  }
+}
+
 async function fetchArcDiscordFromWorker(): Promise<ArcDiscordNetworkResult> {
   if (!canUseChromeRuntime()) {
     throw new Error('ARC_DISCORD_RUNTIME_UNAVAILABLE')
@@ -143,9 +189,16 @@ export async function fetchArcDiscord(): Promise<ArcDiscordResult> {
   }
 
   try {
-    const network = await fetchArcDiscordFromWorker()
+    let network: ArcDiscordNetworkResult
+    try {
+      network = await fetchArcDiscordFromBackend()
+    } catch (backendError) {
+      console.warn('[arcDiscord] backend fetch failed, falling back to worker:', backendError)
+      network = await fetchArcDiscordFromWorker()
+    }
+
     if (network.error) {
-      console.warn('[arcDiscord] worker returned diagnostics:', network.error)
+      console.warn('[arcDiscord] fetch returned diagnostics:', network.error)
     }
 
     if (network.memberCount == null && network.onlineCount == null) {

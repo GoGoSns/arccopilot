@@ -50,6 +50,7 @@ export default defineManifest({
     'https://circle.com/*',
     'https://community.arc.network/*',
     'https://discord.com/*',
+    'https://arccopilot-agent.onrender.com/*',
     `${ARC_RPC_URL}/*`,
     'https://gateway-api-testnet.circle.com/*',
     `${BLOCKSCOUT_BASE}/*`,
