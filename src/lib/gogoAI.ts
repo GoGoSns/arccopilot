@@ -973,6 +973,25 @@ function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
+function parseArcBridgeIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:arc bridge|bridge arc|usdc bridge|cctp bridge|bridge usdc|arc cctp)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:arc kopru|arc köprü|kopru|köprü|usdc kopru|usdc köprü|arc bridge|cctp kopru|cctp köprü)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
 function parseTokenWatchlistIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
     .replace(/[!?.,;:]+/g, ' ')
@@ -1407,6 +1426,51 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         '- x402 demo: paid insight flow',
         '',
         'Next build: connect token watchlist alerts to notifications.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function buildArcBridgeReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'Arc Bridge assistant:',
+        '',
+        '- Resmi yol: Circle App Kit / Bridge capability.',
+        '- Token: USDC only.',
+        '- Arc network: Arc Testnet, chain id 5042002.',
+        '- App Kit chain name: Arc_Testnet.',
+        '- CCTP akisi: approve -> burn -> attestation -> mint.',
+        '- Bridge islemleri kit key istemez; swap/send eklenirse App Kit key gerekebilir.',
+        '',
+        'Guvenlik cizgisi:',
+        '- Ben bridge transferini otomatik baslatmam.',
+        '- Once source chain, destination chain, recipient, amount ve wallet onayi gerekir.',
+        '- Mainnet icin ayrica acik onay isterim.',
+        '',
+        'Kullanabilecegin komut:',
+        'bridge 1 USDC from Ethereum Sepolia to Arc Testnet',
+      ]
+    : [
+        'Arc Bridge assistant:',
+        '',
+        '- Official path: Circle App Kit / Bridge capability.',
+        '- Token: USDC only.',
+        '- Arc network: Arc Testnet, chain id 5042002.',
+        '- App Kit chain name: Arc_Testnet.',
+        '- CCTP flow: approve -> burn -> attestation -> mint.',
+        '- Bridge operations do not require a kit key; swap/send may require App Kit key later.',
+        '',
+        'Safety line:',
+        '- I will not start a bridge transfer automatically.',
+        '- Source chain, destination chain, recipient, amount, and wallet approval must be explicit.',
+        '- Mainnet requires an extra explicit confirmation.',
+        '',
+        'Try:',
+        'bridge 1 USDC from Ethereum Sepolia to Arc Testnet',
       ]
 
   return {
@@ -3374,6 +3438,12 @@ export async function askGogo(
   if (tokenRadarIntent) {
     logResolvedIntent('deterministic', null)
     return await buildTokenRadarReply(tokenRadarIntent)
+  }
+
+  const arcBridgeIntent = parseArcBridgeIntent(userMessage)
+  if (arcBridgeIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildArcBridgeReply(arcBridgeIntent)
   }
 
   const deterministicScheduleIntent = parseDeterministicScheduleIntent(userMessage)

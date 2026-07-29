@@ -256,11 +256,11 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: '#118744' }}>
                   — Network
                 </p>
-                <h1 className="mt-3 text-[30px] font-semibold leading-[0.98] tracking-[-0.06em]">
-                  Early radar for <span className="font-serif italic font-normal" style={{ color: green }}>Arc token waves</span>
+                <h1 className="mt-3 text-[27px] font-semibold leading-[1.02] tracking-[-0.055em]">
+                  Arc signals, risks, and bridge readiness.
                 </h1>
                 <p className="mt-3 max-w-[260px] text-xs leading-relaxed" style={{ color: muted }}>
-                  ArcScan-backed ERC-20 monitoring. Gogo can analyze each contract, but ArcCopilot never invents tokens or gives buy calls.
+                  A real ArcScan-backed surface for new ERC-20s, safety checks, and USDC bridge context. No fake tokens, no buy calls.
                 </p>
               </div>
               <div className="rounded-full border bg-white/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ borderColor: line, color: '#166534' }}>
@@ -268,38 +268,39 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
               </div>
             </div>
 
-            <div className="relative mx-auto mt-5 h-[220px] w-[220px] rounded-full border bg-[#ded7c8]/55" style={{ borderColor: 'rgba(18,17,15,0.65)' }}>
-              <div className="absolute inset-7 rounded-full border" style={{ borderColor: 'rgba(18,17,15,0.14)' }} />
-              <div className="absolute inset-14 rounded-full border" style={{ borderColor: 'rgba(18,17,15,0.12)' }} />
-              <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-black/10" />
-              <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-black/10" />
-              <div className="absolute left-[18%] top-[33%] h-[72px] w-[138px] rotate-[-18deg] rounded-[50%] border border-black/15" />
-              <div className="absolute left-[33%] top-[18%] h-[128px] w-[72px] rotate-[24deg] rounded-[50%] border border-black/10" />
-
-              {radarNodes.map((token, index) => {
-                const [left, top] = nodePositions[index]
-                return (
-                  <button
-                    key={token.address ?? `${token.symbol}-${index}`}
-                    type="button"
-                    onClick={() => token.address && void askGogo(`token risk ${token.address}`)}
-                    className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white shadow-[0_0_0_5px_rgba(36,214,111,0.13)]"
-                    style={{
-                      left,
-                      top,
-                      backgroundColor: token.verified ? '#0ca653' : green,
-                    }}
-                    aria-label={`Ask Gogo about ${getTokenTitle(token)}`}
-                  />
-                )
-              })}
-
-              <div className="absolute right-[-18px] top-[74px] w-[122px] overflow-hidden rounded-[10px] border bg-[#10100f] text-white shadow-[0_18px_32px_rgba(0,0,0,0.22)]" style={{ borderColor: green }}>
-                <div className="h-16 bg-[linear-gradient(135deg,#22c55e,#f7e66f,#24a9ff,#ff5b2e)]" />
-                <div className="px-2 py-2">
-                  <p className="font-mono text-[8px] uppercase tracking-[0.16em]" style={{ color: green }}>Live</p>
-                  <p className="truncate text-[11px] font-semibold">{snapshot?.scan?.mode ?? 'scan'} · {snapshot?.scan?.persistence ?? 'proof'}</p>
+            <div className="mt-5 rounded-[22px] border bg-white/45 p-3" style={{ borderColor: line }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: muted }}>Detection rail</p>
+                  <p className="mt-1 text-sm font-semibold">ArcScan ERC-20 index</p>
                 </div>
+                <span className="rounded-full border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ borderColor: line, color: '#118744' }}>
+                  {snapshot?.scan?.mode ?? 'scan'} · {snapshot?.scan?.persistence ?? 'proof'}
+                </span>
+              </div>
+              <div className="mt-4 flex items-center gap-1.5 overflow-hidden rounded-full border bg-[#ebe2d0] px-3 py-3" style={{ borderColor: line }}>
+                {radarNodes.length === 0 ? (
+                  <div className="h-2 flex-1 rounded-full bg-black/10" />
+                ) : (
+                  radarNodes.map((token, index) => (
+                    <button
+                      key={token.address ?? `${token.symbol}-${index}`}
+                      type="button"
+                      onClick={() => token.address && void askGogo(`token risk ${token.address}`)}
+                      className="h-2.5 rounded-full transition-transform hover:scale-y-150"
+                      style={{
+                        width: `${Math.max(14, Math.min(42, Number(token.attention?.score ?? 36) / 2))}px`,
+                        backgroundColor: token.verified ? '#118744' : green,
+                        opacity: token.verified ? 0.9 : 0.68,
+                      }}
+                      aria-label={`Ask Gogo about ${getTokenTitle(token)}`}
+                    />
+                  ))
+                )}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]" style={{ color: muted }}>
+                <span>Chain: eip155:{snapshot?.chainId ?? 5042002}</span>
+                <span>Source: ArcScan API</span>
               </div>
             </div>
 
@@ -354,6 +355,51 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                 ))}
               </div>
             ) : null}
+          </section>
+
+          <section className="rounded-[24px] border bg-[#f7f1e5]/75 p-4" style={{ borderColor: line }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em]" style={{ color: '#118744' }}>Arc Bridge</p>
+                <p className="mt-1 text-base font-semibold">USDC bridge readiness</p>
+                <p className="mt-2 text-xs leading-relaxed" style={{ color: muted }}>
+                  Circle App Kit can bridge USDC with CCTP routes such as Ethereum Sepolia ↔ Arc Testnet or Solana Devnet → Arc Testnet. Gogo can prepare a preflight, but no bridge runs without explicit amount, route, and wallet confirmation.
+                </p>
+              </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px] border bg-[#e8f8ec]" style={{ borderColor: 'rgba(17,135,68,0.18)', color: '#118744' }}>
+                <Radar size={18} strokeWidth={1.8} />
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                ['Asset', 'USDC'],
+                ['Arc chain', '5042002'],
+                ['Kit chain', 'Arc_Testnet'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[15px] border bg-white/55 px-2.5 py-2" style={{ borderColor: line }}>
+                  <p className="font-mono text-[8px] uppercase tracking-[0.14em]" style={{ color: muted }}>{label}</p>
+                  <p className="mt-1 truncate text-xs font-semibold">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void askGogo('arc bridge')}
+                className="rounded-full border bg-[#11110f] px-3 py-2 text-xs font-medium text-white"
+                style={{ borderColor: 'rgba(18,17,15,0.25)' }}
+              >
+                Ask Gogo bridge
+              </button>
+              <button
+                type="button"
+                onClick={() => openExternal('https://docs.arc.io/app-kit/bridge')}
+                className="rounded-full border bg-white/55 px-3 py-2 text-xs font-medium"
+                style={{ borderColor: line, color: ink }}
+              >
+                Docs
+              </button>
+            </div>
           </section>
 
           <section className="rounded-[24px] border bg-[#f7f1e5]/75 p-4" style={{ borderColor: line }}>
