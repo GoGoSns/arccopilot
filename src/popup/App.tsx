@@ -14,6 +14,7 @@ import { AddressDetail } from '@/pages/AddressDetail'
 import { DailyBrief } from '@/pages/DailyBrief'
 import { Calendar } from '@/pages/Calendar'
 import { GogoAI } from '@/pages/GogoAI'
+import { ArcRadar } from '@/pages/ArcRadar'
 import { useLocale } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
 
@@ -31,6 +32,7 @@ const VALID_VIEWS: View[] = [
   'calendar',
   'gogo-ai',
   'activity',
+  'arc-radar',
 ]
 
 function isView(value: unknown): value is View {
@@ -91,6 +93,7 @@ export default function App() {
   if (view === 'calendar') return <Calendar onBack={goBack} />
   if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
   if (view === 'activity') return <Activity onBack={goBack} />
+  if (view === 'arc-radar') return <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
 
   return (
     <Wallet
@@ -101,6 +104,7 @@ export default function App() {
       onMenu={() => go('settings')}
       onOpenCalendar={() => go('calendar')}
       onOpenGogo={() => go('gogo-ai')}
+      onOpenRadar={() => go('arc-radar')}
     />
   )
 }

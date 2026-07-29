@@ -11,6 +11,7 @@ import {
   Flame,
   Loader2,
   QrCode,
+  Radar,
   Settings2,
   Sparkles,
   Wallet as WalletIcon,
@@ -256,6 +257,7 @@ interface WalletProps {
   onMenu: () => void
   onOpenCalendar?: () => void
   onOpenGogo?: () => void
+  onOpenRadar?: () => void
 }
 
 export function Wallet({
@@ -266,6 +268,7 @@ export function Wallet({
   onMenu,
   onOpenCalendar,
   onOpenGogo,
+  onOpenRadar,
 }: WalletProps) {
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -359,6 +362,7 @@ export function Wallet({
   })
   const openGogo = onOpenGogo ?? (() => {})
   const openCalendar = onOpenCalendar ?? onOpenBrief
+  const openRadar = onOpenRadar ?? openGogo
   const todayLabel = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     month: 'short',
@@ -796,6 +800,42 @@ export function Wallet({
                 </div>
               </div>
               <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={openRadar}
+            className="group w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-sky-200/35"
+            style={{
+              ...makeCardStyle('rgba(14, 20, 28, 0.96)', 'rgba(125, 211, 252, 0.18)', MONOCHROME_DARK.radius.card),
+              backgroundImage:
+                'linear-gradient(90deg, rgba(125,211,252,0.10), transparent 34%), linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.026) 1px, transparent 1px)',
+              backgroundSize: 'auto, 26px 26px, 26px 26px',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center border border-sky-200/25 bg-sky-200/10 text-sky-100"
+                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
+              >
+                <Radar size={18} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-sky-100/80">Arc Radar</p>
+                    <p className="mt-1 text-sm font-medium text-white">Token safety & meme watch</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-sky-200/25 bg-sky-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-100">
+                    Guard
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
+                  Contract proof, social heat, watchlist alerts, and rug-risk checks for Arc.
+                </p>
+              </div>
+              <ChevronRight size={16} className="mt-3 shrink-0 text-sky-100/60 transition-transform group-hover:translate-x-0.5" />
             </div>
           </button>
 
