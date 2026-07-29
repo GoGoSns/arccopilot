@@ -42,6 +42,7 @@ import { isValidAddress } from '@/lib/validation'
 import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
 import { buildDailyBriefing } from '@/lib/dailyBriefing'
 import { createSchedule } from '@/lib/pairing'
+import { buildArcCircleKnowledgeBrief, parseArcCircleKnowledgeIntent } from '@/lib/arcCircleKnowledge'
 
 const BLOCKSCOUT_API_URL = BLOCKSCOUT_API_BASE
 const BRIEF_TRANSFER_CACHE_PREFIX = 'arccopilot:brief:transfers:'
@@ -3297,6 +3298,15 @@ export async function askGogo(
   if (marketplaceIntent) {
     logResolvedIntent('deterministic', null)
     return buildMarketplaceReply(marketplaceIntent)
+  }
+
+  const arcCircleKnowledgeIntent = parseArcCircleKnowledgeIntent(userMessage)
+  if (arcCircleKnowledgeIntent) {
+    logResolvedIntent('deterministic', null)
+    return {
+      reply: buildArcCircleKnowledgeBrief(arcCircleKnowledgeIntent),
+      actions: [],
+    }
   }
 
   const watchTokenIntent = parseWatchTokenIntent(userMessage)
