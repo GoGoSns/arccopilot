@@ -992,6 +992,96 @@ function parseArcBridgeIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
+type ArcBridgeChain = {
+  key: string
+  label: string
+  appKitChain: string
+  chainId?: number
+  type: 'evm' | 'solana'
+  testnet: boolean
+}
+
+type ArcBridgePreflightIntent = {
+  locale: 'en' | 'tr'
+  amount?: string
+  from?: ArcBridgeChain
+  to?: ArcBridgeChain
+  recipient?: string
+}
+
+const ARC_BRIDGE_CHAINS: ArcBridgeChain[] = [
+  { key: 'arc_testnet', label: 'Arc Testnet', appKitChain: 'Arc_Testnet', chainId: 5042002, type: 'evm', testnet: true },
+  { key: 'ethereum_sepolia', label: 'Ethereum Sepolia', appKitChain: 'Ethereum_Sepolia', chainId: 11155111, type: 'evm', testnet: true },
+  { key: 'base_sepolia', label: 'Base Sepolia', appKitChain: 'Base_Sepolia', chainId: 84532, type: 'evm', testnet: true },
+  { key: 'arbitrum_sepolia', label: 'Arbitrum Sepolia', appKitChain: 'Arbitrum_Sepolia', chainId: 421614, type: 'evm', testnet: true },
+  { key: 'solana_devnet', label: 'Solana Devnet', appKitChain: 'Solana_Devnet', type: 'solana', testnet: true },
+]
+
+function resolveArcBridgeChain(value: string): ArcBridgeChain | null {
+  const normalized = normalizeIntentText(value)
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+  if (/^arc(?: testnet)?$/.test(normalized) || normalized.includes('arc testnet')) return ARC_BRIDGE_CHAINS[0]
+  if (normalized.includes('ethereum sepolia') || normalized === 'sepolia') return ARC_BRIDGE_CHAINS[1]
+  if (normalized.includes('base sepolia')) return ARC_BRIDGE_CHAINS[2]
+  if (normalized.includes('arbitrum sepolia') || normalized.includes('arb sepolia')) return ARC_BRIDGE_CHAINS[3]
+  if (normalized.includes('solana devnet')) return ARC_BRIDGE_CHAINS[4]
+  return null
+}
+
+function parseArcBridgePreflightIntent(message: string): ArcBridgePreflightIntent | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?;,]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!/\b(?:bridge|kopru|cctp)\b/.test(normalized)) return null
+
+  const amountMatch = normalized.match(/(\d+(?:[.,]\d{1,6})?)\s*(?:usdc)?/)
+  const amount = amountMatch?.[1]?.replace(',', '.')
+  const recipient = normalized.match(/0x[a-f0-9]{40}/i)?.[0]
+
+  let from: ArcBridgeChain | null = null
+  let to: ArcBridgeChain | null = null
+
+  const englishRoute = normalized.match(/\bfrom\s+(.+?)\s+to\s+(.+?)(?:\s+for\s+|\s+recipient\s+|\s+0x|$)/)
+  if (englishRoute) {
+    from = resolveArcBridgeChain(englishRoute[1])
+    to = resolveArcBridgeChain(englishRoute[2])
+  }
+
+  const turkishRoute = normalized.match(/\b(.+?)\s+(?:dan|den|from)\s+(.+?)\s+(?:a|e|to)\s*(?:kopru|bridge|aktar|gonder|send)?\b/)
+  if (!from && !to && turkishRoute) {
+    from = resolveArcBridgeChain(turkishRoute[1])
+    to = resolveArcBridgeChain(turkishRoute[2])
+  }
+
+  if (!from || !to) {
+    const mentioned = ARC_BRIDGE_CHAINS.filter((chain) => normalized.includes(normalizeIntentText(chain.label).replace(/\s+/g, ' ')))
+    if (mentioned.length >= 2) {
+      from = mentioned[0]
+      to = mentioned[1]
+    } else if (mentioned.length === 1) {
+      to = mentioned[0].key === 'arc_testnet' ? mentioned[0] : ARC_BRIDGE_CHAINS[0]
+      from = mentioned[0].key === 'arc_testnet' ? undefined ?? null : mentioned[0]
+    }
+  }
+
+  const locale: 'en' | 'tr' = /\b(?:kopru|gonder|aktar|dan|den)\b/.test(normalized) ? 'tr' : 'en'
+  if (!amount && !from && !to && !recipient) return null
+
+  return {
+    locale,
+    amount,
+    from: from ?? undefined,
+    to: to ?? undefined,
+    recipient,
+  }
+}
+
 function parseTokenWatchlistIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
     .replace(/[!?.,;:]+/g, ' ')
@@ -1471,6 +1561,79 @@ function buildArcBridgeReply(locale: 'en' | 'tr'): GogoResponse {
         '',
         'Try:',
         'bridge 1 USDC from Ethereum Sepolia to Arc Testnet',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function buildArcBridgePreflightReply(intent: ArcBridgePreflightIntent): GogoResponse {
+  const missing = [
+    !intent.amount ? 'amount' : null,
+    !intent.from ? 'source chain' : null,
+    !intent.to ? 'destination chain' : null,
+  ].filter(Boolean)
+  const routeHasArc = intent.from?.key === 'arc_testnet' || intent.to?.key === 'arc_testnet'
+  const sameChain = intent.from?.key && intent.to?.key && intent.from.key === intent.to.key
+  const unsupportedMainnet = [intent.from, intent.to].some((chain) => chain && !chain.testnet)
+
+  const routeLine = intent.from && intent.to
+    ? `${intent.from.label} -> ${intent.to.label}`
+    : intent.locale === 'tr'
+      ? 'route eksik'
+      : 'route missing'
+
+  const appKitLine = intent.from && intent.to
+    ? `${intent.from.appKitChain} -> ${intent.to.appKitChain}`
+    : 'unknown'
+
+  const blockers = [
+    ...missing.map((item) => intent.locale === 'tr' ? `Eksik: ${item}` : `Missing: ${item}`),
+    routeHasArc ? null : (intent.locale === 'tr' ? 'Route Arc icermiyor; ArcCopilot bridge preflight Arc odakli.' : 'Route does not include Arc; ArcCopilot bridge preflight is Arc-focused.'),
+    sameChain ? (intent.locale === 'tr' ? 'Kaynak ve hedef ayni chain olamaz.' : 'Source and destination chain cannot be the same.') : null,
+    unsupportedMainnet ? (intent.locale === 'tr' ? 'Mainnet route icin ekstra acik onay gerekir.' : 'Mainnet routes require extra explicit confirmation.') : null,
+  ].filter(Boolean)
+
+  const lines = intent.locale === 'tr'
+    ? [
+        'Arc Bridge preflight:',
+        '',
+        `Amount: ${intent.amount ? `${intent.amount} USDC` : 'eksik'}`,
+        `Route: ${routeLine}`,
+        `App Kit chain names: ${appKitLine}`,
+        `Recipient: ${intent.recipient ?? 'cuzdan adresin / explicit recipient gerekli'}`,
+        '',
+        'CCTP adimlari:',
+        '1. approve USDC',
+        '2. burn source chain',
+        '3. fetch attestation',
+        '4. mint destination chain',
+        '',
+        blockers.length > 0 ? 'Blockers:' : 'Status:',
+        ...(blockers.length > 0 ? blockers.map((item) => `- ${item}`) : ['- Preflight temiz. Yine de transfer baslatmak icin ayri onay gerekir.']),
+        '',
+        'Guvenlik: Bu sadece hazirlik karti. Ben bridge islemi baslatmadim ve imza istemedim.',
+      ]
+    : [
+        'Arc Bridge preflight:',
+        '',
+        `Amount: ${intent.amount ? `${intent.amount} USDC` : 'missing'}`,
+        `Route: ${routeLine}`,
+        `App Kit chain names: ${appKitLine}`,
+        `Recipient: ${intent.recipient ?? 'your wallet / explicit recipient required'}`,
+        '',
+        'CCTP steps:',
+        '1. approve USDC',
+        '2. burn on source chain',
+        '3. fetch attestation',
+        '4. mint on destination chain',
+        '',
+        blockers.length > 0 ? 'Blockers:' : 'Status:',
+        ...(blockers.length > 0 ? blockers.map((item) => `- ${item}`) : ['- Preflight is clean. A separate explicit approval is still required before any transfer.']),
+        '',
+        'Safety: This is only a preparation card. I did not start a bridge transaction or request a signature.',
       ]
 
   return {
@@ -3438,6 +3601,12 @@ export async function askGogo(
   if (tokenRadarIntent) {
     logResolvedIntent('deterministic', null)
     return await buildTokenRadarReply(tokenRadarIntent)
+  }
+
+  const arcBridgePreflightIntent = parseArcBridgePreflightIntent(userMessage)
+  if (arcBridgePreflightIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildArcBridgePreflightReply(arcBridgePreflightIntent)
   }
 
   const arcBridgeIntent = parseArcBridgeIntent(userMessage)
