@@ -16,6 +16,7 @@ import { Calendar } from '@/pages/Calendar'
 import { GogoAI } from '@/pages/GogoAI'
 import { ArcRadar } from '@/pages/ArcRadar'
 import { ArcBridge } from '@/pages/ArcBridge'
+import { Tools } from '@/pages/Tools'
 import { useLocale } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
 
@@ -35,6 +36,7 @@ const VALID_VIEWS: View[] = [
   'activity',
   'arc-radar',
   'arc-bridge',
+  'tools',
 ]
 
 function isView(value: unknown): value is View {
@@ -97,6 +99,20 @@ export default function App() {
   if (view === 'activity') return <Activity onBack={goBack} />
   if (view === 'arc-radar') return <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
   if (view === 'arc-bridge') return <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
+  if (view === 'tools') {
+    return (
+      <Tools
+        onBack={goBack}
+        onOpenGogo={() => go('gogo-ai')}
+        onOpenRadar={() => go('arc-radar')}
+        onOpenBridge={() => go('arc-bridge')}
+        onOpenCalendar={() => go('calendar')}
+        onOpenAddressBook={() => go('address-book')}
+        onOpenBrief={() => go('daily-brief')}
+        onOpenSettings={() => go('settings')}
+      />
+    )
+  }
 
   return (
     <Wallet
@@ -107,8 +123,7 @@ export default function App() {
       onMenu={() => go('settings')}
       onOpenCalendar={() => go('calendar')}
       onOpenGogo={() => go('gogo-ai')}
-      onOpenRadar={() => go('arc-radar')}
-      onOpenBridge={() => go('arc-bridge')}
+      onOpenTools={() => go('tools')}
     />
   )
 }

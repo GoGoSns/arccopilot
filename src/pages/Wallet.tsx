@@ -9,12 +9,9 @@ import {
   Droplet,
   FileText,
   Flame,
-  GitBranch,
   Loader2,
   QrCode,
-  Radar,
   Settings2,
-  ShieldCheck,
   Sparkles,
   Wallet as WalletIcon,
   X,
@@ -27,7 +24,7 @@ import { usePortfolioBalances } from '@/lib/portfolio'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { copyToClipboard, formatAddress, formatUSD } from '@/lib/utils'
-import { ONBOARDING_SEEN, PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
+import { ONBOARDING_SEEN, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
 import { isValidAddress } from '@/lib/validation'
 import { readAddressFromImage } from '@/lib/imageReader'
 import { MONOCHROME_DARK } from '@/lib/designTokens'
@@ -259,8 +256,7 @@ interface WalletProps {
   onMenu: () => void
   onOpenCalendar?: () => void
   onOpenGogo?: () => void
-  onOpenRadar?: () => void
-  onOpenBridge?: () => void
+  onOpenTools?: () => void
 }
 
 export function Wallet({
@@ -271,8 +267,7 @@ export function Wallet({
   onMenu,
   onOpenCalendar,
   onOpenGogo,
-  onOpenRadar,
-  onOpenBridge,
+  onOpenTools,
 }: WalletProps) {
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -366,18 +361,7 @@ export function Wallet({
   })
   const openGogo = onOpenGogo ?? (() => {})
   const openCalendar = onOpenCalendar ?? onOpenBrief
-  const openRadar = onOpenRadar ?? openGogo
-  const openBridge = onOpenBridge ?? openGogo
-  const openAgentStackStatus = () => {
-    void chromeStorageSet({
-      [PENDING_GOGO_PROMPT_STORAGE_KEY]: {
-        prompt: 'agent stack status',
-        ts: Date.now(),
-      },
-      [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai',
-    })
-    openGogo()
-  }
+  const openTools = onOpenTools ?? openGogo
   const todayLabel = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     month: 'short',
@@ -776,7 +760,7 @@ export function Wallet({
 
           <button
             type="button"
-            onClick={openGogo}
+            onClick={openTools}
             className="group relative w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-emerald-300/50"
             style={{
               ...makeCardStyle('rgba(7, 13, 11, 0.96)', 'rgba(110, 231, 183, 0.22)', MONOCHROME_DARK.radius.card),
@@ -791,135 +775,28 @@ export function Wallet({
                 className="flex h-11 w-11 shrink-0 items-center justify-center border border-emerald-200/30 bg-emerald-200/10 text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.12)]"
                 style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
               >
-                <Sparkles size={18} strokeWidth={1.8} />
+                <Settings2 size={18} strokeWidth={1.8} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Guard Lab</p>
-                    <p className="mt-1 text-sm font-medium text-white">{t('wallet.gogoCardTitle')}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Tools</p>
+                    <p className="mt-1 text-sm font-medium text-white">Gogo, Agent Stack, Radar, Bridge, Calendar</p>
                   </div>
                   <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                    Arc
+                    Menu
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Signal → Risk → Policy → Action → Proof.
+                  Keep the wallet clean; open the full control surface when you need deeper agent tools.
                 </p>
                 <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-emerald-100/70">
-                  <span>Tokens</span>
+                  <span>Signal</span>
                   <span className="h-px flex-1 bg-emerald-200/20" />
-                  <span>x402</span>
+                  <span>Policy</span>
                   <span className="h-px flex-1 bg-emerald-200/20" />
-                  <span>Schedules</span>
+                  <span>Proof</span>
                 </div>
-              </div>
-              <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={openAgentStackStatus}
-            className="group w-full overflow-hidden border px-4 py-3.5 text-left transition-colors hover:border-emerald-200/35"
-            style={{
-              ...makeCardStyle('rgba(6, 18, 15, 0.94)', 'rgba(110, 231, 183, 0.18)', MONOCHROME_DARK.radius.card),
-              backgroundImage:
-                'radial-gradient(circle at 92% 12%, rgba(110,231,183,0.18), transparent 32%), linear-gradient(90deg, rgba(110,231,183,0.08), transparent 42%)',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center border border-emerald-200/25 bg-emerald-200/10 text-emerald-100"
-                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
-              >
-                <ShieldCheck size={17} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-100/80">Circle Agent Stack</p>
-                    <p className="mt-1 text-sm font-medium text-white">Wallet · Policy · Gateway · x402 · Bridge</p>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                    Status
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Check the live agent stack state and the update path for Circle CLI + Skills.
-                </p>
-              </div>
-              <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={openRadar}
-            className="group w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-sky-200/35"
-            style={{
-              ...makeCardStyle('rgba(14, 20, 28, 0.96)', 'rgba(125, 211, 252, 0.18)', MONOCHROME_DARK.radius.card),
-              backgroundImage:
-                'linear-gradient(90deg, rgba(125,211,252,0.10), transparent 34%), linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.026) 1px, transparent 1px)',
-              backgroundSize: 'auto, 26px 26px, 26px 26px',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center border border-sky-200/25 bg-sky-200/10 text-sky-100"
-                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
-              >
-                <Radar size={18} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-sky-100/80">Arc Radar</p>
-                    <p className="mt-1 text-sm font-medium text-white">Token safety & meme watch</p>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-sky-200/25 bg-sky-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-100">
-                    Guard
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Contract proof, social heat, watchlist alerts, and rug-risk checks for Arc.
-                </p>
-              </div>
-              <ChevronRight size={16} className="mt-3 shrink-0 text-sky-100/60 transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={openBridge}
-            className="group w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-emerald-200/35"
-            style={{
-              ...makeCardStyle('rgba(240, 234, 220, 0.055)', 'rgba(110, 231, 183, 0.18)', MONOCHROME_DARK.radius.card),
-              backgroundImage:
-                'linear-gradient(90deg, rgba(110,231,183,0.10), transparent 34%), linear-gradient(rgba(255,255,255,0.024) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.024) 1px, transparent 1px)',
-              backgroundSize: 'auto, 26px 26px, 26px 26px',
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center border border-emerald-200/25 bg-emerald-200/10 text-emerald-100"
-                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
-              >
-                <GitBranch size={18} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-100/80">Arc Bridge</p>
-                    <p className="mt-1 text-sm font-medium text-white">USDC route preflight</p>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                    CCTP
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Prepare source, destination, amount, recipient, and safety checks before any signature.
-                </p>
               </div>
               <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
             </div>
