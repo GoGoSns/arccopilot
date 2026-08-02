@@ -652,6 +652,24 @@ function parseAgentStackStatusIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
+function applyPortfolioWalletBalanceFallback(reply: string, context: GogoContext): string {
+  const walletBalance = context.balance?.trim()
+  if (!walletBalance) return reply
+
+  const replacement =
+    `Your wallet balance is ${walletBalance} USDC. Gateway available, gateway total, and spendable USDC are currently unavailable.`
+
+  return reply
+    .replace(
+      /Your wallet USDC, gateway available, gateway total, and spendable USDC balances are currently unavailable\./i,
+      replacement,
+    )
+    .replace(
+      /Your wallet USDC balance, gateway available, gateway total, and spendable USDC are currently unavailable\./i,
+      replacement,
+    )
+}
+
 async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoContext): Promise<GogoResponse> {
   const backend = await getAgentBackendConfig().catch(() => null)
   const backendUrl = backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL
@@ -3902,7 +3920,7 @@ export async function askGogo(
     try {
       const portfolio = await buildPortfolioIntel()
       return {
-        reply: portfolio.read,
+        reply: applyPortfolioWalletBalanceFallback(portfolio.read, context),
         actions: [],
       }
     } catch (error) {
