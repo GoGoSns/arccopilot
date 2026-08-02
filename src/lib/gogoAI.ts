@@ -614,6 +614,7 @@ function buildDemoProofReply(locale: 'en' | 'tr', context: GogoContext): GogoRes
     '',
     `- Wallet: ${wallet}`,
     `- Balance: ${balance}`,
+    '- Circle Agent Stack: verified control layer for agent wallet, policy, Gateway/x402, scheduled actions, and CCTP bridge preflight',
     '- Backend: Render Free + Neon Postgres',
     '- Scheduler: cron-job.org triggers /cron/schedules/run every 1 minute',
     '- x402 proof: paid 0.001 USDC and opened the protected Arc insight',
