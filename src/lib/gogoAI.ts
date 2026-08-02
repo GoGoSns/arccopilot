@@ -35,7 +35,7 @@ import { discoverCreators } from '@/lib/creatorDiscovery'
 import { prepareBatchNanoTip } from '@/lib/nanopay'
 import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { buildPortfolioIntel } from '@/lib/portfolioIntel'
-import { DEFAULT_AGENT_BACKEND_URL, agentTip, getAgentBackendConfig, isAutonomousEnabled } from '@/lib/agentBackend'
+import { DEFAULT_AGENT_BACKEND_URL, agentHealth, agentTip, getAgentBackendConfig, isAutonomousEnabled } from '@/lib/agentBackend'
 import { inspectX402Resource, sanitizeX402PaymentPreview, type X402PaymentPreview } from '@/lib/x402'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
@@ -625,6 +625,71 @@ function buildDemoProofReply(locale: 'en' | 'tr', context: GogoContext): GogoRes
       ? 'Dene: portfolio, who should I tip, x402 demo, veya create a reminder to pay 0.001 USDC to an address every 1 hour.'
       : 'Try: portfolio, who should I tip, x402 demo, or create a reminder to pay 0.001 USDC to an address every 1 hour.',
   ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function parseAgentStackStatusIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:agent stack|agent stack status|circle agent stack|circle stack|stack status|circle status|agent status)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:agent stack durumu|circle agent stack durumu|circle durumu|ajan stack|ajan durumu|stack durumu)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoContext): Promise<GogoResponse> {
+  const backend = await getAgentBackendConfig().catch(() => null)
+  const backendUrl = backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL
+  const backendLive = backendUrl
+    ? await agentHealth(backendUrl).then(() => true).catch(() => false)
+    : false
+  const autonomous = await isAutonomousEnabled().catch(() => backend?.enabled === true)
+  const wallet = context.walletAddress ? formatAddress(context.walletAddress, 5) : null
+  const balance = context.balance ? `${context.balance} USDC` : null
+
+  const lines = locale === 'tr'
+    ? [
+        'Circle Agent Stack status:',
+        '',
+        `- Agent wallet: ${wallet ? `paired (${wallet})` : 'not paired / bilinmiyor'}`,
+        `- Wallet balance: ${balance ?? 'unavailable'}`,
+        `- Backend: ${backendLive ? 'live' : 'unreachable'} (${backendUrl ?? 'missing'})`,
+        `- Policy mode: ${autonomous ? 'autonomous controls enabled' : 'manual / approval-first'}`,
+        `- Gateway + x402: hazir; paid resource akisi Pay & access onayi olmadan imza istemez.`,
+        `- Scheduled actions: Render + cron-job.org mimarisiyle dis tetiklemeye hazir.`,
+        `- CCTP Bridge: Arc Bridge preflight ekrani hazir; gercek transfer icin ayrica acik onay gerekir.`,
+        `- Skills upkeep: Circle CLI tarafinda guncel kalmak icin circle update ve circle skill update --tool claude-code.`,
+        '',
+        'Thesis: Circle Agent Stack primitives -> ArcCopilot user control layer.',
+      ]
+    : [
+        'Circle Agent Stack status:',
+        '',
+        `- Agent wallet: ${wallet ? `paired (${wallet})` : 'not paired / unknown'}`,
+        `- Wallet balance: ${balance ?? 'unavailable'}`,
+        `- Backend: ${backendLive ? 'live' : 'unreachable'} (${backendUrl ?? 'missing'})`,
+        `- Policy mode: ${autonomous ? 'autonomous controls enabled' : 'manual / approval-first'}`,
+        `- Gateway + x402: ready; paid resources do not request a signature before Pay & access.`,
+        `- Scheduled actions: ready for external triggering via Render + cron-job.org.`,
+        `- CCTP Bridge: Arc Bridge preflight screen is ready; real transfers still require explicit confirmation.`,
+        `- Skills upkeep: use circle update and circle skill update --tool claude-code to stay current.`,
+        '',
+        'Thesis: Circle Agent Stack primitives -> ArcCopilot user control layer.',
+      ]
 
   return {
     reply: lines.join('\n'),
@@ -3538,6 +3603,12 @@ export async function askGogo(
   if (demoProofIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoProofReply(demoProofIntent, context)
+  }
+
+  const agentStackStatusIntent = parseAgentStackStatusIntent(userMessage)
+  if (agentStackStatusIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildAgentStackStatusReply(agentStackStatusIntent, context)
   }
 
   const demoScriptIntent = parseDemoScriptIntent(userMessage)

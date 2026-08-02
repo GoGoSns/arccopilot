@@ -14,6 +14,7 @@ import {
   QrCode,
   Radar,
   Settings2,
+  ShieldCheck,
   Sparkles,
   Wallet as WalletIcon,
   X,
@@ -26,7 +27,7 @@ import { usePortfolioBalances } from '@/lib/portfolio'
 import { debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { copyToClipboard, formatAddress, formatUSD } from '@/lib/utils'
-import { ONBOARDING_SEEN, PENDING_SEND_STORAGE_KEY } from '@/lib/storageKeys'
+import { ONBOARDING_SEEN, PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
 import { isValidAddress } from '@/lib/validation'
 import { readAddressFromImage } from '@/lib/imageReader'
 import { MONOCHROME_DARK } from '@/lib/designTokens'
@@ -367,6 +368,16 @@ export function Wallet({
   const openCalendar = onOpenCalendar ?? onOpenBrief
   const openRadar = onOpenRadar ?? openGogo
   const openBridge = onOpenBridge ?? openGogo
+  const openAgentStackStatus = () => {
+    void chromeStorageSet({
+      [PENDING_GOGO_PROMPT_STORAGE_KEY]: {
+        prompt: 'agent stack status',
+        ts: Date.now(),
+      },
+      [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai',
+    })
+    openGogo()
+  }
   const todayLabel = new Intl.DateTimeFormat(undefined, {
     weekday: 'short',
     month: 'short',
@@ -802,6 +813,41 @@ export function Wallet({
                   <span className="h-px flex-1 bg-emerald-200/20" />
                   <span>Schedules</span>
                 </div>
+              </div>
+              <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={openAgentStackStatus}
+            className="group w-full overflow-hidden border px-4 py-3.5 text-left transition-colors hover:border-emerald-200/35"
+            style={{
+              ...makeCardStyle('rgba(6, 18, 15, 0.94)', 'rgba(110, 231, 183, 0.18)', MONOCHROME_DARK.radius.card),
+              backgroundImage:
+                'radial-gradient(circle at 92% 12%, rgba(110,231,183,0.18), transparent 32%), linear-gradient(90deg, rgba(110,231,183,0.08), transparent 42%)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center border border-emerald-200/25 bg-emerald-200/10 text-emerald-100"
+                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
+              >
+                <ShieldCheck size={17} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-100/80">Circle Agent Stack</p>
+                    <p className="mt-1 text-sm font-medium text-white">Wallet · Policy · Gateway · x402 · Bridge</p>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
+                    Status
+                  </span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
+                  Check the live agent stack state and the update path for Circle CLI + Skills.
+                </p>
               </div>
               <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
             </div>
