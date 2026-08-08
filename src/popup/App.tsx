@@ -1,25 +1,26 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useStore, type View } from '@/lib/store'
 import { PENDING_SEND_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
 import { Welcome } from '@/pages/Welcome'
-import { Wallet } from '@/pages/Wallet'
-import { Send } from '@/pages/Send'
-import { Receive } from '@/pages/Receive'
-import { Discover } from '@/pages/Discover'
-import { Activity } from '@/pages/Activity'
-import { Profile } from '@/pages/Profile'
-import { Settings } from '@/pages/Settings'
-import { AddressBook } from '@/pages/AddressBook'
-import { AddressDetail } from '@/pages/AddressDetail'
-import { DailyBrief } from '@/pages/DailyBrief'
-import { Calendar } from '@/pages/Calendar'
-import { GogoAI } from '@/pages/GogoAI'
-import { ArcRadar } from '@/pages/ArcRadar'
-import { DeFiRadar } from '@/pages/DeFiRadar'
-import { ArcBridge } from '@/pages/ArcBridge'
-import { Tools } from '@/pages/Tools'
 import { useLocale } from '@/lib/i18n'
 import { chromeStorageGet, chromeStorageRemove } from '@/lib/external'
+
+const Wallet = lazy(() => import('@/pages/Wallet').then((module) => ({ default: module.Wallet })))
+const Send = lazy(() => import('@/pages/Send').then((module) => ({ default: module.Send })))
+const Receive = lazy(() => import('@/pages/Receive').then((module) => ({ default: module.Receive })))
+const Discover = lazy(() => import('@/pages/Discover').then((module) => ({ default: module.Discover })))
+const Activity = lazy(() => import('@/pages/Activity').then((module) => ({ default: module.Activity })))
+const Profile = lazy(() => import('@/pages/Profile').then((module) => ({ default: module.Profile })))
+const Settings = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.Settings })))
+const AddressBook = lazy(() => import('@/pages/AddressBook').then((module) => ({ default: module.AddressBook })))
+const AddressDetail = lazy(() => import('@/pages/AddressDetail').then((module) => ({ default: module.AddressDetail })))
+const DailyBrief = lazy(() => import('@/pages/DailyBrief').then((module) => ({ default: module.DailyBrief })))
+const Calendar = lazy(() => import('@/pages/Calendar').then((module) => ({ default: module.Calendar })))
+const GogoAI = lazy(() => import('@/pages/GogoAI').then((module) => ({ default: module.GogoAI })))
+const ArcRadar = lazy(() => import('@/pages/ArcRadar').then((module) => ({ default: module.ArcRadar })))
+const DeFiRadar = lazy(() => import('@/pages/DeFiRadar').then((module) => ({ default: module.DeFiRadar })))
+const ArcBridge = lazy(() => import('@/pages/ArcBridge').then((module) => ({ default: module.ArcBridge })))
+const Tools = lazy(() => import('@/pages/Tools').then((module) => ({ default: module.Tools })))
 
 const VALID_VIEWS: View[] = [
   'welcome',
@@ -52,6 +53,14 @@ function isPendingSend(value: unknown): value is { ts: number; recipient?: strin
   return typeof pending.ts === 'number'
     && (pending.recipient === undefined || typeof pending.recipient === 'string')
     && (pending.amount === undefined || typeof pending.amount === 'string')
+}
+
+function RouteLoading() {
+  return (
+    <div className="flex h-full items-center justify-center bg-arc-bg px-4 text-center text-xs text-arc-text-dim">
+      Loading ArcCopilot...
+    </div>
+  )
 }
 
 export default function App() {
@@ -88,22 +97,25 @@ export default function App() {
   const view: View = !isOnboarded ? 'welcome' : currentView === 'welcome' ? 'wallet' : currentView
 
   if (view === 'welcome') return <Welcome />
-  if (view === 'send') return <Send onBack={goBack} />
-  if (view === 'receive') return <Receive onBack={goBack} />
-  if (view === 'discover') return <Discover onBack={goBack} />
-  if (view === 'profile') return <Profile onBack={goBack} />
-  if (view === 'settings') return <Settings onBack={goBack} />
-  if (view === 'address-book') return <AddressBook onBack={goBack} />
-  if (view === 'address-detail') return <AddressDetail onBack={goBack} />
-  if (view === 'daily-brief') return <DailyBrief onBack={goBack} />
-  if (view === 'calendar') return <Calendar onBack={goBack} />
-  if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
-  if (view === 'activity') return <Activity onBack={goBack} />
-  if (view === 'arc-radar') return <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
-  if (view === 'defi-radar') return <DeFiRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
-  if (view === 'arc-bridge') return <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
+
+  let content = null
+
+  if (view === 'send') content = <Send onBack={goBack} />
+  else if (view === 'receive') content = <Receive onBack={goBack} />
+  else if (view === 'discover') content = <Discover onBack={goBack} />
+  else if (view === 'profile') content = <Profile onBack={goBack} />
+  else if (view === 'settings') content = <Settings onBack={goBack} />
+  else if (view === 'address-book') content = <AddressBook onBack={goBack} />
+  else if (view === 'address-detail') content = <AddressDetail onBack={goBack} />
+  else if (view === 'daily-brief') content = <DailyBrief onBack={goBack} />
+  else if (view === 'calendar') content = <Calendar onBack={goBack} />
+  else if (view === 'gogo-ai') content = <GogoAI onBack={goBack} />
+  else if (view === 'activity') content = <Activity onBack={goBack} />
+  else if (view === 'arc-radar') content = <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
+  else if (view === 'defi-radar') content = <DeFiRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
+  else if (view === 'arc-bridge') content = <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   if (view === 'tools') {
-    return (
+    content = (
       <Tools
         onBack={goBack}
         onOpenGogo={() => go('gogo-ai')}
@@ -118,7 +130,8 @@ export default function App() {
     )
   }
 
-  return (
+  if (!content) {
+    content = (
     <Wallet
       onSend={() => go('send')}
       onReceive={() => go('receive')}
@@ -129,5 +142,12 @@ export default function App() {
       onOpenGogo={() => go('gogo-ai')}
       onOpenTools={() => go('tools')}
     />
+    )
+  }
+
+  return (
+    <Suspense fallback={<RouteLoading />}>
+      {content}
+    </Suspense>
   )
 }
