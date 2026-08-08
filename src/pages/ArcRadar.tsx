@@ -35,6 +35,16 @@ type ArcRadarToken = {
     label?: string
     note?: string
   }
+  detection?: {
+    source?: string
+    firstSeenBlock?: number
+    firstSeenTxHash?: string | null
+    creationTxHash?: string | null
+    deployedBlockNumber?: number | null
+    deployedAt?: string | null
+    freshLaunchProven?: boolean | null
+    metadataStatus?: string
+  }
 }
 
 type ArcRadarSnapshot = {
@@ -46,6 +56,10 @@ type ArcRadarSnapshot = {
   observedCount?: number
   newSignalCount?: number
   newSignals?: ArcRadarToken[]
+  recentLaunchSignals?: ArcRadarToken[]
+  indexedSignals?: ArcRadarToken[]
+  indexedObservedCount?: number
+  newSignalWindowMinutes?: number
   memeSignals?: ArcRadarToken[]
   tokenSignals?: ArcRadarToken[]
   coreTokens?: ArcRadarToken[]
@@ -62,6 +76,13 @@ type ArcRadarSnapshot = {
     tradeRecommendations?: boolean
     requiresContractAddress?: boolean
     requiresExplorerProof?: boolean
+  }
+  indexer?: {
+    status?: string
+    indexedThroughBlock?: number | null
+    lastRunAt?: string | null
+    lastSuccessAt?: string | null
+    evidenceModel?: string
   }
 }
 
@@ -120,7 +141,8 @@ function getTokenTitle(token: ArcRadarToken): string {
 }
 
 function getTokenStatus(token: ArcRadarToken): string {
-  if (token.verified) return 'verified'
+  if (token.detection?.freshLaunchProven === true) return 'fresh launch proven'
+  if (token.verified) return 'source verified'
   if ((token.attention?.score ?? 0) >= 70) return 'high attention'
   if ((token.risk?.score ?? 0) >= 66) return 'high risk'
   return 'watch'
@@ -162,6 +184,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
       ...(snapshot?.coreTokens ?? []),
       ...(snapshot?.memeSignals ?? []),
       ...(snapshot?.tokenSignals ?? []),
+      ...(snapshot?.indexedSignals ?? []),
     ]
     const deduped = new Map<string, ArcRadarToken>()
     for (const token of all) {
@@ -172,9 +195,14 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
     return Array.from(deduped.values())
   }, [snapshot])
 
-  const newTokens = snapshot?.newSignals ?? []
+  const proofBackedIndexer = snapshot?.chainId === 5042002
+    && snapshot?.indexer?.evidenceModel === 'erc20-transfer-mint+contract-creation-proof'
+  const newTokens = proofBackedIndexer
+    ? (snapshot?.newSignals ?? []).filter((token) => token.detection?.freshLaunchProven === true)
+    : []
   const verifiedCount = tokens.filter((token) => token.verified).length
-  const watchCount = Math.max(0, tokens.length - verifiedCount)
+  const reviewCount = Math.max(0, tokens.length - verifiedCount)
+  const provenNewCount = newTokens.length
   const radarNodes = tokens.slice(0, nodePositions.length)
 
   const loadSnapshot = async () => {
@@ -260,7 +288,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                   Arc signals, risks, and bridge readiness.
                 </h1>
                 <p className="mt-3 max-w-[260px] text-xs leading-relaxed" style={{ color: muted }}>
-                  A real ArcScan-backed surface for new ERC-20s, safety checks, and USDC bridge context. No fake tokens, no buy calls.
+                  Arc RPC mint evidence, ERC-20 interface checks, and ArcScan creation proof. Unknown candidates cannot trigger launch alerts; no fake tokens or buy calls.
                 </p>
               </div>
               <div className="rounded-full border bg-white/55 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ borderColor: line, color: '#166534' }}>
@@ -272,10 +300,10 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="font-mono text-[9px] uppercase tracking-[0.16em]" style={{ color: muted }}>Detection rail</p>
-                  <p className="mt-1 text-sm font-semibold">ArcScan ERC-20 index</p>
+                  <p className="mt-1 text-sm font-semibold">Arc RPC + ArcScan evidence</p>
                 </div>
                 <span className="rounded-full border px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em]" style={{ borderColor: line, color: '#118744' }}>
-                  {snapshot?.scan?.mode ?? 'scan'} · {snapshot?.scan?.persistence ?? 'proof'}
+                  {snapshot?.indexer?.status ?? 'starting'} · block {snapshot?.indexer?.indexedThroughBlock ?? '—'}
                 </span>
               </div>
               <div className="mt-4 flex items-center gap-1.5 overflow-hidden rounded-full border bg-[#ebe2d0] px-3 py-3" style={{ borderColor: line }}>
@@ -300,15 +328,15 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]" style={{ color: muted }}>
                 <span>Chain: eip155:{snapshot?.chainId ?? 5042002}</span>
-                <span>Source: ArcScan API</span>
+                <span>Source: RPC + ArcScan</span>
               </div>
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
-                ['Observed', isLoading ? '—' : String(snapshot?.observedCount ?? tokens.length), 'ArcScan ERC-20'],
-                ['New', isLoading ? '—' : String(snapshot?.newSignalCount ?? newTokens.length), 'Since last scan'],
-                ['Watch', isLoading ? '—' : String(watchCount), 'Needs proof'],
+                ['Confirmed', isLoading ? '—' : String(snapshot?.indexedObservedCount ?? 0), 'ERC-20 interface'],
+                ['New', isLoading ? '—' : String(provenNewCount), `${snapshot?.newSignalWindowMinutes ?? 15}m proven`],
+                ['Review', isLoading ? '—' : String(reviewCount), 'Catalog signals'],
               ].map(([label, value, caption]) => (
                 <div key={label} className="rounded-[16px] border bg-white/45 px-3 py-3" style={{ borderColor: line }}>
                   <p className="font-mono text-[9px] uppercase tracking-[0.14em]" style={{ color: muted }}>{label}</p>
@@ -327,24 +355,24 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">New since last scan</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Proof-backed launches</p>
                     <p className="mt-1 text-sm font-semibold">
-                      {isLoading ? 'Scanning ArcScan...' : `${snapshot?.newSignalCount ?? newTokens.length} fresh token signal${(snapshot?.newSignalCount ?? newTokens.length) === 1 ? '' : 's'}`}
+                      {isLoading ? 'Scanning ArcScan...' : `${provenNewCount} fresh token signal${provenNewCount === 1 ? '' : 's'}`}
                     </p>
                   </div>
                   <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65">
-                    {snapshot?.scan?.mode ?? 'scan'}
+                    {snapshot?.indexer?.status ?? 'scan'}
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-white/58">
-                  First run creates a baseline; every later cron scan only surfaces newly observed contracts.
+                  The first run creates a no-alert baseline. Later scans require mint evidence, ERC-20 calls, and creation proof before a launch appears here.
                 </p>
               </div>
             </div>
 
             {!isLoading && !error && newTokens.length === 0 ? (
               <div className="mt-3 rounded-[16px] border border-white/10 bg-white/[0.04] px-3 py-3 text-xs leading-relaxed text-white/60">
-                No new ArcScan ERC-20 contracts since the last scan. Gogo will keep watching without inventing signals.
+                No proof-backed Arc ERC-20 launch in this window. Incomplete candidates stay quarantined instead of becoming fake alerts.
               </div>
             ) : null}
 

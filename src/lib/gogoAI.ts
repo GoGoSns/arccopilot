@@ -1150,7 +1150,7 @@ function parseArcBridgePreflightIntent(message: string): ArcBridgePreflightInten
       to = mentioned[1]
     } else if (mentioned.length === 1) {
       to = mentioned[0].key === 'arc_testnet' ? mentioned[0] : ARC_BRIDGE_CHAINS[0]
-      from = mentioned[0].key === 'arc_testnet' ? undefined ?? null : mentioned[0]
+      from = mentioned[0].key === 'arc_testnet' ? null : mentioned[0]
     }
   }
 
@@ -1412,10 +1412,11 @@ function formatArcTokenSignal(signal: ArcTokenRadarSignal): string {
   const name = signal.name?.trim() || 'Unknown token'
   const address = signal.address && isValidAddress(signal.address) ? formatAddress(signal.address, 4) : 'no address'
   const holders = signal.holders ? `, holders: ${signal.holders}` : ''
-  const verified = signal.verified ? ', explorer metadata' : ''
+  const verified = signal.verified ? ', source verified' : ''
+  const launchProof = signal.detection?.freshLaunchProven === true ? ', launch proof: yes' : ''
   const attention = signal.attention?.score != null ? `, attention: ${signal.attention.score}/100` : ''
   const risk = signal.risk?.score != null ? `, risk: ${signal.risk.score}/100` : ''
-  return `- ${symbol} (${name}) — ${address}${holders}${verified}${attention}${risk}`
+  return `- ${symbol} (${name}) — ${address}${holders}${verified}${launchProof}${attention}${risk}`
 }
 
 async function fetchArcTokenRadarSnapshot(): Promise<ArcTokenRadarSnapshot | null> {
@@ -1516,17 +1517,25 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
   const liveSnapshot = await fetchArcTokenRadarSnapshot()
   const tokenSignals = liveSnapshot?.tokenSignals?.slice(0, 5) ?? []
   const memeSignals = liveSnapshot?.memeSignals?.slice(0, 3) ?? []
-  const newSignals = liveSnapshot?.newSignals?.slice(0, 5) ?? []
+  const proofBackedIndexer = liveSnapshot?.chainId === 5042002
+    && liveSnapshot?.indexer?.evidenceModel === 'erc20-transfer-mint+contract-creation-proof'
+  const newSignals = proofBackedIndexer
+    ? (liveSnapshot?.newSignals ?? []).filter((signal) => signal.detection?.freshLaunchProven === true).slice(0, 5)
+    : []
   const liveLines = [
     ...(newSignals.length > 0
       ? [
-          locale === 'tr' ? 'Yeni yakalanan tokenlar:' : 'New since last scan:',
+          locale === 'tr' ? 'Kanitlanan yeni launch sinyalleri:' : 'Proof-backed launches:',
           ...newSignals.map(formatArcTokenSignal),
         ]
       : [
-          locale === 'tr'
-            ? 'Yeni yakalanan tokenlar: 0 (son taramadan beri yeni ArcScan ERC-20 yok)'
-            : 'New since last scan: 0 (no new ArcScan ERC-20 contracts since the last scan)',
+          !proofBackedIndexer
+            ? (locale === 'tr'
+                ? 'Kanitli launch dedektoru kullanilamiyor; katalog farklari yeni launch diye gosterilmez.'
+                : 'Proof-backed launch detector unavailable; catalog diffs are not presented as new launches.')
+            : (locale === 'tr'
+                ? 'Kanitlanan yeni launch sinyali: 0 (eksik adaylar alarm olmadan karantinada kalir)'
+                : 'Proof-backed launches: 0 (incomplete candidates stay quarantined without an alert)'),
         ]),
     ...(tokenSignals.length > 0
       ? [
@@ -1547,9 +1556,10 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         'Arc Token / Meme Radar:',
         '',
         `- Cached social signals: ${cachedSignals}`,
-        `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
-        `- New since last scan: ${liveSnapshot?.newSignalCount ?? 'unavailable'}`,
-        `- Scan mode: ${liveSnapshot?.scan?.mode ?? 'unavailable'} / ${liveSnapshot?.scan?.persistence ?? 'unavailable'}`,
+        `- ArcScan catalog contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- Confirmed indexed ERC-20s: ${liveSnapshot?.indexedObservedCount ?? 'unavailable'}`,
+        `- Proof-backed launches (${liveSnapshot?.newSignalWindowMinutes ?? 15}m): ${proofBackedIndexer ? newSignals.length : 'unavailable'}`,
+        `- Indexer: ${liveSnapshot?.indexer?.status ?? 'unavailable'} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; token math icin ERC-20 USDC her zaman 6 decimal.',
@@ -1576,9 +1586,10 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         'Arc Token / Meme Radar:',
         '',
         `- Cached social signals: ${cachedSignals}`,
-        `- ArcScan observed token contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
-        `- New since last scan: ${liveSnapshot?.newSignalCount ?? 'unavailable'}`,
-        `- Scan mode: ${liveSnapshot?.scan?.mode ?? 'unavailable'} / ${liveSnapshot?.scan?.persistence ?? 'unavailable'}`,
+        `- ArcScan catalog contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
+        `- Confirmed indexed ERC-20s: ${liveSnapshot?.indexedObservedCount ?? 'unavailable'}`,
+        `- Proof-backed launches (${liveSnapshot?.newSignalWindowMinutes ?? 15}m): ${proofBackedIndexer ? newSignals.length : 'unavailable'}`,
+        `- Indexer: ${liveSnapshot?.indexer?.status ?? 'unavailable'} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; ERC-20 USDC token math must stay at 6 decimals.',
@@ -1780,14 +1791,26 @@ type ArcTokenRadarSignal = {
     label?: string
     note?: string
   }
+  detection?: {
+    freshLaunchProven?: boolean | null
+    firstSeenBlock?: number
+    firstSeenTxHash?: string | null
+    creationTxHash?: string | null
+    deployedAt?: string | null
+  }
 }
 
 type ArcTokenRadarSnapshot = {
+  chainId?: number
   observedCount?: number
   newSignalCount?: number
   cacheStatus?: string
   fetchedAt?: string
   newSignals?: ArcTokenRadarSignal[]
+  recentLaunchSignals?: ArcTokenRadarSignal[]
+  indexedSignals?: ArcTokenRadarSignal[]
+  indexedObservedCount?: number
+  newSignalWindowMinutes?: number
   memeSignals?: ArcTokenRadarSignal[]
   tokenSignals?: ArcTokenRadarSignal[]
   coreTokens?: ArcTokenRadarSignal[]
@@ -1798,6 +1821,12 @@ type ArcTokenRadarSnapshot = {
     currentSeenCount?: number
     baselineCreated?: boolean
     scannedAt?: string
+  }
+  indexer?: {
+    status?: string
+    evidenceModel?: string
+    indexedThroughBlock?: number | null
+    lastSuccessAt?: string | null
   }
 }
 
