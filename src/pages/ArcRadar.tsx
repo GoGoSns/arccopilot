@@ -134,6 +134,33 @@ function formatTokenAmount(value?: string | number | null): string {
   return String(value)
 }
 
+function formatBlock(value?: number | null): string {
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '-'
+}
+
+function getIndexerLabel(status?: string): string {
+  switch (status) {
+    case 'ready':
+      return 'ready'
+    case 'not-started':
+      return 'waiting for cron'
+    case 'degraded':
+      return 'degraded'
+    case 'unavailable':
+      return 'unavailable'
+    default:
+      return status || 'starting'
+  }
+}
+
+function getIndexerCaption(snapshot?: ArcRadarSnapshot | null): string {
+  const status = snapshot?.indexer?.status
+  if (status === 'not-started') return 'Backend is deployed. Add the radar cron job to start proof scans.'
+  if (status === 'ready') return 'Proof scanner is active. Fresh launches require mint, ERC-20, and creation evidence.'
+  if (status === 'degraded' || status === 'unavailable') return 'Proof scanner is not healthy, so launch alerts are suppressed.'
+  return 'First successful scan creates a no-alert baseline before launch alerts can appear.'
+}
+
 function getTokenTitle(token: ArcRadarToken): string {
   const symbol = token.symbol?.trim() || 'UNKNOWN'
   const name = token.name?.trim()
@@ -326,6 +353,9 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                   ))
                 )}
               </div>
+              <p className="mt-3 text-[11px] leading-relaxed" style={{ color: muted }}>
+                {getIndexerCaption(snapshot)}
+              </p>
               <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]" style={{ color: muted }}>
                 <span>Chain: eip155:{snapshot?.chainId ?? 5042002}</span>
                 <span>Source: RPC + ArcScan</span>
@@ -361,11 +391,11 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
                     </p>
                   </div>
                   <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[9px] uppercase tracking-[0.14em] text-white/65">
-                    {snapshot?.indexer?.status ?? 'scan'}
+                    {getIndexerLabel(snapshot?.indexer?.status)}
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-white/58">
-                  The first run creates a no-alert baseline. Later scans require mint evidence, ERC-20 calls, and creation proof before a launch appears here.
+                  {getIndexerCaption(snapshot)}
                 </p>
               </div>
             </div>

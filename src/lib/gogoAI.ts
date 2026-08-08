@@ -1046,11 +1046,11 @@ function parseTokenRadarIntent(message: string): 'en' | 'tr' | null {
 
   if (!normalized) return null
 
-  if (/^(?:token radar|meme radar|arc token radar|arc meme radar|arc tokens|arc memes|token watch|meme watch|new tokens|new memes)$/.test(normalized)) {
+  if (/^(?:token radar|radar status|meme radar|arc token radar|arc meme radar|arc tokens|arc memes|token watch|meme watch|new tokens|new memes)$/.test(normalized)) {
     return 'en'
   }
 
-  if (/^(?:token radar|meme radar|arc tokenlari|arc memeleri|token takip|meme takip|yeni tokenler|yeni memeler|pazar radar|radar)$/.test(normalized)) {
+  if (/^(?:token radar|radar status|meme radar|arc tokenlari|arc memeleri|token takip|meme takip|yeni tokenler|yeni memeler|pazar radar|radar)$/.test(normalized)) {
     return 'tr'
   }
 
@@ -1519,6 +1519,13 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
   const memeSignals = liveSnapshot?.memeSignals?.slice(0, 3) ?? []
   const proofBackedIndexer = liveSnapshot?.chainId === 5042002
     && liveSnapshot?.indexer?.evidenceModel === 'erc20-transfer-mint+contract-creation-proof'
+  const indexerStatus = liveSnapshot?.indexer?.status ?? 'unavailable'
+  const indexerLabel = indexerStatus === 'not-started' ? 'waiting for cron' : indexerStatus
+  const indexerActivationNote = indexerStatus === 'not-started'
+    ? (locale === 'tr'
+        ? 'Not: Backend hazir, ama proof scanner ilk tarama icin /cron/radar/run cron job tetigini bekliyor.'
+        : 'Note: Backend is ready, but the proof scanner is waiting for the /cron/radar/run cron job to start.')
+    : null
   const newSignals = proofBackedIndexer
     ? (liveSnapshot?.newSignals ?? []).filter((signal) => signal.detection?.freshLaunchProven === true).slice(0, 5)
     : []
@@ -1559,8 +1566,9 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         `- ArcScan catalog contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
         `- Confirmed indexed ERC-20s: ${liveSnapshot?.indexedObservedCount ?? 'unavailable'}`,
         `- Proof-backed launches (${liveSnapshot?.newSignalWindowMinutes ?? 15}m): ${proofBackedIndexer ? newSignals.length : 'unavailable'}`,
-        `- Indexer: ${liveSnapshot?.indexer?.status ?? 'unavailable'} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
+        `- Indexer: ${indexerLabel} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
+        ...(indexerActivationNote ? [`- ${indexerActivationNote}`] : []),
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; token math icin ERC-20 USDC her zaman 6 decimal.',
         '- Takip ettigim sinyaller: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
@@ -1589,8 +1597,9 @@ async function buildTokenRadarReply(locale: 'en' | 'tr'): Promise<GogoResponse> 
         `- ArcScan catalog contracts: ${liveSnapshot?.observedCount ?? 'unavailable'}`,
         `- Confirmed indexed ERC-20s: ${liveSnapshot?.indexedObservedCount ?? 'unavailable'}`,
         `- Proof-backed launches (${liveSnapshot?.newSignalWindowMinutes ?? 15}m): ${proofBackedIndexer ? newSignals.length : 'unavailable'}`,
-        `- Indexer: ${liveSnapshot?.indexer?.status ?? 'unavailable'} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
+        `- Indexer: ${indexerLabel} / block ${liveSnapshot?.indexer?.indexedThroughBlock ?? 'unavailable'}`,
         `- Backend snapshot: ${liveSnapshot?.cacheStatus ?? 'unavailable'}`,
+        ...(indexerActivationNote ? [`- ${indexerActivationNote}`] : []),
         '- Network: Arc Testnet, chain id 5042002',
         '- Native gas: USDC; ERC-20 USDC token math must stay at 6 decimals.',
         '- Signals watched: Arc meme, Arc token, Circle Arc, launch, mint, faucet, creator activity.',
