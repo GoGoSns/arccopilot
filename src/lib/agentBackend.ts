@@ -7,9 +7,6 @@ import {
 } from '@/lib/storageKeys'
 
 export const DEFAULT_AGENT_BACKEND_URL = 'https://arccopilot-agent.onrender.com'
-const STALE_AGENT_BACKEND_URLS = new Set([
-  'https://web-production-66fa5.up.railway.app',
-])
 const AGENT_REQUEST_TIMEOUT_MS = 10_000
 
 export interface AgentBackendConfig {
@@ -59,7 +56,12 @@ function normalizeBackendUrl(value: string): string | null {
 
 function migrateBackendUrl(value: string | null): string | null {
   if (!value) return value
-  return STALE_AGENT_BACKEND_URLS.has(value) ? DEFAULT_AGENT_BACKEND_URL : value
+  try {
+    const url = new URL(value)
+    return url.hostname.endsWith('.up.railway.app') ? DEFAULT_AGENT_BACKEND_URL : value
+  } catch {
+    return value
+  }
 }
 
 function joinBackendUrl(baseUrl: string, path: string): string {
