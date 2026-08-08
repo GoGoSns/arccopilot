@@ -106,8 +106,7 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
 
   const routeReady = blockers.length === 0
 
-  const askGogo = async () => {
-    const prompt = `bridge ${amount.trim() || '1'} USDC from ${source.label} to ${destination.label}${recipient.trim() ? ` for recipient ${recipient.trim()}` : ''}`
+  const askGogoPrompt = async (prompt: string) => {
     await chromeStorageSet({
       [PENDING_GOGO_PROMPT_STORAGE_KEY]: { prompt, ts: Date.now() },
       [PENDING_VIEW_STORAGE_KEY]: 'gogo-ai',
@@ -115,13 +114,18 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
     onOpenGogo?.()
   }
 
+  const askGogo = async () => {
+    const prompt = `bridge ${amount.trim() || '1'} USDC from ${source.label} to ${destination.label}${recipient.trim() ? ` for recipient ${recipient.trim()}` : ''}`
+    await askGogoPrompt(prompt)
+  }
+
   const toolTiles = [
-    { label: 'Route', Icon: ArrowDownUp, action: () => undefined },
+    { label: 'Route', Icon: ArrowDownUp, action: askGogo },
     { label: 'Analyze', Icon: Bot, action: askGogo },
-    { label: 'Docs', Icon: ExternalLink, action: () => openExternal('https://docs.arc.network/app-kit/bridge') },
-    { label: 'CCTP', Icon: GitBranch, action: () => undefined },
-    { label: 'History', Icon: History, action: () => undefined },
-    { label: 'Settings', Icon: Settings2, action: () => undefined },
+    { label: 'Docs', Icon: ExternalLink, action: () => openExternal('https://docs.arc.network/app-kit') },
+    { label: 'CCTP', Icon: GitBranch, action: () => openExternal('https://developers.circle.com/cctp') },
+    { label: 'History', Icon: History, action: () => askGogoPrompt('arc bridge history') },
+    { label: 'Settings', Icon: Settings2, action: () => askGogoPrompt('agent stack status') },
   ]
 
   return (
@@ -330,7 +334,7 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
             </span>
             <button
               type="button"
-              onClick={() => openExternal('https://docs.arc.network/app-kit/bridge')}
+              onClick={() => openExternal('https://docs.arc.network/app-kit')}
               className="flex shrink-0 items-center gap-1 rounded-full border bg-white px-2 py-1 font-medium"
               style={{ borderColor: line }}
             >
