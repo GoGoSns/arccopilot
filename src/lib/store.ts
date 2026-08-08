@@ -4,7 +4,7 @@ import { ADDRESS_BOOK_STORAGE_KEY, WALLET_ADDRESS_STORAGE_KEY } from '@/lib/stor
 import { debugLog, debugWarn } from '@/lib/debug'
 import { chromeStorageRemove, chromeStorageSet } from '@/lib/external'
 
-export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail' | 'daily-brief' | 'calendar' | 'gogo-ai' | 'activity' | 'arc-radar' | 'arc-bridge' | 'tools'
+export type View = 'welcome' | 'wallet' | 'send' | 'receive' | 'discover' | 'profile' | 'settings' | 'address-book' | 'address-detail' | 'daily-brief' | 'calendar' | 'gogo-ai' | 'activity' | 'arc-radar' | 'defi-radar' | 'arc-bridge' | 'tools'
 
 export interface AddressMemory {
   address: string         // lowercase

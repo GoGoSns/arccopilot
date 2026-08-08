@@ -15,6 +15,7 @@ import { DailyBrief } from '@/pages/DailyBrief'
 import { Calendar } from '@/pages/Calendar'
 import { GogoAI } from '@/pages/GogoAI'
 import { ArcRadar } from '@/pages/ArcRadar'
+import { DeFiRadar } from '@/pages/DeFiRadar'
 import { ArcBridge } from '@/pages/ArcBridge'
 import { Tools } from '@/pages/Tools'
 import { useLocale } from '@/lib/i18n'
@@ -35,6 +36,7 @@ const VALID_VIEWS: View[] = [
   'gogo-ai',
   'activity',
   'arc-radar',
+  'defi-radar',
   'arc-bridge',
   'tools',
 ]
@@ -98,12 +100,14 @@ export default function App() {
   if (view === 'gogo-ai') return <GogoAI onBack={goBack} />
   if (view === 'activity') return <Activity onBack={goBack} />
   if (view === 'arc-radar') return <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
+  if (view === 'defi-radar') return <DeFiRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   if (view === 'arc-bridge') return <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   if (view === 'tools') {
     return (
       <Tools
         onBack={goBack}
         onOpenGogo={() => go('gogo-ai')}
+        onOpenDefiRadar={() => go('defi-radar')}
         onOpenRadar={() => go('arc-radar')}
         onOpenBridge={() => go('arc-bridge')}
         onOpenCalendar={() => go('calendar')}

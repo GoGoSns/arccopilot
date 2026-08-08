@@ -18,6 +18,7 @@ import { MONOCHROME_DARK } from '@/lib/designTokens'
 interface ToolsProps {
   onBack: () => void
   onOpenGogo: () => void
+  onOpenDefiRadar: () => void
   onOpenRadar: () => void
   onOpenBridge: () => void
   onOpenCalendar: () => void
@@ -77,6 +78,7 @@ function makeCardStyle(backgroundColor: string, borderColor: string, borderRadiu
 export function Tools({
   onBack,
   onOpenGogo,
+  onOpenDefiRadar,
   onOpenRadar,
   onOpenBridge,
   onOpenCalendar,
@@ -121,7 +123,7 @@ export function Tools({
       badge: 'H2',
       tone: 'amber',
       Icon: Coins,
-      onClick: () => void openGogoPrompt('defi radar'),
+      onClick: onOpenDefiRadar,
     },
     {
       title: 'Token/Meme Radar',
