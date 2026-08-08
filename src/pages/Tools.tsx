@@ -228,7 +228,7 @@ export function Tools({
               </span>
             ))}
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px] leading-snug text-arc-text-dim">
+          <div className="mt-3 grid grid-cols-2 gap-1.5 text-[10px] leading-snug text-arc-text-dim">
             <button
               type="button"
               onClick={() => void openGogoPrompt('arc h2 priorities')}
@@ -249,6 +249,13 @@ export function Tools({
               className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-2 text-left"
             >
               DeFi radar
+            </button>
+            <button
+              type="button"
+              onClick={() => void openGogoPrompt('launch readiness')}
+              className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-2 text-left"
+            >
+              Ready check
             </button>
           </div>
         </section>

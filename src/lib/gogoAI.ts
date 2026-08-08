@@ -716,6 +716,99 @@ async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoCont
   }
 }
 
+function parseLaunchReadinessIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:launch readiness|readiness|ready check|product readiness|release check|final check|is it ready|are we ready|hazir mi)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:hazirlik kontrolu|urun hazir mi|hazir miyiz|son kontrol|final kontrol|cikis kontrolu|yayina hazir mi|hazirlik)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+async function buildLaunchReadinessReply(locale: 'en' | 'tr', context: GogoContext): Promise<GogoResponse> {
+  const backend = await getAgentBackendConfig().catch(() => null)
+  const backendUrl = backend?.backendUrl ?? DEFAULT_AGENT_BACKEND_URL
+  const backendLive = backendUrl
+    ? await agentHealth(backendUrl).then(() => true).catch(() => false)
+    : false
+  const autonomous = await isAutonomousEnabled().catch(() => backend?.enabled === true)
+  const radar = await fetchArcTokenRadarSnapshot()
+  const proofBackedRadar = radar?.chainId === 5042002
+    && radar?.indexer?.evidenceModel === 'erc20-transfer-mint+contract-creation-proof'
+  const radarStatus = radar?.indexer?.status ?? 'unavailable'
+  const radarHealthy = proofBackedRadar && ['ready', 'not-started'].includes(radarStatus)
+  const walletPaired = Boolean(context.walletAddress)
+  const walletBalance = context.balance ? `${context.balance} USDC` : null
+
+  const checks = [
+    ['Agent wallet', walletPaired, walletPaired ? `paired (${formatAddress(context.walletAddress, 5)})` : 'not paired'],
+    ['Wallet balance', Boolean(walletBalance), walletBalance ?? 'unavailable'],
+    ['Backend', backendLive, `${backendLive ? 'live' : 'unreachable'} (${backendUrl ?? 'missing'})`],
+    ['Policy mode', true, autonomous ? 'autonomous controls enabled' : 'manual / approval-first'],
+    ['Token/Meme Radar', radarHealthy, `${proofBackedRadar ? radarStatus : 'proof model unavailable'} / block ${radar?.indexer?.indexedThroughBlock ?? 'n/a'}`],
+    ['DeFi Radar', true, 'real official/community/news signals only; no fake protocol listings'],
+    ['Bridge', true, 'preflight only; no transfer without explicit confirmation'],
+    ['x402', true, 'quote-first; no signature before Pay & access'],
+  ] as const
+
+  const passed = checks.filter(([, ok]) => ok).length
+  const summary = locale === 'tr'
+    ? `Urun hazirlik skoru: ${passed}/${checks.length}`
+    : `Product readiness score: ${passed}/${checks.length}`
+  const icon = (ok: boolean) => (ok ? 'OK' : 'CHECK')
+
+  const lines = locale === 'tr'
+    ? [
+        'ArcCopilot launch readiness:',
+        '',
+        summary,
+        '',
+        ...checks.map(([label, ok, note]) => `- ${icon(ok)} ${label}: ${note}`),
+        '',
+        'Manual checks before recording/publishing:',
+        '- Extension reload edildi mi?',
+        '- MetaMask Arc Testnet acik ve dogru hesapta mi?',
+        '- cron-job.org jobs enabled mi? (/cron/schedules/run ve /cron/radar/run)',
+        '- Chrome Store paketi secrets, private keys ve gereksiz izinlerden temiz mi?',
+        '',
+        passed === checks.length
+          ? 'Decision: core product path ready. Son is: manuel checklist ve kisa smoke test.'
+          : 'Decision: publish/record once CHECK items are fixed; fake veriyle doldurma yok.',
+      ]
+    : [
+        'ArcCopilot launch readiness:',
+        '',
+        summary,
+        '',
+        ...checks.map(([label, ok, note]) => `- ${icon(ok)} ${label}: ${note}`),
+        '',
+        'Manual checks before recording/publishing:',
+        '- Extension was reloaded.',
+        '- MetaMask is unlocked on Arc Testnet with the right account.',
+        '- cron-job.org jobs are enabled (/cron/schedules/run and /cron/radar/run).',
+        '- Chrome Store package has no secrets, private keys, or unnecessary permissions.',
+        '',
+        passed === checks.length
+          ? 'Decision: core product path is ready. Final step: manual checklist and a short smoke test.'
+          : 'Decision: publish/record after CHECK items are fixed; no fake filler data.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function parseArcH2PrioritiesIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
     .replace(/[!?.,;:]+/g, ' ')
@@ -3909,6 +4002,12 @@ export async function askGogo(
   if (agentStackStatusIntent) {
     logResolvedIntent('deterministic', null)
     return await buildAgentStackStatusReply(agentStackStatusIntent, context)
+  }
+
+  const launchReadinessIntent = parseLaunchReadinessIntent(userMessage)
+  if (launchReadinessIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildLaunchReadinessReply(launchReadinessIntent, context)
   }
 
   const demoScriptIntent = parseDemoScriptIntent(userMessage)
