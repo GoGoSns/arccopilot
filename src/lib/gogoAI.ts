@@ -892,6 +892,73 @@ function buildDefiRadarReply(locale: 'en' | 'tr'): GogoResponse {
   }
 }
 
+type DefiSignalAnalysisIntent = {
+  title: string
+  source: string
+  proof: string
+  categories: string
+  url: string
+}
+
+function parseDefiSignalAnalysisIntent(message: string): DefiSignalAnalysisIntent | null {
+  const trimmed = message.trim()
+  if (!/^analyze defi signal:/i.test(trimmed)) return null
+
+  const parts = trimmed.split('|').map((part) => part.trim()).filter(Boolean)
+  const title = parts[0]?.replace(/^analyze defi signal:\s*/i, '').trim()
+  if (!title) return null
+
+  const fields: Record<string, string> = {}
+  for (const part of parts.slice(1)) {
+    const separatorIndex = part.indexOf(':')
+    if (separatorIndex <= 0) continue
+    const key = part.slice(0, separatorIndex).trim().toLowerCase()
+    const value = part.slice(separatorIndex + 1).trim()
+    if (key && value) fields[key] = value
+  }
+
+  return {
+    title,
+    source: fields.source ?? 'unknown',
+    proof: fields.proof ?? 'unknown',
+    categories: fields.categories ?? 'unknown',
+    url: fields.url ?? '',
+  }
+}
+
+function buildDefiSignalAnalysisReply(intent: DefiSignalAnalysisIntent): GogoResponse {
+  const proofIsOfficial = intent.proof.toLowerCase().includes('official')
+  const lines = [
+    'DeFi signal analysis:',
+    '',
+    `Signal: ${intent.title}`,
+    `Source: ${intent.source}`,
+    `Categories: ${intent.categories}`,
+    `Proof level: ${intent.proof}`,
+    '',
+    proofIsOfficial
+      ? 'Read: this is useful as an official/community discovery signal, but it is still not automatically a tradable protocol.'
+      : 'Read: this is only a headline-level candidate. Treat it as watchlist material until official Arc/Circle or onchain proof exists.',
+    '',
+    'Safety checks before any action:',
+    '- Is there a contract address?',
+    '- Is the contract verified on ArcScan?',
+    '- Are liquidity, holder distribution, mint/owner controls, and pause permissions understandable?',
+    '- Is it actually on Arc / Circle rails, not just a generic crypto headline?',
+    '',
+    'Decision: watch and investigate. No buy call, no auto-action.',
+  ]
+
+  if (intent.url) {
+    lines.push('', `Source URL: ${intent.url}`)
+  }
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function parseDemoScriptIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
     .replace(/[!?.,;:]+/g, ' ')
@@ -3878,6 +3945,12 @@ export async function askGogo(
   if (defiRadarIntent) {
     logResolvedIntent('deterministic', null)
     return buildDefiRadarReply(defiRadarIntent)
+  }
+
+  const defiSignalAnalysisIntent = parseDefiSignalAnalysisIntent(userMessage)
+  if (defiSignalAnalysisIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDefiSignalAnalysisReply(defiSignalAnalysisIntent)
   }
 
   const marketplaceIntent = parseMarketplaceIntent(userMessage)

@@ -158,6 +158,16 @@ function getCategoryLabel(id: DefiCategoryId): string {
   return DEFI_CATEGORIES.find((category) => category.id === id)?.label ?? id
 }
 
+function buildSignalPrompt(signal: DefiSignal): string {
+  return [
+    `analyze defi signal: ${signal.title}`,
+    `source: ${signal.source}`,
+    `proof: ${signal.proofLevel}`,
+    `categories: ${signal.categories.map(getCategoryLabel).join(', ')}`,
+    `url: ${signal.url}`,
+  ].join(' | ')
+}
+
 export function DeFiRadar({ onBack, onOpenGogo }: DeFiRadarProps) {
   const [community, setCommunity] = useState<ArcCommunityFeedResult | null>(null)
   const [news, setNews] = useState<NewsItem[]>([])
@@ -354,7 +364,7 @@ export function DeFiRadar({ onBack, onOpenGogo }: DeFiRadarProps) {
 
           <div className="grid gap-2">
             {signals.slice(0, 12).map((signal) => (
-              <SignalRow key={signal.id} signal={signal} />
+              <SignalRow key={signal.id} signal={signal} askGogo={askGogo} />
             ))}
           </div>
         </section>
@@ -372,11 +382,9 @@ function StatCard({ label, value }: { label: string; value: number }) {
   )
 }
 
-function SignalRow({ signal }: { signal: DefiSignal }) {
+function SignalRow({ signal, askGogo }: { signal: DefiSignal; askGogo: (prompt: string) => Promise<void> }) {
   return (
-    <button
-      type="button"
-      onClick={() => openExternal(signal.url)}
+    <div
       className="w-full border p-3 text-left"
       style={makeCardStyle('rgba(255,255,255,0.48)', line, 20)}
     >
@@ -400,8 +408,26 @@ function SignalRow({ signal }: { signal: DefiSignal }) {
             ))}
           </div>
         </div>
-        <ExternalLink size={14} className="shrink-0" style={{ color: muted }} />
+        <ShieldCheck size={14} className="shrink-0" style={{ color: signal.proofLevel === 'official' ? '#118744' : muted }} />
       </div>
-    </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void askGogo(buildSignalPrompt(signal))}
+          className="inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-semibold"
+          style={{ borderColor: 'rgba(17,135,68,0.24)', color: '#118744' }}
+        >
+          <Bot size={12} /> Analyze
+        </button>
+        <button
+          type="button"
+          onClick={() => openExternal(signal.url)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-semibold"
+          style={{ borderColor: line, color: ink }}
+        >
+          <ExternalLink size={12} /> Source
+        </button>
+      </div>
+    </div>
   )
 }
