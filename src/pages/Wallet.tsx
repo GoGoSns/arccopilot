@@ -780,15 +780,15 @@ export function Wallet({
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Tools</p>
-                    <p className="mt-1 text-sm font-medium text-white">Gogo, Agent Stack, Radar, Bridge, Calendar</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Arc Toolkit</p>
+                    <p className="mt-1 text-sm font-medium text-white">Agent Stack, DeFi, Radar, Bridge</p>
                   </div>
                   <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
                     Menu
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Keep the wallet clean; open the full control surface when you need deeper agent tools.
+                  Keep the wallet clean; open the builder surface for H2 priorities, proof, and policy-bound actions.
                 </p>
                 <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-emerald-100/70">
                   <span>Signal</span>

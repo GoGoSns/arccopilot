@@ -716,6 +716,182 @@ async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoCont
   }
 }
 
+function parseArcH2PrioritiesIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:arc h2 priorities|h2 priorities|architect priorities|arc activation|activation priorities|arc priorities)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:arc h2 oncelikleri|h2 oncelikleri|architect oncelikleri|arc aktivasyon|aktivasyon oncelikleri|arc oncelikleri)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildArcH2PrioritiesReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'Arc H2 activation map:',
+        '',
+        '1. DeFi discovery: Arc uzerinde lending, borrowing, savings, FX, USDC ve cirBTC deneyimlerini daha anlasilir yap.',
+        '2. Platform products: App Kit, Bridge/CCTP, Gateway, x402, wallet, scheduled actions ve sample app akislari.',
+        '3. Circle Agent Stack: ajanin uc uca pratik workflow tamamladigini goster; ama policy, limit ve explicit approval cizgisini koru.',
+        '',
+        'ArcCopilot bunu su sekilde urune ceviriyor:',
+        '- Arc Builder Toolkit: tek kontrol yuzeyi.',
+        '- DeFi Radar: yalnizca kanitli/official sinyallerle kesif; fake liste yok.',
+        '- Token/Meme Radar: contract proof, risk ve watchlist.',
+        '- Gogo AI: signal -> risk -> policy -> action -> proof aklini kullanir.',
+        '',
+        'Dene: builder toolkit, defi radar, token watchlist, arc bridge, agent stack status.',
+      ]
+    : [
+        'Arc H2 activation map:',
+        '',
+        '1. DeFi discovery: help builders understand lending, borrowing, savings, FX, USDC, and cirBTC experiences on Arc.',
+        '2. Platform products: surface App Kit, Bridge/CCTP, Gateway, x402, wallets, scheduled actions, and sample app paths.',
+        '3. Circle Agent Stack: demonstrate practical end-to-end agent workflows while preserving policy, limits, and explicit approval.',
+        '',
+        'ArcCopilot turns this into product:',
+        '- Arc Builder Toolkit: one control surface.',
+        '- DeFi Radar: discovery only from proven/official signals; no fake listings.',
+        '- Token/Meme Radar: contract proof, risk, and watchlist.',
+        '- Gogo AI: signal -> risk -> policy -> action -> proof reasoning.',
+        '',
+        'Try: builder toolkit, defi radar, token watchlist, arc bridge, agent stack status.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function parseBuilderToolkitIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:builder toolkit|arc toolkit|toolkit|tools menu|control surface|builder map)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:builder araci|arc araci|toolkit menusu|araclar|kontrol yuzeyi|builder haritasi)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildBuilderToolkitReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'Arc Builder Toolkit:',
+        '',
+        '- Gogo AI: karar ve planlama katmani.',
+        '- Agent Stack: wallet, backend, policy, Gateway/x402, scheduler ve bridge durum kaniti.',
+        '- DeFi Radar: Arc DeFi fikirlerini official/kanitli sinyallerle kesfetme alani.',
+        '- Token/Meme Radar: yeni ERC-20 sinyalleri, risk ve watchlist.',
+        '- Arc Bridge: USDC CCTP preflight; gercek transfer icin acik onay gerekir.',
+        '- Calendar: reminders ve scheduled USDC actions.',
+        '- Address Book: recipient memory, whales, labels ve risk notlari.',
+        '',
+        'Kural: gorunus icin sahte veri yok; para hareketi icin policy + explicit approval var.',
+      ]
+    : [
+        'Arc Builder Toolkit:',
+        '',
+        '- Gogo AI: reasoning and planning layer.',
+        '- Agent Stack: proof of wallet, backend, policy, Gateway/x402, scheduler, and bridge readiness.',
+        '- DeFi Radar: discover Arc DeFi ideas from official/proven signals only.',
+        '- Token/Meme Radar: new ERC-20 evidence, risk, and watchlist.',
+        '- Arc Bridge: USDC CCTP preflight; real transfers require explicit confirmation.',
+        '- Calendar: reminders and scheduled USDC actions.',
+        '- Address Book: recipient memory, whales, labels, and risk notes.',
+        '',
+        'Rule: no fake data for looks; money movement stays behind policy + explicit approval.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+function parseDefiRadarIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!normalized) return null
+
+  if (/^(?:defi radar|arc defi|defi discovery|defi map|lending radar|borrowing radar|savings radar|fx radar)$/.test(normalized)) {
+    return 'en'
+  }
+
+  if (/^(?:defi radari|arc defi|defi kesif|defi haritasi|lending radari|borrowing radari|tasarruf radari|fx radari)$/.test(normalized)) {
+    return 'tr'
+  }
+
+  return null
+}
+
+function buildDefiRadarReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'DeFi Radar MVP:',
+        '',
+        'Izlenecek kategoriler:',
+        '- Lending / borrowing',
+        '- Savings / yield accounts',
+        '- FX and remittances',
+        '- USDC-native payment apps',
+        '- cirBTC and wrapped asset experiences',
+        '',
+        'Kanitsiz olan gizli kalir:',
+        '- Official Arc/Circle mention yoksa listed degil.',
+        '- Contract address yoksa tradable degil.',
+        '- ArcScan / verified contract / liquidity / holder evidence yoksa riskli diye isaretlenir.',
+        '- Buy call yok; sadece risk, proof ve next check.',
+        '',
+        'Next build: official community/news signals + ArcScan contract evidence + Gogo explanation in one DeFi Radar view.',
+      ]
+    : [
+        'DeFi Radar MVP:',
+        '',
+        'Categories to watch:',
+        '- Lending / borrowing',
+        '- Savings / yield accounts',
+        '- FX and remittances',
+        '- USDC-native payment apps',
+        '- cirBTC and wrapped asset experiences',
+        '',
+        'No proof, no listing:',
+        '- No official Arc/Circle mention means it is not listed.',
+        '- No contract address means it is not treated as tradable.',
+        '- No ArcScan / verified contract / liquidity / holder evidence means it is marked risky.',
+        '- No buy calls; only risk, proof, and next check.',
+        '',
+        'Next build: official community/news signals + ArcScan contract evidence + Gogo explanation in one DeFi Radar view.',
+      ]
+
+  return {
+    reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
 function parseDemoScriptIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
     .replace(/[!?.,;:]+/g, ' ')
@@ -3684,6 +3860,24 @@ export async function askGogo(
   if (demoChecklistIntent) {
     logResolvedIntent('deterministic', null)
     return buildDemoChecklistReply(demoChecklistIntent)
+  }
+
+  const arcH2PrioritiesIntent = parseArcH2PrioritiesIntent(userMessage)
+  if (arcH2PrioritiesIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildArcH2PrioritiesReply(arcH2PrioritiesIntent)
+  }
+
+  const builderToolkitIntent = parseBuilderToolkitIntent(userMessage)
+  if (builderToolkitIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildBuilderToolkitReply(builderToolkitIntent)
+  }
+
+  const defiRadarIntent = parseDefiRadarIntent(userMessage)
+  if (defiRadarIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildDefiRadarReply(defiRadarIntent)
   }
 
   const marketplaceIntent = parseMarketplaceIntent(userMessage)

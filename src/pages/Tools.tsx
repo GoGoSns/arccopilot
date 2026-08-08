@@ -3,6 +3,7 @@ import {
   BookOpen,
   CalendarDays,
   ChevronRight,
+  Coins,
   FileText,
   GitBranch,
   Radar,
@@ -114,9 +115,18 @@ export function Tools({
       onClick: () => void openGogoPrompt('agent stack status'),
     },
     {
-      title: 'Arc Radar',
+      title: 'DeFi Radar',
+      eyebrow: 'Discover',
+      body: 'Map lending, borrowing, savings, FX, USDC, and cirBTC ideas without fake listings.',
+      badge: 'H2',
+      tone: 'amber',
+      Icon: Coins,
+      onClick: () => void openGogoPrompt('defi radar'),
+    },
+    {
+      title: 'Token/Meme Radar',
       eyebrow: 'Safety',
-      body: 'Track Arc token signals, contract proof, risk, and early meme movement.',
+      body: 'Track proof-backed Arc token signals, contract evidence, and risky meme launches.',
       badge: 'Watch',
       tone: 'sky',
       Icon: Radar,
@@ -152,7 +162,7 @@ export function Tools({
     {
       title: 'Brief',
       eyebrow: 'Signals',
-      body: 'Wallet, portfolio, news, and ecosystem pulse in one read.',
+      body: 'Wallet, portfolio, news, Arc community, and ecosystem pulse in one read.',
       badge: 'Daily',
       tone: 'white',
       Icon: FileText,
@@ -201,11 +211,44 @@ export function Tools({
         >
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-200/80">Control surface</div>
           <p className="mt-2 text-2xl font-semibold leading-tight tracking-[-0.04em]">
-            Signal → Risk → Policy → Action → Proof
+            Arc Builder Toolkit
           </p>
           <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-            The wallet stays clean; advanced agent tools live here.
+            One place for H2 priorities: DeFi discovery, Arc platform products, and Circle Agent Stack workflows.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {['Signal', 'Risk', 'Policy', 'Action', 'Proof'].map((step) => (
+              <span
+                key={step}
+                className="rounded-full border border-emerald-200/20 bg-emerald-200/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-100/80"
+              >
+                {step}
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px] leading-snug text-arc-text-dim">
+            <button
+              type="button"
+              onClick={() => void openGogoPrompt('arc h2 priorities')}
+              className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-2 text-left"
+            >
+              H2 priorities
+            </button>
+            <button
+              type="button"
+              onClick={() => void openGogoPrompt('builder toolkit')}
+              className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-2 text-left"
+            >
+              Builder map
+            </button>
+            <button
+              type="button"
+              onClick={() => void openGogoPrompt('defi radar')}
+              className="rounded-[12px] border border-white/10 bg-white/[0.04] px-2 py-2 text-left"
+            >
+              DeFi radar
+            </button>
+          </div>
         </section>
 
         <section className="mt-3 grid grid-cols-2 gap-2">
