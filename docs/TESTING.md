@@ -18,8 +18,15 @@ Run this checklist before shipping a release build.
 | 12. Run `x402 demo` in Gogo. | The quote displays 0.001 USDC on Arc Testnet, no signature is requested before the user taps **Pay & access**, and the paid response opens after approval. |
 | 13. Run `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour`. | Gogo creates a scheduled autonomous payment without requiring an AI provider response. The schedule appears in Settings with status Active. |
 | 14. Check scheduled payment history after the first due time. | The schedule run is recorded as `complete` and links to an ArcScan transaction. |
-| 15. Open Settings. | The AI provider switches without erasing saved provider keys, API keys are masked, key links are correct, language switching works, custom search and official account fields save correctly, and notification toggles persist. |
-| 16. Test failure cases. | Missing keys degrade gracefully, invalid addresses are rejected, stale Railway backend URLs migrate to the Render backend, and the UI shows a clear error or empty state instead of breaking. |
+| 15. Run `launch readiness` in Gogo. | Gogo reports backend, paired wallet context, x402, schedules, bridge preflight, and radar status without inventing unavailable data. |
+| 16. Open Tools -> Token/Meme Radar. | Arc Testnet token data loads; unknown contracts are not shown as proven launches without evidence. |
+| 17. Use `watch token 0x89b50855aa3be2f677cd6303cec089b5f319d72a`. | Gogo adds EURC to the watchlist and reports a lower-risk core Circle token without buy/sell advice. |
+| 18. Open Tools -> DeFi Radar and analyze a signal. | The signal comes from a real source, and Gogo can explain the signal without claiming it is a trade. |
+| 19. Open Tools -> Arc Bridge. | The bridge screen is preflight-only and requires explicit source, destination, token, amount, recipient, and user confirmation before any real transfer. |
+| 20. Check cron-job.org. | `/cron/schedules/run` and `/cron/radar/run` jobs are enabled and returning successful 200 responses. |
+| 21. Open Settings. | The AI provider switches without erasing saved provider keys, API keys are masked, key links are correct, language switching works, custom search and official account fields save correctly, and notification toggles persist. |
+| 22. Test failure cases. | Missing keys degrade gracefully, invalid addresses are rejected, stale Railway backend URLs migrate to the Render backend, and the UI shows a clear error or empty state instead of breaking. |
+| 23. Review final docs. | `FINAL_SUBMISSION.md`, `DEMO_VIDEO_SCRIPT.md`, `FINAL_DECK_OUTLINE.md`, and `PRODUCT_ROADMAP.md` exist and match the submitted build. |
 
 Pass criteria:
 

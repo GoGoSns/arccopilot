@@ -148,6 +148,14 @@ Use this short path for judging or a screen recording:
 10. Type `create a reminder to pay 0.001 USDC to 0xB87B6D1a56bB7942bd07b6B0e9540a63b3dA4365 every 1 hour` to create a recurring autonomous payment without relying on an AI provider.
 11. Open Settings -> Your agent (paired) -> Scheduled autonomous payments -> History and show the completed ArcScan transaction.
 
+For the final Encode submission package, see:
+
+- [Final submission copy](docs/FINAL_SUBMISSION.md)
+- [3-minute demo video script](docs/DEMO_VIDEO_SCRIPT.md)
+- [Final deck outline](docs/FINAL_DECK_OUTLINE.md)
+- [Product roadmap](docs/PRODUCT_ROADMAP.md)
+- [Chrome Web Store submission notes](docs/CHROME_STORE_SUBMISSION.md)
+
 ---
 
 ## Design principles
