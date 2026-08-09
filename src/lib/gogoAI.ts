@@ -1289,11 +1289,11 @@ function parseMarketplaceIntent(message: string): 'en' | 'tr' | null {
 
   if (!normalized) return null
 
-  if (/^(?:market|marketplace|arc market|arc marketplace|circle market|circle marketplace|services|service market)$/.test(normalized)) {
+  if (/^(?:market|marketplace|agent market|agent marketplace|x402 market|x402 marketplace|arc market|arc marketplace|circle market|circle marketplace|services|service market)$/.test(normalized)) {
     return 'en'
   }
 
-  if (/^(?:pazar|market|marketplace|arc pazari|arc market|circle pazari|servis pazari|servisler)$/.test(normalized)) {
+  if (/^(?:pazar|market|marketplace|agent market|agent pazari|x402 market|x402 pazari|arc pazari|arc market|circle pazari|servis pazari|servisler)$/.test(normalized)) {
     return 'tr'
   }
 
@@ -1308,9 +1308,9 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         'Tez: Sadece risk tespit etmek degil; risk sinyallerini policy-bound, kanitli aksiyonlara cevirmek.',
         'Pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
         '',
-        '1. Paid Arc Insight',
-        '   0.001 USDC x402 kaynak. Kesin fiyat gosterilir; Pay & access olmadan imza yok.',
-        '   Komut: x402 demo',
+        '1. Agent Market / Paid Arc Insight',
+        '   x402 servislerini teklif bazinda inceler: fiyat, network, seller ve resource gorunur.',
+        '   Komutlar: x402 demo, x402 history. Ekran: Tools -> Agent Market',
         '',
         '2. Creator Economy',
         '   Butce, per-tip cap ve allowlist icinde creator onerisi hazirlar.',
@@ -1328,9 +1328,9 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Telegram/telefon kontrolu icin pairing ve komut kilavuzu.',
         '   Yol: Settings -> Phone control',
         '',
-        '6. Proof Pack',
+        '6. Proof & Policy Center',
         '   Repo, Render, x402 ve ArcScan kanit linklerini tek yerde gosterir.',
-        '   Komut: demo links',
+        '   Komutlar: demo links, policy center',
         '',
         'Kural: Guard uyarir, hazirlar ve kanitlar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
       ]
@@ -1340,9 +1340,9 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         'Thesis: not just detecting risk, but turning risk signals into policy-bound, proof-backed actions.',
         'Pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
         '',
-        '1. Paid Arc Insight',
-        '   A 0.001 USDC x402 resource. Exact terms are shown; no signature before Pay & access.',
-        '   Command: x402 demo',
+        '1. Agent Market / Paid Arc Insight',
+        '   Inspects x402 services offer-first: price, network, seller, and resource are visible.',
+        '   Commands: x402 demo, x402 history. Screen: Tools -> Agent Market',
         '',
         '2. Creator Economy',
         '   Prepares creator suggestions inside your budget, per-tip cap, and allowlist.',
@@ -1360,9 +1360,9 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         '   Pairing and command guide for Telegram / phone control.',
         '   Path: Settings -> Phone control',
         '',
-        '6. Proof Pack',
+        '6. Proof & Policy Center',
         '   Shows repo, Render, x402, and ArcScan proof links in one place.',
-        '   Command: demo links',
+        '   Commands: demo links, policy center',
         '',
         'Rule: Guard warns, prepares, and proves. Anything that spends USDC still uses the existing approval-safe flow.',
       ]

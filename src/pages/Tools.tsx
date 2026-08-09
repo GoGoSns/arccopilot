@@ -7,6 +7,7 @@ import {
   FileText,
   GitBranch,
   History,
+  ShoppingBag,
   Radar,
   Settings2,
   ShieldCheck,
@@ -25,6 +26,7 @@ interface ToolsProps {
   onOpenBridge: () => void
   onOpenSwap: () => void
   onOpenPolicyCenter: () => void
+  onOpenAgentMarket: () => void
   onOpenCalendar: () => void
   onOpenAddressBook: () => void
   onOpenBrief: () => void
@@ -87,6 +89,7 @@ export function Tools({
   onOpenBridge,
   onOpenSwap,
   onOpenPolicyCenter,
+  onOpenAgentMarket,
   onOpenCalendar,
   onOpenAddressBook,
   onOpenBrief,
@@ -121,6 +124,15 @@ export function Tools({
       tone: 'violet',
       Icon: ShieldCheck,
       onClick: onOpenPolicyCenter,
+    },
+    {
+      title: 'Agent Market',
+      eyebrow: 'x402',
+      body: 'Browse verified paid services, inspect exact terms, then hand off to Pay & access.',
+      badge: 'Market',
+      tone: 'emerald',
+      Icon: ShoppingBag,
+      onClick: onOpenAgentMarket,
     },
     {
       title: 'DeFi Radar',

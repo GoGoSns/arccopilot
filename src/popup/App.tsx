@@ -22,6 +22,7 @@ const DeFiRadar = lazy(() => import('@/pages/DeFiRadar').then((module) => ({ def
 const ArcBridge = lazy(() => import('@/pages/ArcBridge').then((module) => ({ default: module.ArcBridge })))
 const ArcSwapPreflight = lazy(() => import('@/pages/ArcSwapPreflight').then((module) => ({ default: module.ArcSwapPreflight })))
 const PolicyCenter = lazy(() => import('@/pages/PolicyCenter').then((module) => ({ default: module.PolicyCenter })))
+const AgentMarket = lazy(() => import('@/pages/AgentMarket').then((module) => ({ default: module.AgentMarket })))
 const Tools = lazy(() => import('@/pages/Tools').then((module) => ({ default: module.Tools })))
 
 const VALID_VIEWS: View[] = [
@@ -43,6 +44,7 @@ const VALID_VIEWS: View[] = [
   'arc-bridge',
   'arc-swap',
   'policy-center',
+  'agent-market',
   'tools',
 ]
 
@@ -120,6 +122,7 @@ export default function App() {
   else if (view === 'arc-bridge') content = <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   else if (view === 'arc-swap') content = <ArcSwapPreflight onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   else if (view === 'policy-center') content = <PolicyCenter onBack={goBack} />
+  else if (view === 'agent-market') content = <AgentMarket onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   if (view === 'tools') {
     content = (
       <Tools
@@ -130,6 +133,7 @@ export default function App() {
         onOpenBridge={() => go('arc-bridge')}
         onOpenSwap={() => go('arc-swap')}
         onOpenPolicyCenter={() => go('policy-center')}
+        onOpenAgentMarket={() => go('agent-market')}
         onOpenCalendar={() => go('calendar')}
         onOpenAddressBook={() => go('address-book')}
         onOpenBrief={() => go('daily-brief')}
