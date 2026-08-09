@@ -79,6 +79,7 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
   const [sourceId, setSourceId] = useState('ethereum-sepolia')
   const [destinationId, setDestinationId] = useState('arc-testnet')
   const [recipient, setRecipient] = useState('')
+  const [speed, setSpeed] = useState<'FAST' | 'STANDARD'>('FAST')
 
   const source = getChain(sourceId)
   const destination = getChain(destinationId)
@@ -115,7 +116,7 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
   }
 
   const askGogo = async () => {
-    const prompt = `bridge ${amount.trim() || '1'} USDC from ${source.label} to ${destination.label}${recipient.trim() ? ` for recipient ${recipient.trim()}` : ''}`
+    const prompt = `bridge ${amount.trim() || '1'} USDC from ${source.label} to ${destination.label}${recipient.trim() ? ` for recipient ${recipient.trim()}` : ''} using ${speed} speed`
     await askGogoPrompt(prompt)
   }
 
@@ -265,6 +266,20 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
               />
             </label>
           </div>
+          <label className="mt-2 block rounded-2xl border bg-[#f8f5ee] p-3" style={{ borderColor: line }}>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em]" style={{ color: muted }}>Fee / speed</span>
+            <select
+              value={speed}
+              onChange={(event) => setSpeed(event.target.value === 'STANDARD' ? 'STANDARD' : 'FAST')}
+              className="mt-1 w-full bg-transparent text-sm font-semibold outline-none"
+            >
+              <option value="FAST">FAST - usually 8-20s - dynamic forwarding fee</option>
+              <option value="STANDARD">STANDARD - usually 15-19m - lower urgency</option>
+            </select>
+            <p className="mt-1 text-[10px]" style={{ color: muted }}>
+              Exact fees must come from the bridge SDK / IRIS route at execution time. No fee is invented here.
+            </p>
+          </label>
         </section>
 
         <section className="mt-3 overflow-hidden rounded-[22px] border bg-white/72 shadow-[0_12px_40px_rgba(20,18,15,0.06)]" style={{ borderColor: line }}>
@@ -315,6 +330,12 @@ export function ArcBridge({ onBack, onOpenGogo }: ArcBridgeProps) {
                 <p className="mt-1 text-[9px] leading-snug text-white/45">{body}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+            <p className="text-[11px] font-semibold text-white/82">Failure recovery</p>
+            <p className="mt-1 text-[10px] leading-relaxed text-white/48">
+              If approve or burn succeeds but attestation or mint fails, the saved bridge result can be retried from the failed step instead of starting over. This screen stays review-only until the user explicitly confirms the route and wallet signature.
+            </p>
           </div>
           <button
             type="button"

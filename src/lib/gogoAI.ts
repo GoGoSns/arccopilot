@@ -37,6 +37,7 @@ import { gatewayBalance, gatewayDeposit } from '@/lib/gatewayMetamask'
 import { buildPortfolioIntel } from '@/lib/portfolioIntel'
 import { DEFAULT_AGENT_BACKEND_URL, agentHealth, agentTip, getAgentBackendConfig, isAutonomousEnabled } from '@/lib/agentBackend'
 import { inspectX402Resource, sanitizeX402PaymentPreview, type X402PaymentPreview } from '@/lib/x402'
+import { listX402PaymentHistory, upsertX402PaymentHistory } from '@/lib/x402History'
 import { useStore } from '@/lib/store'
 import { isValidAddress } from '@/lib/validation'
 import { fetchNews, formatNewsHeadlineLinks, getNewsPulseState, summarizeNews } from '@/lib/newsPulse'
@@ -190,6 +191,8 @@ export type GatewayBatchTipActionParams = {
 
 export type X402AccessActionParams = X402PaymentPreview & {
   transaction?: string
+  txHash?: string
+  nonce?: string
   responsePreview?: string
 }
 
@@ -1412,6 +1415,38 @@ function parseArcBridgeIntent(message: string): 'en' | 'tr' | null {
   return null
 }
 
+function parsePolicyCenterIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (/^(?:policy center|proof center|audit center|proof and policy|policy audit)$/.test(normalized)) return 'en'
+  if (/^(?:politika merkezi|kanit merkezi|audit merkezi|politika kanit|kanit ve politika)$/.test(normalized)) return 'tr'
+  return null
+}
+
+function parseSwapPreflightIntent(message: string): { locale: 'en' | 'tr'; amount?: string; tokenIn?: string; tokenOut?: string; slippage?: string } | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!/\b(swap|exchange|preflight|takas|degistir)\b/.test(normalized)) return null
+
+  const amount = normalized.match(/\b(\d+(?:[.,]\d{1,6})?)\b/)?.[1]?.replace(',', '.')
+  const tokenSymbols = [...normalized.matchAll(/\b(usdc|eurc|cirbtc)\b/gi)].map((match) => match[1].toUpperCase())
+  const slippage = normalized.match(/\b(0\.1|0,1|0\.5|0,5|1(?:\.0|,0)?)\s*%/)?.[0]?.replace(',', '.')
+  const locale: 'en' | 'tr' = /\b(takas|degistir)\b/.test(normalized) ? 'tr' : 'en'
+  if (!amount && tokenSymbols.length === 0 && !/\b(swap preflight|arc swap)\b/.test(normalized)) return null
+
+  return {
+    locale,
+    amount,
+    tokenIn: tokenSymbols[0],
+    tokenOut: tokenSymbols[1],
+    slippage,
+  }
+}
+
 type ArcBridgeChain = {
   key: string
   label: string
@@ -1584,6 +1619,17 @@ function parseTokenRiskIntent(message: string): { locale: 'en' | 'tr'; address: 
     return { locale: 'tr', address }
   }
 
+  return null
+}
+
+function parseX402HistoryIntent(message: string): 'en' | 'tr' | null {
+  const normalized = normalizeIntentText(message)
+    .replace(/[!?.,;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (/^(?:x402 history|x402 payments|paid api history|payment history|paid services)$/.test(normalized)) return 'en'
+  if (/^(?:x402 gecmisi|x402 odemeleri|ucretli api gecmisi|odeme gecmisi)$/.test(normalized)) return 'tr'
   return null
 }
 
@@ -1793,6 +1839,8 @@ async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promis
   const detail = await fetchArcTokenDetailSnapshot(address)
   const token = detail?.token
   const risk = detail?.risk
+  const watchlist = await loadArcTokenWatchlist().catch(() => [])
+  const isWatched = watchlist.some((entry) => entry.address.toLowerCase() === address.toLowerCase())
 
   if (!token || !risk) {
     return {
@@ -1807,6 +1855,22 @@ async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promis
     .slice(0, 6)
     .map((check) => `- ${check.status === 'pass' ? 'OK' : 'Watch'}: ${check.label ?? 'check'}`)
     .join('\n')
+  const isCoreCircleToken = ['0x3600000000000000000000000000000000000000', '0x89b50855aa3be2f677cd6303cec089b5f319d72a'].includes((token.address ?? address).toLowerCase())
+  const proofLines = locale === 'tr'
+    ? [
+        `Contract proof: ${token.detection?.freshLaunchProven === true ? 'fresh launch kanitli' : token.verified ? 'ArcScan/metadata kaniti var' : 'fresh launch kaniti yok'}`,
+        `Verified: ${token.verified ? 'yes' : 'unknown/no'}`,
+        `Holder distribution: ${token.holders ?? 'unknown'}`,
+        `Core Circle token: ${isCoreCircleToken ? 'yes' : 'no'}`,
+        `Watchlist: ${isWatched ? 'yes' : 'no'}`,
+      ]
+    : [
+        `Contract proof: ${token.detection?.freshLaunchProven === true ? 'fresh launch proven' : token.verified ? 'ArcScan/metadata proof present' : 'no fresh-launch proof'}`,
+        `Verified: ${token.verified ? 'yes' : 'unknown/no'}`,
+        `Holder distribution: ${token.holders ?? 'unknown'}`,
+        `Core Circle token: ${isCoreCircleToken ? 'yes' : 'no'}`,
+        `Watchlist: ${isWatched ? 'yes' : 'no'}`,
+      ]
 
   const lines = locale === 'tr'
     ? [
@@ -1820,6 +1884,11 @@ async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promis
         `Explorer: ${token.explorerUrl ?? detail.source ?? 'unavailable'}`,
         '',
         `Risk label: ${risk.label ?? 'unknown'} (${risk.score ?? '?'} / 100)`,
+        '',
+        'Neden boyle?',
+        ...proofLines,
+        '',
+        'Checks:',
         checks,
         '',
         risk.note ?? 'Read-only risk screen. Not investment advice.',
@@ -1835,6 +1904,11 @@ async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promis
         `Explorer: ${token.explorerUrl ?? detail.source ?? 'unavailable'}`,
         '',
         `Risk label: ${risk.label ?? 'unknown'} (${risk.score ?? '?'} / 100)`,
+        '',
+        'Why this score?',
+        ...proofLines,
+        '',
+        'Checks:',
         checks,
         '',
         risk.note ?? 'Read-only risk screen. Not investment advice.',
@@ -1842,6 +1916,39 @@ async function buildTokenRiskReply(locale: 'en' | 'tr', address: string): Promis
 
   return {
     reply: lines.join('\n'),
+    actions: [],
+  }
+}
+
+async function buildX402HistoryReply(locale: 'en' | 'tr'): Promise<GogoResponse> {
+  const history = await listX402PaymentHistory()
+  if (history.length === 0) {
+    return {
+      reply: locale === 'tr'
+        ? 'x402 odeme gecmisin bos. Bir kaynak icin once x402 demo komutunu calistir, sonra Pay & access ile onayla.'
+        : 'Your x402 payment history is empty. Run x402 demo first, then use Pay & access when you want to approve.',
+      actions: [],
+    }
+  }
+
+  const lines = history.slice(0, 6).map((entry) => {
+    const paid = entry.status === 'paid'
+    const tx = entry.txHash || entry.transaction || 'not returned yet'
+    const nonce = entry.nonce || 'not returned yet'
+    return [
+      `- ${entry.description} | ${entry.amountUsdc} USDC | ${formatAddress(entry.payTo, 4)} | ${entry.status}`,
+      `  settlement: ${paid ? 'paid/accepted' : entry.status}`,
+      `  txHash/payment: ${tx}`,
+      `  nonce: ${nonce}`,
+      entry.repeatCount && entry.repeatCount > 1 ? `  repeat: ${entry.repeatCount} payments to same service terms` : null,
+    ].filter(Boolean).join('\n')
+  })
+
+  return {
+    reply: (locale === 'tr'
+      ? ['x402 odeme gecmisi:', '', ...lines, '', 'Not: txHash/nonce sadece Gateway response dondururse gosterilir; sahte uretilmez.']
+      : ['x402 payment history:', '', ...lines, '', 'Note: txHash/nonce are shown only when Gateway returns them; ArcCopilot does not invent proof.']
+    ).join('\n'),
     actions: [],
   }
 }
@@ -2007,6 +2114,73 @@ function buildArcBridgeReply(locale: 'en' | 'tr'): GogoResponse {
     reply: lines.join('\n'),
     actions: [],
   }
+}
+
+function buildPolicyCenterReply(locale: 'en' | 'tr'): GogoResponse {
+  const lines = locale === 'tr'
+    ? [
+        'Proof & Policy Center:',
+        '',
+        '- Wallet paired mi, backend canli mi, politika limitleri var mi diye bakar.',
+        '- Weekly budget, per-tip cap ve allowlist gercek backend politikasindan okunur.',
+        '- x402 approvals, settlement/payment id, txHash ve nonce sadece response dondururse gosterilir.',
+        '- Scheduled payment history ArcScan tx kanitlariyla listelenir.',
+        '- Failed/succeeded ayrimi saklanir; eksik veri tahmin edilmez.',
+        '',
+        'Ekran: Tools -> Proof Center',
+      ]
+    : [
+        'Proof & Policy Center:',
+        '',
+        '- Checks whether the wallet is paired, backend is live, and policy limits exist.',
+        '- Weekly budget, per-tip cap, and allowlist come from the real backend policy.',
+        '- x402 approvals show settlement/payment id, txHash, and nonce only when returned.',
+        '- Scheduled payment history is listed with ArcScan transaction proof.',
+        '- Failed/succeeded state is kept; missing proof is not guessed.',
+        '',
+        'Open it from Tools -> Proof Center.',
+      ]
+
+  return { reply: lines.join('\n'), actions: [] }
+}
+
+function buildSwapPreflightReply(intent: { locale: 'en' | 'tr'; amount?: string; tokenIn?: string; tokenOut?: string; slippage?: string }): GogoResponse {
+  const tokenIn = intent.tokenIn ?? 'USDC'
+  const tokenOut = intent.tokenOut ?? 'EURC'
+  const amount = intent.amount ?? '1'
+  const blockers = [
+    tokenIn === tokenOut ? (intent.locale === 'tr' ? 'Ayni token secilmis.' : 'Same token selected.') : null,
+    !['USDC', 'EURC', 'CIRBTC'].includes(tokenIn) || !['USDC', 'EURC', 'CIRBTC'].includes(tokenOut)
+      ? (intent.locale === 'tr' ? 'Arc Testnet preflight su an yalniz USDC, EURC, cirBTC icin.' : 'Arc Testnet preflight currently supports only USDC, EURC, and cirBTC.')
+      : null,
+  ].filter(Boolean)
+  const lines = intent.locale === 'tr'
+    ? [
+        'Arc Swap preflight:',
+        '',
+        `Intent: ${amount} ${tokenIn} -> ${tokenOut}`,
+        `Chain: Arc_Testnet / 5042002`,
+        `Slippage: ${intent.slippage ?? '0.5% default review'}`,
+        'Quote: server-side App Kit KIT_KEY gerekir; extension icinde key tutulmaz.',
+        'Risk: route LiFi/aggregator tarafindan degisebilir; execution oncesi canli quote gerekir.',
+        '',
+        blockers.length > 0 ? 'Blockers:' : 'Status:',
+        ...(blockers.length > 0 ? blockers.map((item) => `- ${item}`) : ['- Preflight temiz. Henuz imza veya swap yok.']),
+      ]
+    : [
+        'Arc Swap preflight:',
+        '',
+        `Intent: ${amount} ${tokenIn} -> ${tokenOut}`,
+        `Chain: Arc_Testnet / 5042002`,
+        `Slippage: ${intent.slippage ?? '0.5% default review'}`,
+        'Quote: requires a server-side App Kit KIT_KEY; no key is stored in the extension.',
+        'Risk: route may be selected by LiFi/aggregator; live quote is required before execution.',
+        '',
+        blockers.length > 0 ? 'Blockers:' : 'Status:',
+        ...(blockers.length > 0 ? blockers.map((item) => `- ${item}`) : ['- Preflight is clean. Nothing has been signed or swapped.']),
+      ]
+
+  return { reply: lines.join('\n'), actions: [] }
 }
 
 function buildArcBridgePreflightReply(intent: ArcBridgePreflightIntent): GogoResponse {
@@ -3938,6 +4112,12 @@ export async function askGogo(
   context: GogoContext,
   history: Message[],
 ): Promise<GogoResponse> {
+  const x402HistoryIntent = parseX402HistoryIntent(userMessage)
+  if (x402HistoryIntent) {
+    logResolvedIntent('deterministic', null)
+    return await buildX402HistoryReply(x402HistoryIntent)
+  }
+
   const x402Intent = parseX402AccessIntent(userMessage)
   if (x402Intent) {
     let resourceUrl = x402Intent.url
@@ -3955,6 +4135,14 @@ export async function askGogo(
 
     try {
       const preview = await inspectX402Resource(resourceUrl)
+      await upsertX402PaymentHistory({
+        url: preview.url,
+        description: preview.description,
+        amountUsdc: preview.amountUsdc,
+        payTo: preview.payTo,
+        network: preview.network,
+        status: 'quoted',
+      }).catch((error) => debugWarn('[x402] could not record quote:', error))
       const action: GogoAction = {
         type: 'x402_access',
         params: preview,
@@ -4095,6 +4283,18 @@ export async function askGogo(
   if (tokenRadarIntent) {
     logResolvedIntent('deterministic', null)
     return await buildTokenRadarReply(tokenRadarIntent)
+  }
+
+  const policyCenterIntent = parsePolicyCenterIntent(userMessage)
+  if (policyCenterIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildPolicyCenterReply(policyCenterIntent)
+  }
+
+  const swapPreflightIntent = parseSwapPreflightIntent(userMessage)
+  if (swapPreflightIntent) {
+    logResolvedIntent('deterministic', null)
+    return buildSwapPreflightReply(swapPreflightIntent)
   }
 
   const arcBridgePreflightIntent = parseArcBridgePreflightIntent(userMessage)

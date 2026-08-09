@@ -42,6 +42,8 @@ export type X402PaymentResult = {
   amountUsdc: string
   payTo: string
   transaction: string
+  txHash: string
+  nonce: string
   payer: string
 }
 
@@ -293,12 +295,22 @@ export async function payX402Resource(previewInput: X402PaymentPreview): Promise
   }
 
   let transaction = ''
+  let txHash = ''
+  let nonce = ''
   let payer: string = signer.address
   const paymentResponseHeader = response.headers.get('Payment-Response')
   if (paymentResponseHeader) {
     const settlement = decodeHeader(paymentResponseHeader, 'Payment-Response')
     if (isRecord(settlement)) {
       transaction = typeof settlement.transaction === 'string' ? settlement.transaction : ''
+      txHash = typeof settlement.txHash === 'string'
+        ? settlement.txHash
+        : typeof settlement.transactionHash === 'string'
+          ? settlement.transactionHash
+          : typeof settlement.hash === 'string'
+            ? settlement.hash
+            : ''
+      nonce = typeof settlement.nonce === 'string' ? settlement.nonce : ''
       payer = typeof settlement.payer === 'string' ? settlement.payer : payer
     }
   }
@@ -309,6 +321,8 @@ export async function payX402Resource(previewInput: X402PaymentPreview): Promise
     amountUsdc: refreshed.amountUsdc,
     payTo: refreshed.payTo,
     transaction,
+    txHash,
+    nonce,
     payer,
   }
 }

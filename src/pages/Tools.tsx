@@ -6,10 +6,12 @@ import {
   Coins,
   FileText,
   GitBranch,
+  History,
   Radar,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Shuffle,
 } from 'lucide-react'
 import { chromeStorageSet } from '@/lib/external'
 import { PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
@@ -21,6 +23,8 @@ interface ToolsProps {
   onOpenDefiRadar: () => void
   onOpenRadar: () => void
   onOpenBridge: () => void
+  onOpenSwap: () => void
+  onOpenPolicyCenter: () => void
   onOpenCalendar: () => void
   onOpenAddressBook: () => void
   onOpenBrief: () => void
@@ -81,6 +85,8 @@ export function Tools({
   onOpenDefiRadar,
   onOpenRadar,
   onOpenBridge,
+  onOpenSwap,
+  onOpenPolicyCenter,
   onOpenCalendar,
   onOpenAddressBook,
   onOpenBrief,
@@ -114,7 +120,7 @@ export function Tools({
       badge: 'Proof',
       tone: 'violet',
       Icon: ShieldCheck,
-      onClick: () => void openGogoPrompt('agent stack status'),
+      onClick: onOpenPolicyCenter,
     },
     {
       title: 'DeFi Radar',
@@ -142,6 +148,24 @@ export function Tools({
       tone: 'emerald',
       Icon: GitBranch,
       onClick: onOpenBridge,
+    },
+    {
+      title: 'Arc Swap',
+      eyebrow: 'App Kit',
+      body: 'Review USDC, EURC, and cirBTC swap intent, slippage, and quote readiness before signing.',
+      badge: 'Quote',
+      tone: 'sky',
+      Icon: Shuffle,
+      onClick: onOpenSwap,
+    },
+    {
+      title: 'x402 History',
+      eyebrow: 'Audit',
+      body: 'See paid API approvals, settlement ids, returned tx hashes, nonces, and repeat payments.',
+      badge: 'Log',
+      tone: 'violet',
+      Icon: History,
+      onClick: () => void openGogoPrompt('x402 history'),
     },
     {
       title: 'Calendar',

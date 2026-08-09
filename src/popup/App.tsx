@@ -20,6 +20,8 @@ const GogoAI = lazy(() => import('@/pages/GogoAI').then((module) => ({ default: 
 const ArcRadar = lazy(() => import('@/pages/ArcRadar').then((module) => ({ default: module.ArcRadar })))
 const DeFiRadar = lazy(() => import('@/pages/DeFiRadar').then((module) => ({ default: module.DeFiRadar })))
 const ArcBridge = lazy(() => import('@/pages/ArcBridge').then((module) => ({ default: module.ArcBridge })))
+const ArcSwapPreflight = lazy(() => import('@/pages/ArcSwapPreflight').then((module) => ({ default: module.ArcSwapPreflight })))
+const PolicyCenter = lazy(() => import('@/pages/PolicyCenter').then((module) => ({ default: module.PolicyCenter })))
 const Tools = lazy(() => import('@/pages/Tools').then((module) => ({ default: module.Tools })))
 
 const VALID_VIEWS: View[] = [
@@ -39,6 +41,8 @@ const VALID_VIEWS: View[] = [
   'arc-radar',
   'defi-radar',
   'arc-bridge',
+  'arc-swap',
+  'policy-center',
   'tools',
 ]
 
@@ -114,6 +118,8 @@ export default function App() {
   else if (view === 'arc-radar') content = <ArcRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} onOpenCalendar={() => go('calendar')} />
   else if (view === 'defi-radar') content = <DeFiRadar onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
   else if (view === 'arc-bridge') content = <ArcBridge onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
+  else if (view === 'arc-swap') content = <ArcSwapPreflight onBack={goBack} onOpenGogo={() => go('gogo-ai')} />
+  else if (view === 'policy-center') content = <PolicyCenter onBack={goBack} />
   if (view === 'tools') {
     content = (
       <Tools
@@ -122,6 +128,8 @@ export default function App() {
         onOpenDefiRadar={() => go('defi-radar')}
         onOpenRadar={() => go('arc-radar')}
         onOpenBridge={() => go('arc-bridge')}
+        onOpenSwap={() => go('arc-swap')}
+        onOpenPolicyCenter={() => go('policy-center')}
         onOpenCalendar={() => go('calendar')}
         onOpenAddressBook={() => go('address-book')}
         onOpenBrief={() => go('daily-brief')}

@@ -76,6 +76,7 @@ import { isValidAddress, isValidAmount } from '@/lib/validation'
 import { PairingApiError } from '@/lib/pairing'
 import { UserAgentErrorActions } from '@/components/UserAgentErrorActions'
 import { payX402Resource } from '@/lib/x402'
+import { upsertX402PaymentHistory } from '@/lib/x402History'
 
 interface GogoAIProps {
   onBack: () => void
@@ -2146,6 +2147,23 @@ export function GogoAI({ onBack }: GogoAIProps) {
             </p>
           )}
 
+          {action.completed && (
+            <div className="mt-3 grid gap-2 rounded-xl border border-arc-border bg-arc-bg/60 px-3 py-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Payment / settlement</p>
+                <p className="mt-1 break-all font-mono text-[10px] text-arc-text">{action.params.transaction || 'not returned yet'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">txHash</p>
+                <p className="mt-1 break-all font-mono text-[10px] text-arc-text">{action.params.txHash || 'not returned yet'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">nonce</p>
+                <p className="mt-1 break-all font-mono text-[10px] text-arc-text">{action.params.nonce || 'not returned yet'}</p>
+              </div>
+            </div>
+          )}
+
           {responsePreview && (
             <div className="mt-3 rounded-xl border border-arc-success/20 bg-arc-success/5 px-3 py-2">
               <p className="text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">{t('gogo.x402Response')}</p>
@@ -3183,6 +3201,20 @@ export function GogoAI({ onBack }: GogoAIProps) {
         setAnalysisLoadingKey(messageKey)
         try {
           const result = await payX402Resource(action.params)
+          void upsertX402PaymentHistory({
+            url: action.params.url,
+            description: action.params.description,
+            amountUsdc: result.amountUsdc,
+            payTo: result.payTo,
+            network: action.params.network,
+            status: 'paid',
+            paidAt: Date.now(),
+            payer: result.payer,
+            paymentId: result.transaction || undefined,
+            transaction: result.transaction || undefined,
+            txHash: result.txHash || undefined,
+            nonce: result.nonce || undefined,
+          })
           const responsePreview = formatX402ResponsePreview(result.data)
           updateMessageAction(
             messageIndex,
@@ -3194,6 +3226,8 @@ export function GogoAI({ onBack }: GogoAIProps) {
                   params: {
                     ...currentAction.params,
                     transaction: result.transaction || undefined,
+                    txHash: result.txHash || undefined,
+                    nonce: result.nonce || undefined,
                     responsePreview,
                   },
                 }
@@ -3208,6 +3242,16 @@ export function GogoAI({ onBack }: GogoAIProps) {
           )
         } catch (error) {
           const reason = error instanceof Error ? error.message : t('state.error')
+          void upsertX402PaymentHistory({
+            url: action.params.url,
+            description: action.params.description,
+            amountUsdc: action.params.amountUsdc,
+            payTo: action.params.payTo,
+            network: action.params.network,
+            status: 'failed',
+            failedAt: Date.now(),
+            error: reason,
+          })
           const nextMessages = messagesRef.current.map((message, index) => index === messageIndex
             ? { ...message, content: formatText('gogo.x402PaymentFailed', { reason }) }
             : message)
