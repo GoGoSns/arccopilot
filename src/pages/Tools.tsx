@@ -128,7 +128,7 @@ export function Tools({
     {
       title: 'Agent Market',
       eyebrow: 'x402',
-      body: 'Browse verified paid services, inspect exact terms, then hand off to Pay & access.',
+      body: 'Browse verified paid services, choose manual/semi/full-auto policy mode, then hand off to Pay & access.',
       badge: 'Market',
       tone: 'emerald',
       Icon: ShoppingBag,

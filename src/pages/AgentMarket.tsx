@@ -12,11 +12,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { DEFAULT_AGENT_BACKEND_URL, getAgentBackendConfig } from '@/lib/agentBackend'
-import { chromeStorageSet } from '@/lib/external'
+import { chromeStorageGet, chromeStorageSet } from '@/lib/external'
 import { inspectX402Resource, type X402PaymentPreview } from '@/lib/x402'
 import { listX402PaymentHistory, type X402PaymentHistoryEntry } from '@/lib/x402History'
 import { MONOCHROME_DARK } from '@/lib/designTokens'
-import { PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY } from '@/lib/storageKeys'
+import { PENDING_GOGO_PROMPT_STORAGE_KEY, PENDING_VIEW_STORAGE_KEY, X402_MARKET_AUTOPAY_MODE_STORAGE_KEY } from '@/lib/storageKeys'
 import { formatAddress, openSafeUrl, timeAgo } from '@/lib/utils'
 
 interface AgentMarketProps {
@@ -25,6 +25,41 @@ interface AgentMarketProps {
 }
 
 type InspectState = 'idle' | 'loading' | 'verified' | 'failed'
+type MarketAutopayMode = 'manual' | 'semi' | 'auto'
+
+const AUTOPAY_MODES: Array<{
+  id: MarketAutopayMode
+  title: string
+  badge: string
+  body: string
+  rule: string
+}> = [
+  {
+    id: 'manual',
+    title: 'Manual',
+    badge: 'Safest',
+    body: 'Every paid service opens a review card. Nothing signs until Pay & access.',
+    rule: 'User approves every x402 payment.',
+  },
+  {
+    id: 'semi',
+    title: 'Semi-auto',
+    badge: 'Recommended',
+    body: 'Gogo may inspect and recommend services, but payment still waits for one-tap approval.',
+    rule: 'Agent prepares; user signs.',
+  },
+  {
+    id: 'auto',
+    title: 'Full auto',
+    badge: 'Policy',
+    body: 'Reserved for saved caps, allowlists, and repeat services. Current wallet flow still blocks on explicit approval.',
+    rule: 'Armed only after policy proof.',
+  },
+]
+
+function normalizeAutopayMode(value: unknown): MarketAutopayMode {
+  return value === 'semi' || value === 'auto' || value === 'manual' ? value : 'manual'
+}
 
 function cardStyle(
   backgroundColor: string,
@@ -94,6 +129,7 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
   const [inspectError, setInspectError] = useState('')
   const [customUrl, setCustomUrl] = useState('')
   const [history, setHistory] = useState<X402PaymentHistoryEntry[]>([])
+  const [autopayMode, setAutopayMode] = useState<MarketAutopayMode>('manual')
 
   const paidCount = useMemo(() => history.filter((entry) => entry.status === 'paid').length, [history])
   const repeatCount = useMemo(() => history.reduce((sum, entry) => sum + Math.max(0, (entry.repeatCount ?? 1) - 1), 0), [history])
@@ -119,19 +155,26 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
         const config = await getAgentBackendConfig()
         const baseUrl = (config.backendUrl ?? DEFAULT_AGENT_BACKEND_URL).replace(/\/+$/, '')
         const url = `${baseUrl}/x402/arc-insight`
-        const [preview, entries] = await Promise.all([
+        const [preview, entries, storedMode] = await Promise.all([
           inspectX402Resource(url),
           listX402PaymentHistory(),
+          chromeStorageGet(X402_MARKET_AUTOPAY_MODE_STORAGE_KEY).catch(() => ({})),
         ])
         if (cancelled) return
         setDemoUrl(url)
         setDemoPreview(preview)
         setHistory(entries)
+        setAutopayMode(normalizeAutopayMode((storedMode as Record<string, unknown>)[X402_MARKET_AUTOPAY_MODE_STORAGE_KEY]))
         setInspectState('verified')
       } catch (error) {
         if (cancelled) return
+        const [entries, storedMode] = await Promise.all([
+          listX402PaymentHistory().catch(() => []),
+          chromeStorageGet(X402_MARKET_AUTOPAY_MODE_STORAGE_KEY).catch(() => ({})),
+        ])
         setDemoPreview(null)
-        setHistory(await listX402PaymentHistory().catch(() => []))
+        setHistory(entries)
+        setAutopayMode(normalizeAutopayMode((storedMode as Record<string, unknown>)[X402_MARKET_AUTOPAY_MODE_STORAGE_KEY]))
         setInspectState('failed')
         setInspectError(error instanceof Error ? error.message : 'Could not verify the demo x402 offer.')
       }
@@ -146,7 +189,18 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
   const inspectCustom = () => {
     const url = customUrl.trim()
     if (!url) return
-    void openGogoPrompt(`x402 ${url}`)
+    void openGogoPrompt(modePrompt(`x402 ${url}`))
+  }
+
+  const saveAutopayMode = (mode: MarketAutopayMode) => {
+    setAutopayMode(mode)
+    void chromeStorageSet({ [X402_MARKET_AUTOPAY_MODE_STORAGE_KEY]: mode })
+  }
+
+  const modePrompt = (basePrompt: string) => {
+    if (autopayMode === 'manual') return basePrompt
+    if (autopayMode === 'semi') return `${basePrompt} — semi-auto mode: inspect terms and recommend, but wait for Pay & access`
+    return `${basePrompt} — full-auto policy mode: verify cap, allowlist, repeat proof, and never bypass wallet approval`
   }
 
   return (
@@ -205,6 +259,54 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
 
         <section className="mt-3" style={cardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border)}>
           <div className="border-b border-white/10 px-4 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Autopay mode</p>
+                <p className="mt-1 text-sm font-semibold text-white">How much can Gogo prepare alone?</p>
+              </div>
+              <span className="rounded-full border border-emerald-300/25 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                {autopayMode}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 px-4 py-4">
+            {AUTOPAY_MODES.map((mode) => {
+              const selected = autopayMode === mode.id
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => saveAutopayMode(mode.id)}
+                  className={`rounded-[18px] border px-3 py-3 text-left transition ${
+                    selected
+                      ? 'border-emerald-300/35 bg-emerald-300/10'
+                      : 'border-white/10 bg-white/[0.035]'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{mode.title}</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-arc-text-dim">{mode.body}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                        selected
+                          ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100'
+                          : 'border-white/10 text-arc-text-dim'
+                      }`}
+                    >
+                      {mode.badge}
+                    </span>
+                  </div>
+                  <p className="mt-2 font-mono text-[10px] text-arc-text-dim">{mode.rule}</p>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="mt-3" style={cardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border)}>
+          <div className="border-b border-white/10 px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Featured service</p>
@@ -257,7 +359,7 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => void openGogoPrompt('x402 demo')}
+                onClick={() => void openGogoPrompt(modePrompt('x402 demo'))}
                 className="rounded-[16px] bg-white px-3 py-3 text-xs font-semibold text-black"
               >
                 Pay & access in Gogo
