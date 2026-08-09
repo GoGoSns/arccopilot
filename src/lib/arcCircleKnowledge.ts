@@ -51,7 +51,7 @@ export const ARC_CIRCLE_KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
     id: 'usdc-rules',
     title: 'USDC rules',
-    summary: 'USDC is the unit of account for ArcCopilot. Token transfers must use exact chain IDs, canonical contracts, and 6-decimal token math.',
+    summary: 'USDC is the unit of account for Regent. Token transfers must use exact chain IDs, canonical contracts, and 6-decimal token math.',
     bullets: [
       'ERC-20 USDC token amounts use 6 decimals. Never parse USDC token transfers with 18 decimals.',
       'Arc Testnet ERC-20 USDC: 0x3600000000000000000000000000000000000000.',
@@ -64,7 +64,7 @@ export const ARC_CIRCLE_KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
     id: 'circle-stack',
     title: 'Circle stack',
-    summary: 'Circle gives ArcCopilot the money movement rails: wallets, USDC, Gateway, CCTP/Bridge, App Kit, x402 nanopayments, and smart contract tooling.',
+    summary: 'Circle gives Regent the money movement rails: wallets, USDC, Gateway, CCTP/Bridge, App Kit, x402 nanopayments, and smart contract tooling.',
     bullets: [
       'Wallets: choose developer-controlled, user-controlled, or modular/passkey wallets based on custody and UX.',
       'Gateway: unified USDC balance for instant chain-abstracted settlement and x402-style paid services.',
@@ -77,7 +77,7 @@ export const ARC_CIRCLE_KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
     id: 'gateway',
     title: 'Gateway and x402',
-    summary: 'Gateway lets ArcCopilot keep a unified USDC spend surface while preserving explicit approval for paid actions.',
+    summary: 'Gateway lets Regent keep a unified USDC spend surface while preserving explicit approval for paid actions.',
     bullets: [
       'Gateway testnet REST base: https://gateway-api-testnet.circle.com/v1/.',
       'Gateway mainnet REST base: https://gateway-api.circle.com/v1/.',
@@ -91,7 +91,7 @@ export const ARC_CIRCLE_KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
     id: 'network-map',
     title: 'Network map',
-    summary: 'ArcCopilot should know both testnet and mainnet surfaces, but default to testnet while the product is being built and judged.',
+    summary: 'Regent should know both testnet and mainnet surfaces, but default to testnet while the product is being built and judged.',
     bullets: [
       'Primary working network: Arc Testnet, chain id 5042002.',
       'Common mainnet USDC references include Ethereum, Base, Arbitrum, Polygon PoS, Avalanche, and Optimism canonical USDC contracts.',

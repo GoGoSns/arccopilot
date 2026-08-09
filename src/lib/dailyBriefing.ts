@@ -303,7 +303,7 @@ function buildPrompt(data: CollectedDailyBriefingData): string {
   const language = getLocalePromptLanguage(data.locale)
   const greeting = getGreeting(data.locale)
   return [
-    'You are ArcCopilot acting as the user\'s chief-of-staff.',
+    'You are Regent acting as the user\'s chief-of-staff.',
     'Write a warm, concise daily briefing in plain text only.',
     'Use only the data provided below.',
     'Do not invent facts, numbers, news, or suggestions.',

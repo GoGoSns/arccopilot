@@ -2,7 +2,7 @@
 
 ## Overview
 
-ArcCopilot is organized as a Manifest V3 extension with a popup-first UI, a background service worker, and shared domain logic in `src/lib`. The popup owns the visible product experience, while the service worker handles background checks, notifications, and message-driven actions.
+Regent is organized as a Manifest V3 extension with a popup-first UI, a background service worker, and shared domain logic in `src/lib`. The popup owns the visible product experience, while the service worker handles background checks, notifications, and message-driven actions.
 
 ## Folder Structure
 

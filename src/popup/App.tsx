@@ -64,7 +64,7 @@ function isPendingSend(value: unknown): value is { ts: number; recipient?: strin
 function RouteLoading() {
   return (
     <div className="flex h-full items-center justify-center bg-arc-bg px-4 text-center text-xs text-arc-text-dim">
-      Loading ArcCopilot...
+      Loading Regent...
     </div>
   )
 }

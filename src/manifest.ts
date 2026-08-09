@@ -6,7 +6,7 @@ export default defineManifest({
   manifest_version: 3,
   name: APP_NAME,
   version: APP_VERSION,
-  description: 'Your copilot for the Arc economy - wallet, dashboard, social, and AI in one extension',
+  description: 'Regent is a USDC-first agent control layer for Arc: wallet, AI, policy, x402, radar, and proof.',
   action: {
     default_popup: 'src/popup/index.html',
     default_icon: {

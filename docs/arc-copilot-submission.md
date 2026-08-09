@@ -1,4 +1,4 @@
-# ArcCopilot
+# Regent
 
 USDC-first wallet assistant and agent control layer for Arc Testnet.
 
@@ -8,7 +8,7 @@ Crypto users need automation, paid resource access, and mobile monitoring withou
 
 ## 2. Solution
 
-ArcCopilot combines an Arc Testnet wallet view, Gogo AI guidance, x402 paid Arc insights, scheduled autonomous payments, reminders, DeFi discovery, proof-first token/meme monitoring, CCTP bridge preflight, and Telegram/WhatsApp-ready phone control.
+Regent combines an Arc Testnet wallet view, Gogo AI guidance, x402 paid Arc insights, scheduled autonomous payments, reminders, DeFi discovery, proof-first token/meme monitoring, CCTP bridge preflight, and Telegram/WhatsApp-ready phone control.
 
 ## 3. Arc + Circle Integration
 
@@ -23,8 +23,8 @@ ArcCopilot combines an Arc Testnet wallet view, Gogo AI guidance, x402 paid Arc 
 
 ## 4. Agentic Economy Flow
 
-1. User pairs ArcCopilot with MetaMask.
-2. ArcCopilot provisions or loads the user's agent wallet.
+1. User pairs Regent with MetaMask.
+2. Regent provisions or loads the user's agent wallet.
 3. User sets budget, per-tip cap, and allowlist.
 4. Gogo AI explains actions and prepares safe payment flows.
 5. x402 quote cards show exact price, network, seller, and payment status.
@@ -44,7 +44,7 @@ ArcCopilot combines an Arc Testnet wallet view, Gogo AI guidance, x402 paid Arc 
 
 ## 6. Demo Path
 
-- Open ArcCopilot wallet.
+- Open Regent wallet.
 - Review USDC balance on Arc Testnet.
 - Ask Gogo for an Arc insight.
 - Review x402 quote for `0.001 USDC`.
@@ -62,7 +62,7 @@ ArcCopilot combines an Arc Testnet wallet view, Gogo AI guidance, x402 paid Arc 
 
 ## 8. Current Status
 
-ArcCopilot has working extension UI, x402 paid insight flow, scheduled payment infrastructure, reminder/calendar features, DeFi Radar, proof-first Token/Meme Radar, Arc Bridge preflight, launch-readiness checks, mobile-control pairing UI, Telegram/WhatsApp webhook backend support, and external cron triggers for free sleeping hosts.
+Regent has working extension UI, x402 paid insight flow, scheduled payment infrastructure, reminder/calendar features, DeFi Radar, proof-first Token/Meme Radar, Arc Bridge preflight, launch-readiness checks, mobile-control pairing UI, Telegram/WhatsApp webhook backend support, and external cron triggers for free sleeping hosts.
 
 ## 9. Final Submission Pack
 

@@ -62,7 +62,7 @@ async function settleChromeStorage<T>(
 
     const timer = Number.isFinite(timeoutMs) && timeoutMs > 0
       ? setTimeout(() => {
-          debugWarn(`[ArcCopilot] ${label} timed out after ${timeoutMs}ms`)
+          debugWarn(`[Regent] ${label} timed out after ${timeoutMs}ms`)
           finish(fallback)
         }, timeoutMs)
       : null
@@ -70,7 +70,7 @@ async function settleChromeStorage<T>(
     try {
       callback(finish)
     } catch (error) {
-      debugWarn(`[ArcCopilot] ${label} failed:`, error)
+      debugWarn(`[Regent] ${label} failed:`, error)
       finish(fallback)
     }
   })
@@ -87,7 +87,7 @@ export async function chromeStorageGet<T extends Record<string, unknown> = Recor
   return settleChromeStorage(fallback, timeoutMs, label, (resolve) => {
     chrome.storage.local.get(keys, (result) => {
       if (chrome.runtime?.lastError) {
-        debugWarn(`[ArcCopilot] ${label} failed:`, chrome.runtime.lastError.message)
+        debugWarn(`[Regent] ${label} failed:`, chrome.runtime.lastError.message)
         resolve(fallback)
         return
       }
@@ -107,7 +107,7 @@ export async function chromeStorageSet(
   await settleChromeStorage<void>(undefined, timeoutMs, label, (resolve) => {
     chrome.storage.local.set(items, () => {
       if (chrome.runtime?.lastError) {
-        debugWarn(`[ArcCopilot] ${label} failed:`, chrome.runtime.lastError.message)
+        debugWarn(`[Regent] ${label} failed:`, chrome.runtime.lastError.message)
       }
       resolve(undefined)
     })
@@ -124,7 +124,7 @@ export async function chromeStorageRemove(
   await settleChromeStorage<void>(undefined, timeoutMs, label, (resolve) => {
     chrome.storage.local.remove(keys, () => {
       if (chrome.runtime?.lastError) {
-        debugWarn(`[ArcCopilot] ${label} failed:`, chrome.runtime.lastError.message)
+        debugWarn(`[Regent] ${label} failed:`, chrome.runtime.lastError.message)
       }
       resolve(undefined)
     })

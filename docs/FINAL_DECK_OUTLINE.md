@@ -1,10 +1,10 @@
-# ArcCopilot final deck outline
+# Regent final deck outline
 
 Use 8-10 slides. Keep the deck visual, proof-heavy, and honest.
 
 ## Slide 1 — Title
 
-ArcCopilot
+Regent
 
 Subtitle: A USDC-first agent control layer for Arc
 
@@ -24,7 +24,7 @@ Crypto agents can help users move money, pay services, and monitor markets — b
 
 ## Slide 3 — Solution
 
-ArcCopilot is a browser assistant for Arc that:
+Regent is a browser assistant for Arc that:
 
 - reads real wallet and ecosystem state
 - explains what it sees
@@ -82,7 +82,7 @@ Include:
 
 ## Slide 9 — What is new / differentiated
 
-ArcCopilot is not only a wallet and not only a chatbot. It is a control surface where an AI assistant, policy engine, x402 payments, scheduled USDC actions, bridge preflight, and risk radar meet.
+Regent is not only a wallet and not only a chatbot. It is a control surface where an AI assistant, policy engine, x402 payments, scheduled USDC actions, bridge preflight, and risk radar meet.
 
 ## Slide 10 — Roadmap
 
@@ -97,5 +97,5 @@ Near-term:
 
 ## Final slide sentence
 
-ArcCopilot helps agents act with money on Arc, but never outside the user's policy.
+Regent helps agents act with money on Arc, but never outside the user's policy.
 

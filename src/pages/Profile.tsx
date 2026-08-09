@@ -49,7 +49,7 @@ export function Profile({ onBack }: ProfileProps) {
   }
 
   const handleShare = () => {
-    const text = `Check my Arc profile on ArcCopilot: ${formatAddress(walletAddress || '')}`
+    const text = `Check my Arc profile on arccopilot: ${formatAddress(walletAddress || '')}`
     void copyToClipboard(text)
     showToast(t('profile.linkCopied'))
   }

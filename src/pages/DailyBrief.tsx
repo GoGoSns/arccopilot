@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, BadgeCheck, Bell, CalendarDays, Eye, Hash, MessageCircle, RefreshCw, Rss, Send, Sparkles, TrendingDown, TrendingUp, Twitter, Users, Wallet, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
@@ -186,7 +186,7 @@ function formatUsdcAmount(amount: string): string {
 }
 
 function formatPortfolioAmount(amount: string | null, locale: 'en' | 'tr'): string {
-  if (!amount) return 'â€”'
+  if (!amount) return '—'
 
   const parsed = Number(amount)
   if (!Number.isFinite(parsed)) return amount
@@ -321,7 +321,7 @@ function TweetListItem({
         </div>
         <div className="flex items-center gap-1 text-[10px] text-arc-text-dim">
           <span className="truncate">@{tweet.authorHandle}</span>
-          <span className="shrink-0">Â·</span>
+          <span className="shrink-0">·</span>
           <span className="shrink-0">{tweet.createdAt ? formatRelativeTime(tweet.createdAt) : t('dailyBrief.unknownTime')}</span>
         </div>
         {badge && (
@@ -333,7 +333,7 @@ function TweetListItem({
           {tweet.text}
         </p>
         <p className="text-[10px] font-medium text-arc-text-dim">
-          â™¥ {tweet.likes} Â· â†» {tweet.retweets}
+          ¦ {tweet.likes} · ? {tweet.retweets}
         </p>
       </div>
     </button>
@@ -540,10 +540,10 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const hour        = now.getHours()
   const locale      = getLocaleSync()
   const greeting    = hour < 12
-    ? (locale === 'tr' ? 'GÃ¼naydÄ±n' : 'Good morning')
+    ? (locale === 'tr' ? 'Günaydýn' : 'Good morning')
     : hour < 18
-      ? (locale === 'tr' ? 'TÃ¼naydÄ±n' : 'Good afternoon')
-      : (locale === 'tr' ? 'Ä°yi akÅŸamlar' : 'Good evening')
+      ? (locale === 'tr' ? 'Tünaydýn' : 'Good afternoon')
+      : (locale === 'tr' ? 'Ýyi akþamlar' : 'Good evening')
   const dateStr     = now.toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
   // -- effect: transfers -----------------------------------------------------
@@ -1638,7 +1638,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
   const arcDiscordOnlineLabel = arcDiscord?.onlineCount != null
     ? formatText('dailyBrief.arcDiscordOnline', { count: formatLocalizedCount(arcDiscord.onlineCount) })
     : null
-  const arcDiscordCountsLabel = [arcDiscordMemberLabel, arcDiscordOnlineLabel].filter(Boolean).join(' Â· ')
+  const arcDiscordCountsLabel = [arcDiscordMemberLabel, arcDiscordOnlineLabel].filter(Boolean).join(' · ')
   const arcDiscordDisplayError = arcDiscordError ?? (!arcDiscordLoading && !arcDiscordCountsLabel ? t('dailyBrief.arcDiscordCouldNotLoad') : null)
   const arcDiscordOnlineRatio = arcDiscord?.memberCount && arcDiscord.onlineCount != null && arcDiscord.memberCount > 0
     ? Math.round((arcDiscord.onlineCount / arcDiscord.memberCount) * 100)
@@ -1962,7 +1962,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
               <div className="flex items-center gap-2">
                 <Eye size={14} className="text-emerald-200" />
                 <p className="font-mono text-[10px] uppercase tracking-widest text-emerald-200/90">
-                  ArcCopilot Guard
+                  Regent Guard
                 </p>
               </div>
               <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">
@@ -2000,7 +2000,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3">
-            <p className="font-mono text-[10px] text-arc-text-dim">token radar Â· token risk Â· watchlist</p>
+            <p className="font-mono text-[10px] text-arc-text-dim">token radar · token risk · watchlist</p>
             <div className="shrink-0">
               <Button
                 type="button"
@@ -2670,7 +2670,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-arc-text">{entry.label}</p>
                     <p className="text-[10px] text-arc-text-dim">
-                      {entry.direction === 'out' ? t('activity.sent') : t('activity.received')} {entry.amount} {t('common.usdc')} Â· {formatRelativeTime(entry.timestamp)}
+                      {entry.direction === 'out' ? t('activity.sent') : t('activity.received')} {entry.amount} {t('common.usdc')} · {formatRelativeTime(entry.timestamp)}
                     </p>
                   </div>
                   <span className={`shrink-0 text-xs font-semibold ${entry.direction === 'out' ? 'text-arc-text-dim' : 'text-arc-success'}`}>
@@ -2795,19 +2795,19 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordMembersLabel')}</p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {arcDiscord?.memberCount != null ? formatLocalizedCount(arcDiscord.memberCount) : 'â€”'}
+                    {arcDiscord?.memberCount != null ? formatLocalizedCount(arcDiscord.memberCount) : '—'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordOnlineLabel')}</p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {arcDiscord?.onlineCount != null ? formatLocalizedCount(arcDiscord.onlineCount) : 'â€”'}
+                    {arcDiscord?.onlineCount != null ? formatLocalizedCount(arcDiscord.onlineCount) : '—'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
                   <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-arc-text-dim">{t('dailyBrief.arcDiscordPulseLabel')}</p>
                   <p className="mt-1 text-sm font-semibold text-white">
-                    {arcDiscordOnlineRatio != null ? `${arcDiscordOnlineRatio}%` : 'â€”'}
+                    {arcDiscordOnlineRatio != null ? `${arcDiscordOnlineRatio}%` : '—'}
                   </p>
                 </div>
               </div>
@@ -2997,7 +2997,7 @@ export function DailyBrief({ onBack }: DailyBriefProps) {
                   {activePattern.kind === 'day-of-week' && t('dailyBrief.gotIt')}
                   {activePattern.kind === 'amount-cluster' && (
                     locale === 'tr'
-                      ? `${formatUsdcAmount(activePattern.amount)} USDC gÃ¶nder`
+                      ? `${formatUsdcAmount(activePattern.amount)} USDC gönder`
                       : `Send ${formatUsdcAmount(activePattern.amount)} USDC`
                   )}
                 </Button>

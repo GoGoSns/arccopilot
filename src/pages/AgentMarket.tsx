@@ -241,7 +241,7 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
             Pay-per-use services, without blind spending.
           </h1>
           <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-            ArcCopilot verifies the offer first: price, network, seller, and resource. It never signs until you review the card and tap Pay & access.
+            Regent verifies the offer first: price, network, seller, and resource. It never signs until you review the card and tap Pay & access.
           </p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {[
@@ -310,7 +310,7 @@ export function AgentMarket({ onBack, onOpenGogo }: AgentMarketProps) {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-arc-text-dim">Featured service</p>
-                <p className="mt-1 text-sm font-semibold text-white">ArcCopilot paid Arc insight</p>
+                <p className="mt-1 text-sm font-semibold text-white">Regent paid Arc insight</p>
               </div>
               <span
                 className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] ${

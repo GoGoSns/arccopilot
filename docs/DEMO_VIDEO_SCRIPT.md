@@ -1,4 +1,4 @@
-# ArcCopilot 3-minute demo video script
+# Regent 3-minute demo video script
 
 ## Recording setup
 
@@ -12,13 +12,13 @@
 
 ## 0:00-0:20 — Problem and thesis
 
-"ArcCopilot is a USDC-first agent control layer for Arc. The problem is simple: users want agents that can help with money, but they should not lose control. So the thesis is autonomy without bypass: the assistant can see, reason, prepare, and sometimes execute, but always inside user-defined limits and proof."
+"Regent is a USDC-first agent control layer for Arc. The problem is simple: users want agents that can help with money, but they should not lose control. So the thesis is autonomy without bypass: the assistant can see, reason, prepare, and sometimes execute, but always inside user-defined limits and proof."
 
 Show: Wallet screen.
 
 ## 0:20-0:45 — Real wallet state
 
-"This is the wallet view. It reads real Arc Testnet balances and portfolio state. If a source is unavailable, ArcCopilot says so instead of inventing numbers."
+"This is the wallet view. It reads real Arc Testnet balances and portfolio state. If a source is unavailable, Regent says so instead of inventing numbers."
 
 Show: Wallet balance, portfolio cards.
 
@@ -58,7 +58,7 @@ Type:
 x402 demo
 ```
 
-"ArcCopilot can discover a paid HTTP resource through x402. Notice the exact price, network, and seller are shown first. Nothing is signed yet. Only after I tap Pay & access does MetaMask ask for an offchain Gateway authorization."
+"Regent can discover a paid HTTP resource through x402. Notice the exact price, network, and seller are shown first. Nothing is signed yet. Only after I tap Pay & access does MetaMask ask for an offchain Gateway authorization."
 
 Show: x402 quote card, price `0.001 USDC`, Arc Testnet, seller, Pay & access button.
 
@@ -76,7 +76,7 @@ Show: `complete` history item and ArcScan link.
 
 Open Token/Meme Radar.
 
-"For new Arc tokens, ArcCopilot is proof-first. It does not call something a tradable opportunity without a contract address and evidence. Unknown contracts stay read-only and risky."
+"For new Arc tokens, Regent is proof-first. It does not call something a tradable opportunity without a contract address and evidence. Unknown contracts stay read-only and risky."
 
 Open Arc Bridge.
 
@@ -84,7 +84,7 @@ Open Arc Bridge.
 
 ## 2:50-3:00 — Closing
 
-"ArcCopilot turns Circle Agent Stack primitives into a user-facing control layer for Arc: wallet, policy, x402, scheduled USDC actions, bridge preflight, and token risk monitoring. The goal is not automation at any cost. It is autonomy without bypass."
+"Regent turns Circle Agent Stack primitives into a user-facing control layer for Arc: wallet, policy, x402, scheduled USDC actions, bridge preflight, and token risk monitoring. The goal is not automation at any cost. It is autonomy without bypass."
 
 ## Fast fallback if anything fails during recording
 

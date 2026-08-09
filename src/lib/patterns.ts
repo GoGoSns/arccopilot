@@ -1,5 +1,5 @@
 /**
- * ArcCopilot Pattern Engine v0 — pure functions, zero dependencies.
+ * Regent Pattern Engine v0 — pure functions, zero dependencies.
  * Analyses outgoing USDC transfer history and returns behavioural patterns.
  */
 

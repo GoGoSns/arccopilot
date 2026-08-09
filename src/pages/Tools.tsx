@@ -232,7 +232,7 @@ export function Tools({
           </button>
           <div className="min-w-0 flex-1">
             <p className="text-base font-semibold leading-tight">Tools</p>
-            <p className="text-[11px] text-arc-text-dim">Everything ArcCopilot can see, know, prepare, and prove.</p>
+            <p className="text-[11px] text-arc-text-dim">Everything Regent can see, know, prepare, and prove.</p>
           </div>
         </div>
       </header>

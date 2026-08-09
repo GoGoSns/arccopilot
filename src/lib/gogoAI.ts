@@ -258,7 +258,7 @@ interface CacheEnvelope<T> {
   ttl?: number
 }
 
-const SYSTEM_PROMPT = `You are Gogo, an autonomous AI agent inside ArcCopilot, a Chrome extension wallet on Arc Network. You have the user's full onchain context below and can take actions on their behalf.
+const SYSTEM_PROMPT = `You are Gogo, an autonomous AI agent inside Regent, a Chrome extension wallet on Arc Network. You have the user's full onchain context below and can take actions on their behalf.
 
 PERSONALITY:
 Speak like a smart friend who knows crypto. Match the user's language (Turkish or English based on their input). Concise but warm. Use specific numbers from context, never vague.
@@ -613,7 +613,7 @@ function buildDemoProofReply(locale: 'en' | 'tr', context: GogoContext): GogoRes
   const balance = context.balance ? `${context.balance} USDC` : 'balance unavailable'
 
   const lines = [
-    'ArcCopilot demo status:',
+    'Regent demo status:',
     '',
     `- Wallet: ${wallet}`,
     `- Balance: ${balance}`,
@@ -696,7 +696,7 @@ async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoCont
         `- CCTP Bridge: Arc Bridge preflight ekrani hazir; gercek transfer icin ayrica acik onay gerekir.`,
         `- Skills upkeep: Circle CLI tarafinda guncel kalmak icin circle update ve circle skill update --tool claude-code.`,
         '',
-        'Thesis: Circle Agent Stack primitives -> ArcCopilot user control layer.',
+        'Thesis: Circle Agent Stack primitives -> Regent user control layer.',
       ]
     : [
         'Circle Agent Stack status:',
@@ -710,7 +710,7 @@ async function buildAgentStackStatusReply(locale: 'en' | 'tr', context: GogoCont
         `- CCTP Bridge: Arc Bridge preflight screen is ready; real transfers still require explicit confirmation.`,
         `- Skills upkeep: use circle update and circle skill update --tool claude-code to stay current.`,
         '',
-        'Thesis: Circle Agent Stack primitives -> ArcCopilot user control layer.',
+        'Thesis: Circle Agent Stack primitives -> Regent user control layer.',
       ]
 
   return {
@@ -772,7 +772,7 @@ async function buildLaunchReadinessReply(locale: 'en' | 'tr', context: GogoConte
 
   const lines = locale === 'tr'
     ? [
-        'ArcCopilot launch readiness:',
+        'Regent launch readiness:',
         '',
         summary,
         '',
@@ -789,7 +789,7 @@ async function buildLaunchReadinessReply(locale: 'en' | 'tr', context: GogoConte
           : 'Decision: publish/record once CHECK items are fixed; fake veriyle doldurma yok.',
       ]
     : [
-        'ArcCopilot launch readiness:',
+        'Regent launch readiness:',
         '',
         summary,
         '',
@@ -840,7 +840,7 @@ function buildArcH2PrioritiesReply(locale: 'en' | 'tr'): GogoResponse {
         '2. Platform products: App Kit, Bridge/CCTP, Gateway, x402, wallet, scheduled actions ve sample app akislari.',
         '3. Circle Agent Stack: ajanin uc uca pratik workflow tamamladigini goster; ama policy, limit ve explicit approval cizgisini koru.',
         '',
-        'ArcCopilot bunu su sekilde urune ceviriyor:',
+        'Regent bunu su sekilde urune ceviriyor:',
         '- Arc Builder Toolkit: tek kontrol yuzeyi.',
         '- DeFi Radar: yalnizca kanitli/official sinyallerle kesif; fake liste yok.',
         '- Token/Meme Radar: contract proof, risk ve watchlist.',
@@ -855,7 +855,7 @@ function buildArcH2PrioritiesReply(locale: 'en' | 'tr'): GogoResponse {
         '2. Platform products: surface App Kit, Bridge/CCTP, Gateway, x402, wallets, scheduled actions, and sample app paths.',
         '3. Circle Agent Stack: demonstrate practical end-to-end agent workflows while preserving policy, limits, and explicit approval.',
         '',
-        'ArcCopilot turns this into product:',
+        'Regent turns this into product:',
         '- Arc Builder Toolkit: one control surface.',
         '- DeFi Radar: discovery only from proven/official signals; no fake listings.',
         '- Token/Meme Radar: contract proof, risk, and watchlist.',
@@ -1077,9 +1077,9 @@ function parseDemoScriptIntent(message: string): 'en' | 'tr' | null {
 function buildDemoScriptReply(locale: 'en' | 'tr'): GogoResponse {
   const lines = locale === 'tr'
     ? [
-        'ArcCopilot demo metni:',
+        'Regent demo metni:',
         '',
-        '1. ArcCopilot, Arc uzerinde USDC-first agent control layer.',
+        '1. Regent, Arc uzerinde USDC-first agent control layer.',
         '2. Guard pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
         '3. Portfolio gercek wallet + Gateway bakiyesini okur.',
         '4. who should I tip, butce ve allowlist icinde onerir.',
@@ -1091,9 +1091,9 @@ function buildDemoScriptReply(locale: 'en' | 'tr'): GogoResponse {
         'Fast path: demo status -> portfolio -> tip -> x402 -> history.',
       ]
     : [
-        'ArcCopilot demo script:',
+        'Regent demo script:',
         '',
-        '1. ArcCopilot is a USDC-first agent control layer on Arc.',
+        '1. Regent is a USDC-first agent control layer on Arc.',
         '2. Guard pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
         '3. Portfolio reads real wallet + Gateway balances.',
         '4. who should I tip suggests within budget and allowlist.',
@@ -1133,7 +1133,7 @@ function parseDemoLinksIntent(message: string): 'en' | 'tr' | null {
 function buildDemoLinksReply(locale: 'en' | 'tr'): GogoResponse {
   const lines = locale === 'tr'
     ? [
-        'ArcCopilot demo linkleri:',
+        'Regent demo linkleri:',
         '',
         '- Frontend: https://github.com/GoGoSns/arccopilot',
         '- Backend: https://github.com/GoGoSns/arccopilot-agent',
@@ -1144,7 +1144,7 @@ function buildDemoLinksReply(locale: 'en' | 'tr'): GogoResponse {
         'Not: Render root route not_found donebilir; bu normal. App endpointleri kullanilir.',
       ]
     : [
-        'ArcCopilot demo links:',
+        'Regent demo links:',
         '',
         '- Frontend: https://github.com/GoGoSns/arccopilot',
         '- Backend: https://github.com/GoGoSns/arccopilot-agent',
@@ -1183,7 +1183,7 @@ function parseDemoChecklistIntent(message: string): 'en' | 'tr' | null {
 function buildDemoChecklistReply(locale: 'en' | 'tr'): GogoResponse {
   const lines = locale === 'tr'
     ? [
-        'ArcCopilot demo checklist:',
+        'Regent demo checklist:',
         '',
         'Before recording:',
         '- Reload the extension.',
@@ -1204,7 +1204,7 @@ function buildDemoChecklistReply(locale: 'en' | 'tr'): GogoResponse {
         '- Use demo links for GitHub + ArcScan proof.',
       ]
     : [
-        'ArcCopilot demo checklist:',
+        'Regent demo checklist:',
         '',
         'Before recording:',
         '- Reload the extension.',
@@ -1253,7 +1253,7 @@ function parseDemoModeIntent(message: string): 'en' | 'tr' | null {
 function buildDemoModeReply(locale: 'en' | 'tr'): GogoResponse {
   const lines = locale === 'tr'
     ? [
-        'ArcCopilot demo mode:',
+        'Regent demo mode:',
         '',
         '- demo status: proof summary',
         '- demo links: repos + tx proof',
@@ -1264,7 +1264,7 @@ function buildDemoModeReply(locale: 'en' | 'tr'): GogoResponse {
         'demo checklist -> demo status -> portfolio -> who should I tip -> x402 demo -> history',
       ]
     : [
-        'ArcCopilot demo mode:',
+        'Regent demo mode:',
         '',
         '- demo status: proof summary',
         '- demo links: repos + tx proof',
@@ -1303,7 +1303,7 @@ function parseMarketplaceIntent(message: string): 'en' | 'tr' | null {
 function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
   const guardLines = locale === 'tr'
     ? [
-        'ArcCopilot Guard — Arc icin risk-aware USDC kontrol katmani:',
+        'Regent Guard — Arc icin risk-aware USDC kontrol katmani:',
         '',
         'Tez: Sadece risk tespit etmek degil; risk sinyallerini policy-bound, kanitli aksiyonlara cevirmek.',
         'Pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
@@ -1336,7 +1336,7 @@ function buildMarketplaceReply(locale: 'en' | 'tr'): GogoResponse {
         'Kural: Guard uyarir, hazirlar ve kanitlar. USDC harcayan her aksiyon mevcut guvenli onay akisini kullanir.',
       ]
     : [
-        'ArcCopilot Guard — a risk-aware USDC control layer for Arc:',
+        'Regent Guard — a risk-aware USDC control layer for Arc:',
         '',
         'Thesis: not just detecting risk, but turning risk signals into policy-bound, proof-backed actions.',
         'Pipeline: Signal -> Risk -> Policy -> Action -> Proof.',
@@ -1949,7 +1949,7 @@ async function buildX402HistoryReply(locale: 'en' | 'tr'): Promise<GogoResponse>
   return {
     reply: (locale === 'tr'
       ? ['x402 odeme gecmisi:', '', ...lines, '', 'Not: txHash/nonce sadece Gateway response dondururse gosterilir; sahte uretilmez.']
-      : ['x402 payment history:', '', ...lines, '', 'Note: txHash/nonce are shown only when Gateway returns them; ArcCopilot does not invent proof.']
+      : ['x402 payment history:', '', ...lines, '', 'Note: txHash/nonce are shown only when Gateway returns them; Regent does not invent proof.']
     ).join('\n'),
     actions: [],
   }
@@ -2207,7 +2207,7 @@ function buildArcBridgePreflightReply(intent: ArcBridgePreflightIntent): GogoRes
 
   const blockers = [
     ...missing.map((item) => intent.locale === 'tr' ? `Eksik: ${item}` : `Missing: ${item}`),
-    routeHasArc ? null : (intent.locale === 'tr' ? 'Route Arc icermiyor; ArcCopilot bridge preflight Arc odakli.' : 'Route does not include Arc; ArcCopilot bridge preflight is Arc-focused.'),
+    routeHasArc ? null : (intent.locale === 'tr' ? 'Route Arc icermiyor; Regent bridge preflight Arc odakli.' : 'Route does not include Arc; Regent bridge preflight is Arc-focused.'),
     sameChain ? (intent.locale === 'tr' ? 'Kaynak ve hedef ayni chain olamaz.' : 'Source and destination chain cannot be the same.') : null,
     unsupportedMainnet ? (intent.locale === 'tr' ? 'Mainnet route icin ekstra acik onay gerekir.' : 'Mainnet routes require extra explicit confirmation.') : null,
   ].filter(Boolean)

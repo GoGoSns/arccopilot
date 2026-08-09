@@ -276,7 +276,7 @@ export function DeFiRadar({ onBack, onOpenGogo }: DeFiRadarProps) {
               <div className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: '#118744' }}>Arc H2 / DeFi</div>
               <h1 className="mt-2 text-3xl font-semibold leading-none tracking-[-0.06em]">Find signal before action</h1>
               <p className="mt-3 max-w-[260px] text-xs leading-relaxed" style={{ color: muted }}>
-                ArcCopilot watches official/community/news signals, then separates discovery from tradability.
+                Regent watches official/community/news signals, then separates discovery from tradability.
               </p>
             </div>
             <div className="rounded-[22px] border bg-black p-3 text-white shadow-[0_10px_30px_rgba(18,17,15,0.16)]" style={{ borderColor: green }}>
@@ -325,7 +325,7 @@ export function DeFiRadar({ onBack, onOpenGogo }: DeFiRadarProps) {
           <div className="mt-3 grid gap-2 text-[11px] leading-relaxed text-white/66">
             <p>No contract address means not tradable.</p>
             <p>No ArcScan / verified-contract / liquidity proof means risky.</p>
-            <p>Gogo can explain signals, but ArcCopilot will not invent protocols or recommend buys.</p>
+            <p>Gogo can explain signals, but Regent will not invent protocols or recommend buys.</p>
           </div>
         </section>
 
@@ -357,7 +357,7 @@ export function DeFiRadar({ onBack, onOpenGogo }: DeFiRadarProps) {
                 <Sparkles size={16} /> No DeFi signal yet
               </div>
               <p className="mt-2 text-xs leading-relaxed" style={{ color: muted }}>
-                ArcCopilot did not find official/community/news items matching DeFi categories. Nothing is shown just for looks.
+                Regent did not find official/community/news items matching DeFi categories. Nothing is shown just for looks.
               </p>
             </div>
           ) : null}

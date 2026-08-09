@@ -100,7 +100,7 @@ async function syncWalletAddressToChrome(address: string | null): Promise<void> 
       await chromeStorageRemove(WALLET_ADDRESS_STORAGE_KEY, undefined, 'wallet address clear')
     }
   } catch (error) {
-    debugWarn('[ArcCopilot] wallet address sync failed:', error)
+    debugWarn('[Regent] wallet address sync failed:', error)
   }
 }
 
@@ -112,7 +112,7 @@ async function syncAddressBookToChrome(memories: Record<string, AddressMemory>):
       [ADDRESS_BOOK_STORAGE_KEY]: normalizeAddressBook(memories),
     }, undefined, 'address book sync')
   } catch (error) {
-    debugWarn('[ArcCopilot] address book sync failed:', error)
+    debugWarn('[Regent] address book sync failed:', error)
   }
 }
 

@@ -1,6 +1,6 @@
 /// <reference types="chrome" />
 /**
- * ArcCopilot service worker
+ * Regent service worker
  * - Handles content-script and popup messages (OPEN_SEND, FETCH_ARC_DISCORD)
  * - Whale polling via chrome.alarms (every 5 min)
  * - Native notifications for whale movement, incoming USDC, and balance changes
@@ -25,7 +25,7 @@ import { debugLog, debugWarn } from '@/lib/debug'
 import { chromeStorageGet, chromeStorageRemove, chromeStorageSet, fetchWithTimeout } from '@/lib/external'
 
 const ARC_DISCORD_API_URL = 'https://discord.com/api/v10/invites/buildonarc?with_counts=true'
-const ARC_DISCORD_USER_AGENT = 'ArcCopilot/0.3'
+const ARC_DISCORD_USER_AGENT = 'Regent/0.3'
 const LAST_SEEN_PREFIX = 'arccopilot:whale:last-seen:'
 const USDC_DECIMALS = 6
 const LAST_KNOWN_BALANCE_WALLET_KEY = 'arccopilot:last-known-balance-wallet'
@@ -135,7 +135,7 @@ function formatDiscordFetchError(diagnostics: DiscordFetchDiagnostics): string {
 }
 
 function logDiscordFetchDiagnostics(diagnostics: DiscordFetchDiagnostics): void {
-  console.warn('[ArcCopilot SW] Discord counts fetch failed', diagnostics)
+  console.warn('[Regent SW] Discord counts fetch failed', diagnostics)
 }
 
 async function fetchCurrentUsdcBalance(address: string): Promise<string> {
@@ -321,12 +321,12 @@ function resolveWalletAddress(
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.alarms.create('whale-check', { periodInMinutes: 5 })
-  debugLog('[ArcCopilot SW] whale-check alarm created (5 min interval)')
+  debugLog('[Regent SW] whale-check alarm created (5 min interval)')
 })
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create('whale-check', { periodInMinutes: 5 })
-  debugLog('[ArcCopilot SW] whale-check alarm ensured on startup')
+  debugLog('[Regent SW] whale-check alarm ensured on startup')
   void runRecurringChecks()
 })
 
@@ -358,9 +358,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void (async () => {
       const counts = await fetchArcDiscordCounts()
       if (counts.error) {
-        debugWarn('[ArcCopilot SW] FETCH_ARC_DISCORD failed:', counts.error)
+        debugWarn('[Regent SW] FETCH_ARC_DISCORD failed:', counts.error)
       } else {
-        debugLog('[ArcCopilot SW] Arc Discord counts fetched')
+        debugLog('[Regent SW] Arc Discord counts fetched')
       }
       sendResponse(counts)
     })()
@@ -371,7 +371,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleOpenSend(message.recipient)
       .then(() => sendResponse({ ok: true }))
       .catch((err) => {
-        console.error('[ArcCopilot SW] handleOpenSend error:', err)
+        console.error('[Regent SW] handleOpenSend error:', err)
         sendResponse({ ok: false })
       })
     return true
@@ -384,7 +384,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'CHECK_WHALES_NOW') {
-    debugLog('[ArcCopilot SW] manual whale check triggered')
+    debugLog('[Regent SW] manual whale check triggered')
     checkWhales()
       .then(() => sendResponse({ ok: true }))
       .catch(() => sendResponse({ ok: false }))
@@ -441,7 +441,7 @@ async function checkDueReminders(): Promise<void> {
     chrome.notifications.create(`reminder-${reminder.id}`, {
       type: 'basic',
       iconUrl,
-      title: isTurkish ? 'ArcCopilot - Hatırlatıcı' : 'ArcCopilot - Reminder',
+      title: isTurkish ? 'Regent - Hatırlatıcı' : 'Regent - Reminder',
       message: reminder.text,
       priority: 2,
       buttons: [
@@ -521,14 +521,14 @@ async function handleReminderNotificationAction(reminderId: string, buttonIndex:
   }
 
   await chromeStorageSet({ [REMINDERS]: next })
-  debugLog('[ArcCopilot SW] reminder notification action', {
+  debugLog('[Regent SW] reminder notification action', {
     reminderId,
     action: buttonIndex === 0 ? 'complete' : 'snooze-hour',
   })
 }
 
 async function checkWhales(): Promise<void> {
-  debugLog('[ArcCopilot SW] checking whales...')
+  debugLog('[Regent SW] checking whales...')
 
   const bookResult = await chromeStorageGet(ADDRESS_BOOK_STORAGE_KEY)
   const rawBook = bookResult[ADDRESS_BOOK_STORAGE_KEY]
@@ -538,17 +538,17 @@ async function checkWhales(): Promise<void> {
     if (rawBook != null) {
       await chromeStorageRemove(ADDRESS_BOOK_STORAGE_KEY)
     }
-    debugLog('[ArcCopilot SW] no address book in storage')
+    debugLog('[Regent SW] no address book in storage')
     return
   }
 
   const whales = Object.values(book).filter((m) => m.tag === 'whale')
   if (whales.length === 0) {
-    debugLog('[ArcCopilot SW] no whales tracked')
+    debugLog('[Regent SW] no whales tracked')
     return
   }
 
-  debugLog('[ArcCopilot SW] tracking', whales.length, 'whale(s)')
+  debugLog('[Regent SW] tracking', whales.length, 'whale(s)')
 
   const lastSeenKeys = whales.map((w) => LAST_SEEN_PREFIX + w.address.toLowerCase())
   const lastSeenResult = await chromeStorageGet(lastSeenKeys)
@@ -583,7 +583,7 @@ async function checkWhales(): Promise<void> {
         await chromeStorageSet({ [lastSeenKey]: txHash })
 
         if (!lastSeenHash) {
-          debugLog('[ArcCopilot SW] initialized last-seen for', normalized)
+          debugLog('[Regent SW] initialized last-seen for', normalized)
           return
         }
 
@@ -591,19 +591,19 @@ async function checkWhales(): Promise<void> {
         const amount = formatBalanceSW(BigInt(latest.total?.value ?? '0'), USDC_DECIMALS)
         const label = whale.label ?? `${whale.address.slice(0, 6)}...${whale.address.slice(-4)}`
 
-        debugLog('[ArcCopilot SW] new whale tx:', label, direction, amount, 'USDC')
+        debugLog('[Regent SW] new whale tx:', label, direction, amount, 'USDC')
 
         chrome.notifications.create(`whale-${normalized}`, {
           type: 'basic',
           iconUrl,
-          title: 'ArcCopilot - Whale moved',
+          title: 'Regent - Whale moved',
           message: `${label} ${direction} ${amount} USDC`,
           priority: 2,
         })
 
         newActivity = true
       } catch (err) {
-        console.error('[ArcCopilot SW] error checking whale', shortAddress(normalized), err)
+        console.error('[Regent SW] error checking whale', shortAddress(normalized), err)
       }
     }),
   )
@@ -611,12 +611,12 @@ async function checkWhales(): Promise<void> {
   if (newActivity) {
     chrome.action.setBadgeText({ text: '•' })
     chrome.action.setBadgeBackgroundColor({ color: '#ffffff' })
-    debugLog('[ArcCopilot SW] badge set - new whale activity')
+    debugLog('[Regent SW] badge set - new whale activity')
   }
 }
 
 async function checkBalanceAndIncoming(): Promise<void> {
-  debugLog('[ArcCopilot SW] checking balance and incoming transfers...')
+  debugLog('[Regent SW] checking balance and incoming transfers...')
 
   try {
     const storage = await chromeStorageGet([
@@ -632,7 +632,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
     const walletAddress = resolveWalletAddress(storage[WALLET_ADDRESS_STORAGE_KEY], addressBook)
 
     if (!walletAddress) {
-      debugLog('[ArcCopilot SW] no wallet address available for balance checks')
+      debugLog('[Regent SW] no wallet address available for balance checks')
       return
     }
 
@@ -662,7 +662,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
         chrome.notifications.create(`balance-${walletAddress}-${Date.now()}`, {
           type: 'basic',
           iconUrl,
-          title: 'ArcCopilot - Balance changed',
+          title: 'Regent - Balance changed',
           message: `Bakiyen ${knownBalance.toFixed(2)} -> ${currentBalanceValue.toFixed(2)} USDC`,
           priority: 2,
         })
@@ -704,7 +704,7 @@ async function checkBalanceAndIncoming(): Promise<void> {
       })
     }
   } catch (err) {
-    console.error('[ArcCopilot SW] balance/incoming check failed:', err)
+    console.error('[Regent SW] balance/incoming check failed:', err)
   }
 }
 
@@ -714,12 +714,12 @@ async function handleOpenSend(recipient: string): Promise<void> {
 
   try {
     if (typeof (chrome.action as any)?.openPopup !== 'function') {
-      debugWarn('[ArcCopilot SW] openPopup unavailable')
+      debugWarn('[Regent SW] openPopup unavailable')
       return
     }
     await (chrome.action as any).openPopup()
   } catch (err) {
-    debugWarn('[ArcCopilot SW] openPopup unavailable:', err)
+    debugWarn('[Regent SW] openPopup unavailable:', err)
   }
 }
 

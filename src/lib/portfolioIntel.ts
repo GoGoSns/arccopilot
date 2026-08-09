@@ -426,7 +426,7 @@ async function callAIPortfolioRead(data: PortfolioIntelResult): Promise<string |
 
   const language = getLocalePromptLanguage(getLocaleSync())
   const systemPrompt = [
-    'You write short portfolio reads for ArcCopilot.',
+    'You write short portfolio reads for Regent.',
     'Use only the supplied real data.',
     'Do not invent balances, totals, recipients, transaction counts, or time windows.',
     'If a value is null or unavailable, say that plainly instead of guessing.',

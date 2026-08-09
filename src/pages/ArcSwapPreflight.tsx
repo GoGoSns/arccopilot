@@ -137,7 +137,7 @@ export function ArcSwapPreflight({ onBack, onOpenGogo }: ArcSwapPreflightProps) 
             <div>
               <p className="text-sm font-semibold">Risk line</p>
               <p className="mt-1 text-[11px] leading-relaxed text-white/55">
-                Swap Kit/App Kit quotes need a server-side kit key. ArcCopilot does not expose that key in the extension and does not request a wallet signature from this screen.
+                Swap Kit/App Kit quotes need a server-side kit key. Regent does not expose that key in the extension and does not request a wallet signature from this screen.
               </p>
             </div>
           </div>

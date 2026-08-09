@@ -1,8 +1,8 @@
-# ArcCopilot
+# Regent
 
 **An onchain chief of staff for Arc.**
 
-ArcCopilot is a multi-user Chrome extension AI agent that does more than execute commands. Any user can pair with MetaMask, receive their own Circle W3S agent wallet, fund it, and set their own weekly budget, per-tip cap, and allowlist. ArcCopilot watches the Arc ecosystem on each user's behalf, decides who to support and how much, can execute signatureless USDC nanopayments autonomously from that user's agent wallet, and can unlock paid HTTP resources through x402 after explicit user approval.
+Regent is a multi-user Chrome extension AI agent that does more than execute commands. Any user can pair with MetaMask, receive their own Circle W3S agent wallet, fund it, and set their own weekly budget, per-tip cap, and allowlist. Regent watches the Arc ecosystem on each user's behalf, decides who to support and how much, can execute signatureless USDC nanopayments autonomously from that user's agent wallet, and can unlock paid HTTP resources through x402 after explicit user approval.
 
 Built by GoGo for the Encode Programmable Money Hackathon, Build on Arc.
 
@@ -10,14 +10,14 @@ Built by GoGo for the Encode Programmable Money Hackathon, Build on Arc.
 
 ## What it does
 
-ArcCopilot is a personal onchain assistant built as a multi-user product. Each user pairs independently, gets an independently funded agent wallet, and controls the limits that govern what their agent can do.
+Regent is a personal onchain assistant built as a multi-user product. Each user pairs independently, gets an independently funded agent wallet, and controls the limits that govern what their agent can do.
 
 ### Autonomous, signatureless payments (Circle W3S)
 The agent can send USDC on Arc **without a per-transaction wallet signature**. Pairing starts with a SIWE-style MetaMask signature, then the backend provisions that user their own Circle W3S (developer-controlled) agent wallet. The user funds that wallet and defines its weekly budget, per-tip cap, and recipient allowlist. Every autonomous transfer is enforced against that user's policy server-side and recorded in their ledger. No private key ever lives in the extension.
 
 Users can also create recurring autonomous payments from Settings. Daily, weekly, and 30-day schedules execute from the paired agent wallet, use a stable idempotency key for each occurrence, and recheck the live policy and wallet state before every payment. Schedules can be paused, resumed, or removed from the extension.
 
-This is opt-in. When "Autonomous mode for my agent" is off, ArcCopilot uses the standard MetaMask / Circle Gateway flow and you sign each transaction yourself. The legacy single-operator autonomous mode remains available as a fallback.
+This is opt-in. When "Autonomous mode for my agent" is off, Regent uses the standard MetaMask / Circle Gateway flow and you sign each transaction yourself. The legacy single-operator autonomous mode remains available as a fallback.
 
 ### Proactive tip advisor
 The agent decides who to tip and how much, using real signals: recent X activity for a creator, your tip history, and your remaining budget. It explains its reasoning ("active on X", "balancing your support", "you haven't supported them recently") and never fabricates activity. If a signal is unavailable, it degrades honestly and says so.
@@ -41,7 +41,7 @@ Reminders you set, plus smart task suggestions the agent proposes from real stat
 Users can pair Telegram or WhatsApp from Settings with a one-time code. If the backend exposes a public Telegram bot username, Settings can open the bot directly and can include the pairing code in the Telegram `/start` payload. Phone commands are intentionally narrow and safe: `help`, `balance`, `status`, `schedules`, `pause 1`, and `resume 1`. Direct message-based transfers are disabled; new payments and x402 access still stay inside the normal approved app flow.
 
 ### x402 paid access
-Gogo can inspect an x402 URL without paying, verify that it is an Arc Testnet USDC + Circle Gateway offer, and show the exact price, network, and seller. The user must then tap **Pay & access** before MetaMask is asked for an EIP-712 authorization. ArcCopilot re-fetches and compares the quote immediately before signing, rejects changed terms, and caps this initial flow at 1 USDC. Type `x402 demo` in Gogo to use the companion backend's protected test resource.
+Gogo can inspect an x402 URL without paying, verify that it is an Arc Testnet USDC + Circle Gateway offer, and show the exact price, network, and seller. The user must then tap **Pay & access** before MetaMask is asked for an EIP-712 authorization. Regent re-fetches and compares the quote immediately before signing, rejects changed terms, and caps this initial flow at 1 USDC. Type `x402 demo` in Gogo to use the companion backend's protected test resource.
 
 ### Free always-on scheduling via external cron
 The backend can run on a free sleeping host while preserving scheduled-payment reliability. A secured external cron endpoint wakes the worker every minute, reuses the same due-payment processor as the in-process scheduler, and requires `X-Cron-Secret` before doing any work. The current demo deployment uses Render Free + Neon + cron-job.org, so the web service may sleep but scheduled payments are still externally triggered.
@@ -50,7 +50,7 @@ The backend can run on a free sleeping host while preserving scheduled-payment r
 
 ## Circle stack
 
-ArcCopilot is built end-to-end on Circle's tooling for Arc:
+Regent is built end-to-end on Circle's tooling for Arc:
 
 - **USDC on Arc Testnet** — the unit for every payment.
 - **Circle W3S Programmable Wallets** — one signatureless agent wallet provisioned per paired user, signed server-side with no local key.
@@ -103,11 +103,11 @@ Explorer: https://testnet.arcscan.app
 
 ## How to install and try it
 
-ArcCopilot is currently installed as an unpacked Chrome extension. Chrome Web Store publishing is on the roadmap.
+Regent is currently installed as an unpacked Chrome extension. Chrome Web Store publishing is on the roadmap.
 
 ```bash
 git clone https://github.com/GoGoSns/arccopilot.git
-cd arccopilot
+cd Regent
 pnpm install
 pnpm build
 ```

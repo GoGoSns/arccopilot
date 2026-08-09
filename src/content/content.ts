@@ -1,5 +1,5 @@
 /**
- * ArcCopilot - Universal Tip Button
+ * Regent - Universal Tip Button
  * Scans supported pages for Ethereum addresses and adds a premium hover tip card.
  */
 
@@ -56,7 +56,7 @@ function rgba(hex: string, alpha: number): string {
 }
 
 function main(): void {
-  debugLog('[ArcCopilot] content script loaded', location.href)
+  debugLog('[Regent] content script loaded', location.href)
 
   // Standalone addresses only:
   // - 0x + exactly 40 hex chars => match
@@ -267,7 +267,7 @@ function main(): void {
   }
 
   const activeAdapter = pickAdapter()
-  debugLog('[ArcCopilot] adapter active:', activeAdapter.name)
+  debugLog('[Regent] adapter active:', activeAdapter.name)
 
   function shortenAddress(address: string, chars = 4): string {
     return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
@@ -329,16 +329,16 @@ function main(): void {
       try {
         chrome.runtime.sendMessage({ type: 'OPEN_SEND', recipient: address }, () => {
           if (chrome.runtime.lastError) {
-            debugWarn('[ArcCopilot] sendMessage failed:', chrome.runtime.lastError.message)
+            debugWarn('[Regent] sendMessage failed:', chrome.runtime.lastError.message)
             resolve(false)
             return
           }
 
-          debugLog('[ArcCopilot] OPEN_SEND message sent', address)
+          debugLog('[Regent] OPEN_SEND message sent', address)
           resolve(true)
         })
       } catch (error) {
-        debugWarn('[ArcCopilot] sendMessage error:', error)
+        debugWarn('[Regent] sendMessage error:', error)
         resolve(false)
       }
     })
@@ -397,11 +397,11 @@ function main(): void {
             setSaveButtonState(true)
           }
 
-          debugLog('[ArcCopilot] address saved', address)
+          debugLog('[Regent] address saved', address)
         })
       })
     } catch (error) {
-      debugWarn('[ArcCopilot] save failed:', error)
+      debugWarn('[Regent] save failed:', error)
     }
   }
 
@@ -469,7 +469,7 @@ function main(): void {
     } as unknown as CSSStyleDeclaration)
 
     const brandLabel = document.createElement('span')
-    brandLabel.textContent = 'ArcCopilot'
+    brandLabel.textContent = 'Regent'
     Object.assign(brandLabel.style, {
       fontSize: '11px',
       fontWeight: '800',
@@ -582,7 +582,7 @@ function main(): void {
       const address = getActiveAddress()
       if (!address) return
 
-      debugLog('[ArcCopilot] tip clicked', address)
+      debugLog('[Regent] tip clicked', address)
       clearHideTimer()
       void sendOpenSend(address).then((sent) => {
         if (sent) {
@@ -606,7 +606,7 @@ function main(): void {
       const address = getActiveAddress()
       if (!address) return
 
-      debugLog('[ArcCopilot] save clicked', address)
+      debugLog('[Regent] save clicked', address)
       saveAddressToBook(address)
     })
 
@@ -837,7 +837,7 @@ function main(): void {
       try {
         wrapped += wrapTextNode(entry.node, entry.matches).wrapped
       } catch (error) {
-        debugWarn('[ArcCopilot] wrap failed:', error)
+        debugWarn('[Regent] wrap failed:', error)
       }
     }
 
@@ -862,8 +862,8 @@ function main(): void {
       totalWrapped += fallback.wrapped
     }
 
-    debugLog('[ArcCopilot] address matches found', totalMatches)
-    debugLog('[ArcCopilot] wrapped addresses', totalWrapped)
+    debugLog('[Regent] address matches found', totalMatches)
+    debugLog('[Regent] wrapped addresses', totalWrapped)
   }
 
   function scheduleScan(): void {
@@ -878,7 +878,7 @@ function main(): void {
       try {
         scanActivePage()
       } catch (error) {
-        debugWarn('[ArcCopilot] scan failed:', error)
+        debugWarn('[Regent] scan failed:', error)
       }
 
       if (scanQueued) {
@@ -901,7 +901,7 @@ function main(): void {
         }
       }
     } catch (error) {
-      debugWarn('[ArcCopilot] observer failed:', error)
+      debugWarn('[Regent] observer failed:', error)
     }
   })
 
@@ -932,7 +932,7 @@ function main(): void {
 try {
   main()
 } catch (error) {
-  debugWarn('[ArcCopilot] content script fatal error:', error)
+  debugWarn('[Regent] content script fatal error:', error)
 }
 
 export {}

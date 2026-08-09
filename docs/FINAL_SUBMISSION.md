@@ -1,8 +1,8 @@
-# ArcCopilot final submission
+# Regent final submission
 
 ## Project
 
-ArcCopilot
+Regent
 
 ## Track
 
@@ -12,15 +12,15 @@ Secondary fit: DeFi, through read-only DeFi discovery, Arc token monitoring, CCT
 
 ## One-liner
 
-ArcCopilot is a USDC-first agent control layer for Arc: a browser assistant that reads real wallet, community, and onchain signals, then prepares or executes policy-bound USDC actions without bypassing user limits or explicit approvals.
+Regent is a USDC-first agent control layer for Arc: a browser assistant that reads real wallet, community, and onchain signals, then prepares or executes policy-bound USDC actions without bypassing user limits or explicit approvals.
 
 ## Short description
 
-ArcCopilot gives Arc users a Gogo AI assistant, wallet view, x402 paid-resource access, scheduled USDC payments, CCTP bridge preflight, DeFi discovery, and proof-first token/meme radar in one Chrome extension. The agent can reason over real signals and prepare money movement, but every sensitive action is constrained by server-side policy, user-defined budgets, allowlists, and explicit confirmation.
+Regent gives Arc users a Gogo AI assistant, wallet view, x402 paid-resource access, scheduled USDC payments, CCTP bridge preflight, DeFi discovery, and proof-first token/meme radar in one Chrome extension. The agent can reason over real signals and prepare money movement, but every sensitive action is constrained by server-side policy, user-defined budgets, allowlists, and explicit confirmation.
 
 ## Longer description
 
-Most crypto automation asks users to choose between convenience and control. ArcCopilot is built around a different thesis: autonomy without bypass.
+Most crypto automation asks users to choose between convenience and control. Regent is built around a different thesis: autonomy without bypass.
 
 The user sees a wallet and assistant, but the system underneath is a control layer for USDC actions on Arc Testnet. Gogo AI can summarize portfolio state, suggest creators to tip, inspect x402 paid resources, create recurring USDC schedules, explain Arc/DeFi/token signals, and prepare bridge flows. Real payments are bounded by policy: weekly budget, per-tip cap, recipient allowlist, live wallet checks, and explicit user approval for x402 and MetaMask/Gateway flows.
 
@@ -68,7 +68,7 @@ Note: the Render root path may return `not_found`; this is expected. Use app end
 
 ## Demo path
 
-1. Open ArcCopilot Wallet and show Arc Testnet balance.
+1. Open Regent Wallet and show Arc Testnet balance.
 2. Open Gogo AI and run `launch readiness`.
 3. Run `portfolio`.
 4. Run `who should I tip`.
@@ -101,5 +101,5 @@ Note: the Render root path may return `not_found`; this is expected. Use app end
 
 ## Final positioning
 
-ArcCopilot is not trying to be a trading bot. It is a safe control layer for stablecoin-native agents on Arc: it lets an assistant see, reason, prepare, and in constrained cases act — without bypassing the human-defined policy envelope.
+Regent is not trying to be a trading bot. It is a safe control layer for stablecoin-native agents on Arc: it lets an assistant see, reason, prepare, and in constrained cases act — without bypassing the human-defined policy envelope.
 

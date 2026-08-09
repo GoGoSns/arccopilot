@@ -1,4 +1,4 @@
-# ArcCopilot product roadmap
+# Regent product roadmap
 
 This roadmap keeps the product aligned with the core philosophy: a powerful assistant that can learn, explain, prepare, and act — but only with real data, proof, policy, and explicit approval where money movement is involved.
 
@@ -65,7 +65,7 @@ Upgrade current preflight screen into a step timeline:
 - mint
 - recovery status
 
-Guardrail: ArcCopilot never starts a bridge automatically.
+Guardrail: Regent never starts a bridge automatically.
 
 ## Next 4: Swap preflight for Arc
 
@@ -126,7 +126,7 @@ Rules:
 
 ## Product north star
 
-ArcCopilot should feel like a chief of staff for programmable money:
+Regent should feel like a chief of staff for programmable money:
 
 - it sees more than the user wants to manually check
 - it explains what matters

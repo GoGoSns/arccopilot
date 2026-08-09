@@ -285,7 +285,7 @@ export function Send({ onBack }: SendProps) {
       const result = await requestMetaMaskAccounts(tab.id)
       const account = handleMetaMaskAccountResult(result)
       if (!account) {
-        const error = 'error' in result ? result.error : { message: 'MetaMask permission needed. Please connect your wallet to ArcCopilot and try again.' }
+        const error = 'error' in result ? result.error : { message: 'MetaMask permission needed. Please connect your wallet to Regent and try again.' }
         throw new Error(getMetaMaskFriendlyError(error))
       }
     } catch (err: any) {

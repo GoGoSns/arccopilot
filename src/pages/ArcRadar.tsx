@@ -482,7 +482,7 @@ export function ArcRadar({ onBack, onOpenGogo, onOpenCalendar }: ArcRadarProps) 
 
             {error ? (
               <div className="mt-3 rounded-[16px] border border-amber-700/20 bg-amber-100/45 px-3 py-3 text-xs leading-relaxed text-amber-950">
-                Could not load live radar: {error}. No token list is shown because ArcCopilot does not use fake radar data.
+                Could not load live radar: {error}. No token list is shown because Regent does not use fake radar data.
               </div>
             ) : null}
 
