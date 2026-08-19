@@ -84,6 +84,65 @@ function ActionTile({
   )
 }
 
+function CompactToolTile({
+  label,
+  eyebrow,
+  Icon,
+  onClick,
+  tone = 'neutral',
+}: {
+  label: string
+  eyebrow: string
+  Icon: LucideIcon
+  onClick: () => void
+  tone?: 'neutral' | 'green' | 'amber'
+}) {
+  const toneStyles = {
+    neutral: {
+      bg: 'rgba(255, 255, 255, 0.035)',
+      border: 'rgba(255, 255, 255, 0.09)',
+      iconBg: 'rgba(255, 255, 255, 0.045)',
+      iconBorder: 'rgba(255, 255, 255, 0.12)',
+      accent: 'text-arc-text-dim',
+    },
+    green: {
+      bg: 'rgba(16, 185, 129, 0.07)',
+      border: 'rgba(110, 231, 183, 0.18)',
+      iconBg: 'rgba(110, 231, 183, 0.10)',
+      iconBorder: 'rgba(110, 231, 183, 0.22)',
+      accent: 'text-emerald-100/75',
+    },
+    amber: {
+      bg: 'rgba(245, 158, 11, 0.075)',
+      border: 'rgba(245, 158, 11, 0.22)',
+      iconBg: 'rgba(245, 158, 11, 0.10)',
+      iconBorder: 'rgba(245, 158, 11, 0.22)',
+      accent: 'text-amber-100/75',
+    },
+  }[tone]
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group min-h-[92px] border p-3 text-left transition-colors hover:border-white/20"
+      style={makeCardStyle(toneStyles.bg, toneStyles.border, MONOCHROME_DARK.radius.iconTile)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center border text-white"
+          style={makeCardStyle(toneStyles.iconBg, toneStyles.iconBorder, MONOCHROME_DARK.radius.iconTile)}
+        >
+          <Icon size={16} strokeWidth={1.85} />
+        </div>
+        <ChevronRight size={13} className="mt-2 shrink-0 text-arc-hint transition-transform group-hover:translate-x-0.5" />
+      </div>
+      <p className={`mt-3 font-mono text-[9px] uppercase tracking-[0.18em] ${toneStyles.accent}`}>{eyebrow}</p>
+      <p className="mt-1 text-[13px] font-medium leading-snug text-white">{label}</p>
+    </button>
+  )
+}
+
 function BottomNavItem({
   label,
   Icon,
@@ -648,63 +707,24 @@ export function Wallet({
 
           {actionError ? <p className="px-0.5 text-[11px] text-arc-text-dim">{actionError}</p> : null}
 
-          {dueReminders.length > 0 ? (
-            <button
-              type="button"
+          <div className="grid grid-cols-2 gap-2">
+            {dueReminders.length > 0 ? (
+              <CompactToolTile
+                label={dueReminderPreview ? `${dueReminderSummary} · ${dueReminderPreview}` : dueReminderSummary}
+                eyebrow={firstDueReminder ? getReminderDueLabel(firstDueReminder) : 'Attention'}
+                Icon={Bell}
+                onClick={openCalendar}
+                tone="amber"
+              />
+            ) : null}
+            <CompactToolTile
+              label={dueReminders.length > 0 ? dueReminderSummary : 'No due reminders'}
+              eyebrow={todayLabel}
+              Icon={CalendarDays}
               onClick={openCalendar}
-              className="group flex w-full items-center gap-3 border px-3 py-2.5 text-left transition-colors hover:border-amber-200/35"
-              style={makeCardStyle('rgba(245, 158, 11, 0.075)', 'rgba(245, 158, 11, 0.22)', MONOCHROME_DARK.radius.pill)}
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-300/12 text-[14px]" aria-hidden="true">
-                ⚠
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium text-white">
-                  {dueReminderSummary}{dueReminderPreview ? ` · ${dueReminderPreview}` : ''}
-                </span>
-                {firstDueReminder ? (
-                  <span className="mt-0.5 block text-[10px] uppercase tracking-[0.16em] text-amber-100/70">
-                    {getReminderDueLabel(firstDueReminder)}
-                  </span>
-                ) : null}
-              </span>
-              <ChevronRight size={14} className="shrink-0 text-amber-100/55 transition-transform group-hover:translate-x-0.5" />
-            </button>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={openCalendar}
-            className="group w-full overflow-hidden border px-4 py-3 text-left transition-colors hover:border-white/25"
-            style={{
-              ...makeCardStyle('rgba(255, 255, 255, 0.035)', 'rgba(255, 255, 255, 0.09)', MONOCHROME_DARK.radius.card),
-              backgroundImage:
-                'linear-gradient(90deg, rgba(110,231,183,0.10), transparent 36%), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)',
-              backgroundSize: 'auto, 24px 24px, 24px 24px',
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center border border-emerald-200/20 bg-emerald-200/10 text-emerald-100"
-                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
-              >
-                <CalendarDays size={17} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-100/80">Calendar</p>
-                  <span className="shrink-0 text-[10px] text-arc-text-dim">{todayLabel}</span>
-                </div>
-                <p className="mt-1 truncate text-sm font-medium text-white">
-                  {dueReminders.length > 0 ? dueReminderSummary : 'No due reminders'}
-                </p>
-                <p className="mt-0.5 truncate text-[11px] text-arc-text-dim">
-                  {dueReminderPreview || 'Scheduled USDC actions and reminders'}
-                </p>
-              </div>
-              <ChevronRight size={15} className="shrink-0 text-arc-hint transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </button>
+              tone="green"
+            />
+          </div>
 
           {scanPanelOpen ? (
             <div className="border px-4 py-4" style={makeCardStyle(MONOCHROME_DARK.colors.surface, MONOCHROME_DARK.colors.border, MONOCHROME_DARK.radius.card)}>
@@ -758,49 +778,12 @@ export function Wallet({
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={openTools}
-            className="group relative w-full overflow-hidden border px-4 py-4 text-left transition-colors hover:border-emerald-300/50"
-            style={{
-              ...makeCardStyle('rgba(7, 13, 11, 0.96)', 'rgba(110, 231, 183, 0.22)', MONOCHROME_DARK.radius.card),
-              backgroundImage:
-                'linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px), radial-gradient(circle at 85% 18%, rgba(52, 211, 153, 0.16), transparent 34%)',
-              backgroundSize: '28px 28px, 28px 28px, auto',
-            }}
-          >
-            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/70 to-transparent opacity-70" />
-            <div className="flex items-start gap-3">
-              <div
-                className="flex h-11 w-11 shrink-0 items-center justify-center border border-emerald-200/30 bg-emerald-200/10 text-emerald-100 shadow-[0_0_24px_rgba(52,211,153,0.12)]"
-                style={{ borderRadius: MONOCHROME_DARK.radius.iconTile }}
-              >
-                <Settings2 size={18} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-200/90">Arc Toolkit</p>
-                    <p className="mt-1 text-sm font-medium text-white">Agent Stack, DeFi, Radar, Bridge</p>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-emerald-200/25 bg-emerald-200/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-emerald-100">
-                    Menu
-                  </span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-arc-text-dim">
-                  Keep the wallet clean; open the builder surface for H2 priorities, proof, and policy-bound actions.
-                </p>
-                <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-emerald-100/70">
-                  <span>Signal</span>
-                  <span className="h-px flex-1 bg-emerald-200/20" />
-                  <span>Policy</span>
-                  <span className="h-px flex-1 bg-emerald-200/20" />
-                  <span>Proof</span>
-                </div>
-              </div>
-              <ChevronRight size={16} className="mt-3 shrink-0 text-emerald-100/60 transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <CompactToolTile label="Gogo AI" eyebrow="Assistant" Icon={Sparkles} onClick={openGogo} tone="green" />
+            <CompactToolTile label={t('nav.brief')} eyebrow="Signals" Icon={FileText} onClick={onOpenBrief} />
+            <CompactToolTile label="Arc Toolkit" eyebrow="Menu" Icon={Settings2} onClick={openTools} tone="green" />
+            <CompactToolTile label={t('nav.activity')} eyebrow="Proof" Icon={ActivityIcon} onClick={onOpenActivity} />
+          </div>
 
           <div className="pt-1">
             <PortfolioSection
