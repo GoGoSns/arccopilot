@@ -3,6 +3,7 @@ import {
   Activity as ActivityIcon,
   ArrowDownLeft,
   ArrowUpRight,
+  Bell,
   CalendarDays,
   ChevronRight,
   Copy,
