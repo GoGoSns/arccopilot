@@ -779,12 +779,13 @@ export function Wallet({
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2">
-            <CompactToolTile label="Gogo AI" eyebrow="Assistant" Icon={Sparkles} onClick={openGogo} tone="green" />
-            <CompactToolTile label={t('nav.brief')} eyebrow="Signals" Icon={FileText} onClick={onOpenBrief} />
-            <CompactToolTile label="Arc Toolkit" eyebrow="Menu" Icon={Settings2} onClick={openTools} tone="green" />
-            <CompactToolTile label={t('nav.activity')} eyebrow="Proof" Icon={ActivityIcon} onClick={onOpenActivity} />
-          </div>
+          <CompactToolTile
+            label="Agent Stack, DeFi, Radar, Bridge"
+            eyebrow="Arc Toolkit"
+            Icon={Settings2}
+            onClick={openTools}
+            tone="green"
+          />
 
           <div className="pt-1">
             <PortfolioSection
