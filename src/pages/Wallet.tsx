@@ -18,7 +18,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { t, formatText } from '@/lib/i18n'
+import { t, formatText, useLocale } from '@/lib/i18n'
 import { useStore, type PortfolioTokenBalance } from '@/lib/store'
 import { useUSDCBalance } from '@/lib/hooks/useUSDCBalance'
 import { usePortfolioBalances } from '@/lib/portfolio'
@@ -91,12 +91,14 @@ function CompactToolTile({
   Icon,
   onClick,
   tone = 'neutral',
+  className = '',
 }: {
   label: string
   eyebrow: string
   Icon: LucideIcon
   onClick: () => void
   tone?: 'neutral' | 'green' | 'amber'
+  className?: string
 }) {
   const toneStyles = {
     neutral: {
@@ -126,7 +128,7 @@ function CompactToolTile({
     <button
       type="button"
       onClick={onClick}
-      className="group min-h-[92px] border p-3 text-left transition-colors hover:border-white/20"
+      className={`group min-h-[92px] border p-3 text-left transition-colors hover:border-white/20 ${className}`}
       style={makeCardStyle(toneStyles.bg, toneStyles.border, MONOCHROME_DARK.radius.iconTile)}
     >
       <div className="flex items-start justify-between gap-2">
@@ -329,6 +331,22 @@ export function Wallet({
   onOpenGogo,
   onOpenTools,
 }: WalletProps) {
+  const locale = useLocale()
+  const tileCopy = locale === 'tr'
+    ? {
+        oneReminderOverdue: '1 gecikmiş hatırlatıcı',
+        remindersDue: (count: number) => `${count} hatırlatıcı bekliyor`,
+        openCalendar: 'Takvimi aç',
+        toolkit: 'Arc Araçları',
+        toolkitDescription: 'Ajanlar, DeFi, Radar, Köprü',
+      }
+    : {
+        oneReminderOverdue: '1 reminder overdue',
+        remindersDue: (count: number) => `${count} reminders due`,
+        openCalendar: 'Open calendar',
+        toolkit: 'Arc Toolkit',
+        toolkitDescription: 'Agent Stack, DeFi, Radar, Bridge',
+      }
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingReady, setOnboardingReady] = useState(false)
@@ -422,14 +440,14 @@ export function Wallet({
   const openGogo = onOpenGogo ?? (() => {})
   const openCalendar = onOpenCalendar ?? onOpenBrief
   const openTools = onOpenTools ?? openGogo
-  const todayLabel = new Intl.DateTimeFormat(undefined, {
+  const todayLabel = new Intl.DateTimeFormat(locale === 'tr' ? 'tr-TR' : 'en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
   }).format(new Date())
   const firstDueReminder = dueReminders[0]
   const dueReminderSummary =
-    dueReminders.length === 1 ? '1 reminder overdue' : `${dueReminders.length} reminders due`
+    dueReminders.length === 1 ? tileCopy.oneReminderOverdue : tileCopy.remindersDue(dueReminders.length)
   const dueReminderPreview = firstDueReminder?.text?.trim() ?? ''
 
   const dismissOnboarding = () => {
@@ -712,18 +730,27 @@ export function Wallet({
             {dueReminders.length > 0 ? (
               <CompactToolTile
                 label={dueReminderPreview ? `${dueReminderSummary} · ${dueReminderPreview}` : dueReminderSummary}
-                eyebrow={firstDueReminder ? getReminderDueLabel(firstDueReminder) : 'Attention'}
+                eyebrow={firstDueReminder ? getReminderDueLabel(firstDueReminder) : t('planner.overdue')}
                 Icon={Bell}
                 onClick={openCalendar}
                 tone="amber"
               />
             ) : null}
             <CompactToolTile
-              label={dueReminders.length > 0 ? dueReminderSummary : 'No due reminders'}
+              label={tileCopy.openCalendar}
               eyebrow={todayLabel}
               Icon={CalendarDays}
               onClick={openCalendar}
               tone="green"
+              className={dueReminders.length === 0 ? 'col-span-2' : ''}
+            />
+            <CompactToolTile
+              label={tileCopy.toolkitDescription}
+              eyebrow={tileCopy.toolkit}
+              Icon={Settings2}
+              onClick={openTools}
+              tone="green"
+              className="col-span-2"
             />
           </div>
 
@@ -778,14 +805,6 @@ export function Wallet({
               </div>
             </div>
           ) : null}
-
-          <CompactToolTile
-            label="Agent Stack, DeFi, Radar, Bridge"
-            eyebrow="Arc Toolkit"
-            Icon={Settings2}
-            onClick={openTools}
-            tone="green"
-          />
 
           <div className="pt-1">
             <PortfolioSection
