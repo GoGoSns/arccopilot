@@ -484,7 +484,7 @@ export function parseDeterministicTipIntent(message: string): DeterministicTipIn
 }
 
 function parseScheduleIntervalHours(message: string): number | null {
-  const normalized = normalizeIntentText(message).replace(/Ä±/g, 'i')
+  const normalized = normalizeIntentText(message).replace(/ı/g, 'i')
   if (!SCHEDULE_PAYMENT_PATTERN.test(normalized)) return null
 
   const explicitMatch = normalized.match(/\b(?:every|per|her)\s+(\d+)\s*(hour|hours|hr|hrs|saat|day|days|gun|week|weeks|hafta)\b/)
@@ -561,7 +561,7 @@ function convergeResolvedDirectTips(response: GogoResponse, userMessage: string)
 
 function parseGreetingIntent(message: string): 'en' | 'tr' | null {
   const normalized = normalizeIntentText(message)
-    .replace(/Ä±/g, 'i')
+    .replace(/ı/g, 'i')
     .replace(/[!?.,;:]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()

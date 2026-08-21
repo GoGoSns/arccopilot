@@ -56,7 +56,7 @@ function getTokenBadgeLabel(token: PortfolioTokenBalance): string {
   const nameInitial = token.name.trim().slice(0, 1)
   if (nameInitial) return nameInitial.toUpperCase()
 
-  return 'â€¢'
+  return '•'
 }
 
 function ActionTile({
@@ -294,7 +294,7 @@ function PortfolioSection({
 
                   <div className="shrink-0 text-right">
                     <p className="font-medium text-white">{token.balance}</p>
-                    <p className="mt-0.5 text-[11px] text-arc-hint">{usdValue ?? 'â€”'}</p>
+                    <p className="mt-0.5 text-[11px] text-arc-hint">{usdValue ?? '—'}</p>
                   </div>
                 </div>
               </div>
@@ -332,21 +332,6 @@ export function Wallet({
   onOpenTools,
 }: WalletProps) {
   const locale = useLocale()
-  const tileCopy = locale === 'tr'
-    ? {
-        oneReminderOverdue: '1 gecikmiş hatırlatıcı',
-        remindersDue: (count: number) => `${count} hatırlatıcı bekliyor`,
-        openCalendar: 'Takvimi aç',
-        toolkit: 'Arc Araçları',
-        toolkitDescription: 'Ajanlar, DeFi, Radar, Köprü',
-      }
-    : {
-        oneReminderOverdue: '1 reminder overdue',
-        remindersDue: (count: number) => `${count} reminders due`,
-        openCalendar: 'Open calendar',
-        toolkit: 'Arc Toolkit',
-        toolkitDescription: 'Agent Stack, DeFi, Radar, Bridge',
-      }
   const [copied, setCopied] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingReady, setOnboardingReady] = useState(false)
@@ -447,7 +432,9 @@ export function Wallet({
   }).format(new Date())
   const firstDueReminder = dueReminders[0]
   const dueReminderSummary =
-    dueReminders.length === 1 ? tileCopy.oneReminderOverdue : tileCopy.remindersDue(dueReminders.length)
+    dueReminders.length === 1
+      ? t('wallet.oneReminderOverdue')
+      : formatText('wallet.remindersDue', { count: dueReminders.length })
   const dueReminderPreview = firstDueReminder?.text?.trim() ?? ''
 
   const dismissOnboarding = () => {
@@ -737,7 +724,7 @@ export function Wallet({
               />
             ) : null}
             <CompactToolTile
-              label={tileCopy.openCalendar}
+              label={t('calendar.open')}
               eyebrow={todayLabel}
               Icon={CalendarDays}
               onClick={openCalendar}
@@ -745,8 +732,8 @@ export function Wallet({
               className={dueReminders.length === 0 ? 'col-span-2' : ''}
             />
             <CompactToolTile
-              label={tileCopy.toolkitDescription}
-              eyebrow={tileCopy.toolkit}
+              label={t('wallet.arcToolkitDescription')}
+              eyebrow={t('wallet.arcToolkit')}
               Icon={Settings2}
               onClick={openTools}
               tone="green"

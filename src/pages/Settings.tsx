@@ -2782,19 +2782,19 @@ export function Settings({ onBack }: SettingsProps) {
                 <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetDailyLimit')}</p>
                   <p className="mt-2 text-sm font-semibold text-white">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : 'â€”'}
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.dailyLimitUsdc)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetSpentToday')}</p>
                   <p className="mt-2 text-sm font-semibold text-white">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : 'â€”'}
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudget.spentTodayUsdc)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-arc-border bg-arc-bg px-3 py-3">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-arc-text-dim">{t('settings.tipBudgetRemaining')}</p>
                   <p className="mt-2 text-sm font-semibold text-white">
-                    {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : 'â€”'}
+                    {tipBudget ? `${formatTipBudgetAmount(tipBudgetRemaining)} ${t('common.usdc')}` : '—'}
                   </p>
                 </div>
               </div>

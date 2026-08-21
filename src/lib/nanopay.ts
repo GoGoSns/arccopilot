@@ -29,8 +29,10 @@ export interface PreparedNanoTipBatch {
 //   network: `eip155:5042002`
 //   USDC: `0x3600000000000000000000000000000000000000`
 //   Gateway Wallet / verifying contract: `0x0077777d7EBA4688BDeF3E311b846F25870A19B9`
-// TODO: replace the sequential prepared-send scaffold below with a real
-// Circle Gateway batch call while preserving this interface.
+// This module intentionally performs deterministic preparation only. Signing
+// and transfer execution remain in the existing Gateway/MetaMask or paired
+// agent transports, where destination, amount, network, and token confirmation
+// are enforced before any fund movement.
 
 function normalizeAmountText(value: string | number): string {
   const text = typeof value === 'number' ? String(value) : value.trim()

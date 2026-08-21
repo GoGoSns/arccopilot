@@ -289,7 +289,7 @@ function enforceCurrentGreeting(value: string, data: CollectedDailyBriefingData)
   const expectedOpening = `${expectedGreeting}${name ? `, ${name}` : ''}`
 
   const greetingPattern = data.locale === 'tr'
-    ? /^(?:GÃ¼naydÄ±n|TÃ¼naydÄ±n|Ä°yi akÅŸamlar)(?:,\s*[^.!?]+)?/i
+    ? /^(?:Günaydın|Tünaydın|İyi akşamlar)(?:,\s*[^.!?]+)?/i
     : /^(?:Good morning|Good afternoon|Good evening)(?:,\s*[^.!?]+)?/i
 
   if (greetingPattern.test(value)) {
