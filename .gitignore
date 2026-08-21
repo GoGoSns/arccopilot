@@ -10,6 +10,7 @@ _ref-arc-nanopayments/
 .DS_Store
 *.log
 *.zip
+*.zip.sha256
 *.crx
 *.pem
 *.key
